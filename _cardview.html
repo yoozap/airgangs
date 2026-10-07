@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- The target card on its own: no city, no range furniture, no login. Pulls a
+     real target sheet out of the range model, adopts it, fires a group into it
+     through the same code the game uses, and shows the card's own canvas at full
+     size. Dev tool. -->
+<meta charset="utf-8"><title>card view</title>
+<style>html,body{margin:0;background:#1b1f26}canvas{display:block;height:740px;width:auto}</style>
+<script type="module">
+import * as THREE from 'three';
+import { newGltfLoader } from '/src/gltf.js';
+import { PaperTargets } from '/src/papertargets.js';
+
+const gltf = await newGltfLoader().loadAsync('/models/shooting_range.glb');
+let sheet = null;
+gltf.scene.traverse((o) => {
+  if (!sheet && o.isMesh && /target.?paper/i.test(o.name || '')) sheet = o;
+});
+gltf.scene.updateMatrixWorld(true);
+const pt = new PaperTargets({});
+const card = pt.adopt(sheet);
+window.__card = () => ({
+  sheet: sheet.name, W: +(card.W * 1000).toFixed(0), H: +(card.H * 1000).toFixed(0),
+  printed: !!card.face, face: card.face ? `${card.face.width}x${card.face.height}` : null,
+});
+// Fire through the same entry the game uses, with the uv a raycast would give.
+window.__shoot = (shots, mm, bullet = 9.01) => {
+  const out = [];
+  for (let i = 0; i < shots; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.abs(Math.random() + Math.random() + Math.random() - 1.5) * mm;
+    // around the X ring, which is where a shooter aims on a silhouette
+    const u = 0.4993 + (Math.cos(a) * r) / 1000 / card.W;
+    const v = 0.3590 + (Math.sin(a) * r) / 1000 / card.H;
+    const uv = { x: u, y: v };   // glTF textures are flipY:false — v is the image row
+    const s = pt.hit(sheet, new THREE.Vector3(), new THREE.Vector3(0, 0, -1),
+      { bullet }, uv);
+    if (s) out.push(s.ring);
+  }
+  if (card.canvas && card.canvas.parentNode !== document.body) {
+    document.body.replaceChildren(card.canvas);
+  }
+  return { rings: out, score: card.score, n: card.shots.length, spread: +card.spread.toFixed(1) };
+};
+// and a look at the SHEET itself, exactly as it hangs in the range: this is the
+// only way to see which way up the printed face actually lands.
+window.__sheetView = () => {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1b1f26);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 3));
+  const clone = sheet.clone();
+  clone.position.set(0, 0, 0);
+  clone.rotation.set(0, 0, 0);
+  clone.scale.set(1, 1, 1);
+  scene.add(clone);
+  const box = new THREE.Box3().setFromObject(clone);
+  const c = box.getCenter(new THREE.Vector3());
+  const sz = box.getSize(new THREE.Vector3());
+  const r = new THREE.WebGLRenderer({ antialias: true });
+  r.setSize(420, 620);
+  r.domElement.id = 'sheet3d';
+  document.body.replaceChildren(r.domElement);
+  const cam = new THREE.PerspectiveCamera(35, 420 / 620, 0.01, 1000);
+  const depth = Math.max(sz.x, sz.y) * 1.9;
+  cam.position.set(c.x, c.y, c.z + depth);
+  cam.lookAt(c);
+  r.render(scene, cam);
+  return [+sz.x.toFixed(3), +sz.y.toFixed(3), +sz.z.toFixed(3)].join(' x ');
+};
+window.__ready = true;
+</script>

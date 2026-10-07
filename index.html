@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8" />
+
+  <!-- WHY A SERVICE-WORKER KILLER IS THE FIRST THING ON THE PAGE.
+       `http://localhost:5173` is not our address, it is a PORT -- every Vite
+       project on this machine answers to the same origin, and a service worker
+       registered by one of them keeps its scope ("/") over all the others, for
+       good. One of them (usectl) installed a cache-first worker that swallowed
+       every /models/ and /tbilisi/ request we made and answered it from its own
+       Cache Storage, so a refresh rebuilt the city out of whatever was cached
+       the day that worker last saw it: roofs missing, the gun at its old
+       rotation. A hard reload looked like the fix only because Chrome bypasses
+       the service worker on a hard reload -- the bytes were never stale on
+       disk, they just never left the server.
+       This game registers no service worker and opens no cache of its own, so
+       anything found here is someone else's and goes. The reload is needed
+       because unregistering does not release the page already being served:
+       this load is still the worker's, the next one is ours. -->
+  <script>
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+    var hijacked = !!navigator.serviceWorker.controller;
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        return Promise.all(rs.map(function (r) { return r.unregister(); }));
+      }),
+      window.caches ? caches.keys().then(function (ks) {
+        return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+      }) : 0,
+    ]).then(function () {
+      // one reload, never a loop: the next load has no worker to be controlled by.
+      if (hijacked && !sessionStorage.getItem('tf-sw-evicted')) {
+        sessionStorage.setItem('tf-sw-evicted', '1');
+        location.reload();
+      }
+    }).catch(function () {});
+  })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TbilisiFly ✈ თბილისიფლაი</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=JetBrains+Mono:wght@400;600;700&family=Share+Tech+Mono&family=Noto+Sans+Georgian:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <!-- shared chrome for menu screens (top status bar + pilot badge + footer) -->
+  <div id="chrome" class="hidden">
+    <div class="chrome-top">
+      <div class="ch-status"><span class="ch-dot"></span>TBILISI // 2026 // GRID-41.72N</div>
+      <div id="pilot-badge" class="hidden">
+        <div class="pb-avatar">✈</div>
+        <div>
+          <div id="pb-name" class="pb-name">PILOT</div>
+          <div id="pb-sub" class="pb-sub">LVL 1 • 0 ★</div>
+        </div>
+      </div>
+    </div>
+    <div class="chrome-bottom">
+      <span>ვერსია 0.9.2-ბეტა</span>
+      <span>სერვერი: თბილისი-01 • ონლაინ: <b id="ch-online">4 218</b></span>
+    </div>
+  </div>
+
+  <!-- LOGIN / REGISTRATION -->
+  <div id="screen-login" class="screen mscreen active">
+    <div class="scanlines"></div>
+    <div class="login-wrap">
+      <div class="ag-kicker">AERIAL BATTLE ROYALE</div>
+      <div class="ag-title">AIR GANGS</div>
+      <div class="ag-outline">OF GEORGIA</div>
+      <div class="ag-tagline">საჰაერო ბანდები • თბილისი 2026 • 100 პილოტი, გადარჩება ერთი</div>
+      <div class="login-panel">
+        <div class="login-tabs">
+          <button id="tab-login" class="ltab active">შესვლა</button>
+          <button id="tab-register" class="ltab">რეგისტრაცია</button>
+        </div>
+        <label class="fld">
+          <span>პილოტის სახელი</span>
+          <input id="auth-user" type="text" maxlength="20" autocomplete="username" spellcheck="false" placeholder="CALLSIGN_01" />
+        </label>
+        <label class="fld">
+          <span>პაროლი</span>
+          <input id="auth-pass" type="password" autocomplete="current-password" placeholder="••••••••" />
+        </label>
+        <label class="fld hidden" id="fld-pass2">
+          <span>გაიმეორე პაროლი</span>
+          <input id="auth-pass2" type="password" autocomplete="new-password" placeholder="••••••••" />
+        </label>
+        <div id="auth-error" class="auth-error hidden"></div>
+        <button id="btn-auth" class="cta-btn">▶ შესვლა</button>
+        <div class="login-note">ანგარიში ინახება ლოკალურ MongoDB ბაზაში</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- START MENU -->
+  <div id="screen-menu" class="screen mscreen">
+    <div class="scanlines"></div>
+    <div class="menu-wrap">
+      <div class="ag-kicker">AERIAL BATTLE ROYALE</div>
+      <div class="ag-title big">AIR GANGS</div>
+      <div class="ag-outline big">OF GEORGIA</div>
+      <div class="ag-tagline">საჰაერო ბანდები • თბილისი 2026 • 100 პილოტი, გადარჩება ერთი</div>
+      <div class="menu-btns">
+        <button id="btn-play" class="mbtn primary">▶ თამაშის დაწყება</button>
+        <button id="btn-character" class="mbtn">გმირი — პერსონაჟის შექმნა</button>
+        <button id="btn-menu-settings" class="mbtn">პარამეტრები</button>
+        <button id="btn-logout" class="mbtn ghost">გასვლა</button>
+      </div>
+    </div>
+    <div class="season-card">
+      <div class="sc-tag">SEASON 01</div>
+      <div class="sc-art">
+        <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="sky-sc" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#070a18"/><stop offset="0.65" stop-color="#131b3a"/><stop offset="1" stop-color="#2a1c45"/>
+            </linearGradient>
+            <radialGradient id="sun-sc" cx="0.5" cy="0.5" r="0.5">
+              <stop offset="0" stop-color="#ff3e8a" stop-opacity="0.85"/><stop offset="0.55" stop-color="#ff3e8a" stop-opacity="0.25"/><stop offset="1" stop-color="#ff3e8a" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect width="300" height="150" fill="url(#sky-sc)"/>
+          <circle cx="205" cy="96" r="46" fill="url(#sun-sc)"/>
+          <circle cx="205" cy="96" r="17" fill="#ff3e8a" opacity="0.8"/>
+          <g stroke="#3fd6ff" stroke-width="1.6" fill="none">
+            <path d="M60 18 L60 34"/><path d="M52 108 L60 34 L68 108"/>
+            <path d="M55 82 L65 82 M53 95 L67 95 M56 66 L64 66 M57 52 L63 52"/>
+            <ellipse cx="60" cy="44" rx="7" ry="2.6"/>
+          </g>
+          <circle cx="60" cy="18" r="2.2" fill="#ff3e8a"/>
+          <path d="M20 150 Q55 100 105 150 Z" fill="#0a0f22"/>
+          <path d="M110 118 Q150 88 190 118" stroke="#7ceaff" stroke-width="1.6" fill="none"/>
+          <path d="M215 150 L215 112 L221 112 L221 105 L228 105 L228 112 L245 112 L245 100 L251 100 L251 92 L258 92 L258 100 L264 100 L264 112 L282 112 L282 150 Z" fill="#0a0f22" stroke="#3fd6ff" stroke-opacity="0.7" stroke-width="1.2"/>
+        </svg>
+      </div>
+      <div class="sc-name">სეზონი 01: ნეონ-თბილისი</div>
+      <div class="sc-track"><div class="sc-fill" style="width:34%"></div></div>
+      <div class="sc-row"><span>დონე 17/50</span><span>34%</span></div>
+    </div>
+  </div>
+
+  <!-- CHARACTER CREATE / SELECT (WoW-style: name + race → class role) -->
+  <div id="screen-character" class="screen">
+    <div class="scanlines"></div>
+    <div class="hangar">
+      <div class="hangar-head">
+        <button id="btn-char-back" class="hback">◄ უკან</button>
+        <div class="hangar-title">PERSONAGE<span> //</span></div>
+        <div id="char-sub" class="hangar-sub">შექმენი შენი გმირი — აირჩიე რასა და დაარქვი სახელი</div>
+      </div>
+      <div class="hangar-cols">
+        <div id="race-list"></div>
+        <div class="hangar-preview">
+          <canvas id="char-preview"></canvas>
+          <div class="hp-tag">HERO PREVIEW // 1:1 HOLO SCAN</div>
+        </div>
+        <div class="hangar-info">
+          <div id="ci-code" class="hi-code">RACE // ARTSIVI</div>
+          <div id="ci-name" class="hi-name">არწივი</div>
+          <div id="ci-role" class="hi-class">⚔ DPS</div>
+          <div id="ci-spot" class="hi-spot hidden"></div>
+          <div id="ci-desc" class="hi-desc"></div>
+          <div id="ci-stats" class="hi-stats"></div>
+          <div id="char-plane-row" class="cm-row">
+            <span class="cm-tag">თვითმფრინავი</span>
+            <div class="cm-cycler">
+              <button id="cp-prev" class="cm-btn">◄</button>
+              <div id="cp-label">✈ Spitfire</div>
+              <button id="cp-next" class="cm-btn">►</button>
+            </div>
+          </div>
+          <div id="char-model-row" class="cm-row">
+            <span class="cm-tag">პერსონაჟი — სხეული</span>
+            <div class="cm-cycler">
+              <button id="cm-prev" class="cm-btn">◄</button>
+              <div id="cm-label">🏹 მონადირე</div>
+              <button id="cm-next" class="cm-btn">►</button>
+            </div>
+          </div>
+          <label class="fld char-name-fld" id="char-name-fld">
+            <span>გმირის სახელი</span>
+            <input id="char-name" type="text" maxlength="16" spellcheck="false" autocomplete="off" placeholder="მაგ: ვეფხია" />
+          </label>
+          <div class="hi-spacer"></div>
+          <button id="btn-char-delete" class="char-delete hidden">✕ გმირის წაშლა</button>
+          <button id="btn-char-create" class="hi-select">შექმნა</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP SELECT -->
+  <div id="screen-map" class="screen mscreen">
+    <div class="scanlines"></div>
+    <div class="panel wide">
+      <button id="btn-map-back" class="hback panel-back">◄ უკან</button>
+      <div class="panel-tag">■ TBILISI // 2026 // GRID-41.72N</div>
+      <h2>აირჩიე რუკა</h2>
+      <div class="city-grid">
+
+        <div class="city-card selected" data-city="tbilisi">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-tb" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a18"/><stop offset="0.65" stop-color="#131b3a"/><stop offset="1" stop-color="#2a1c45"/>
+              </linearGradient>
+              <radialGradient id="sun-tb" cx="0.5" cy="0.5" r="0.5">
+                <stop offset="0" stop-color="#ff3e8a" stop-opacity="0.85"/><stop offset="0.55" stop-color="#ff3e8a" stop-opacity="0.25"/><stop offset="1" stop-color="#ff3e8a" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-tb)"/>
+            <circle cx="205" cy="96" r="46" fill="url(#sun-tb)"/>
+            <circle cx="205" cy="96" r="17" fill="#ff3e8a" opacity="0.8"/>
+            <g stroke="#3fd6ff" stroke-opacity="0.18" stroke-width="1">
+              <line x1="0" y1="116" x2="300" y2="116"/><line x1="0" y1="124" x2="300" y2="124"/>
+              <line x1="0" y1="134" x2="300" y2="134"/><line x1="0" y1="146" x2="300" y2="146"/>
+            </g>
+            <!-- Mtatsminda TV tower -->
+            <g stroke="#3fd6ff" stroke-width="1.6" fill="none">
+              <path d="M60 18 L60 34"/>
+              <path d="M52 108 L60 34 L68 108"/>
+              <path d="M55 82 L65 82 M53 95 L67 95 M56 66 L64 66 M57 52 L63 52"/>
+              <ellipse cx="60" cy="44" rx="7" ry="2.6"/>
+            </g>
+            <circle cx="60" cy="18" r="2.2" fill="#ff3e8a"/>
+            <!-- hill under tower -->
+            <path d="M20 150 Q55 100 105 150 Z" fill="#0a0f22"/>
+            <!-- Bridge of Peace dome -->
+            <path d="M110 118 Q150 88 190 118" stroke="#7ceaff" stroke-width="1.6" fill="none"/>
+            <path d="M118 118 Q150 96 182 118 M128 118 Q150 102 172 118 M140 118 Q150 108 160 118" stroke="#3fd6ff" stroke-opacity="0.5" stroke-width="1" fill="none"/>
+            <!-- Narikala wall -->
+            <path d="M215 150 L215 112 L221 112 L221 105 L228 105 L228 112 L245 112 L245 100 L251 100 L251 92 L258 92 L258 100 L264 100 L264 112 L282 112 L282 150 Z" fill="#0a0f22" stroke="#3fd6ff" stroke-opacity="0.7" stroke-width="1.2"/>
+            <g fill="#ffd257" opacity="0.9">
+              <rect x="224" y="118" width="2.5" height="3.5"/><rect x="236" y="122" width="2.5" height="3.5"/>
+              <rect x="255" y="106" width="2.5" height="3.5"/><rect x="270" y="120" width="2.5" height="3.5"/>
+            </g>
+          </svg>
+          <div class="cc-label"><b>თბილისი</b><small>მთელი ქალაქი · OpenStreetMap · გასაღების გარეშე</small></div>
+          <div class="cc-status open">✓ ხელმისაწვდომი</div>
+        </div>
+
+        <div class="city-card locked" data-city="batumi">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-bt" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a18"/><stop offset="0.6" stop-color="#122036"/><stop offset="1" stop-color="#123a4a"/>
+              </linearGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-bt)"/>
+            <circle cx="90" cy="90" r="34" fill="#ff3e8a" opacity="0.14"/>
+            <!-- Alphabet tower -->
+            <g stroke="#3fd6ff" stroke-width="1.6" fill="none">
+              <path d="M62 110 C 78 85, 62 55, 74 30"/>
+              <path d="M86 110 C 70 85, 86 55, 74 30"/>
+              <path d="M66 96 L82 96 M69 78 L79 78 M67 60 L81 60 M70 44 L78 44"/>
+              <circle cx="74" cy="24" r="7"/>
+            </g>
+            <!-- ferris wheel -->
+            <g stroke="#7ceaff" stroke-width="1.4" fill="none">
+              <circle cx="210" cy="72" r="32"/>
+              <circle cx="210" cy="72" r="4"/>
+              <path d="M210 40 L210 104 M178 72 L242 72 M188 50 L232 94 M232 50 L188 94"/>
+              <path d="M196 132 L210 76 L224 132"/>
+            </g>
+            <g fill="#ff3e8a"><circle cx="210" cy="40" r="2"/><circle cx="242" cy="72" r="2"/><circle cx="178" cy="72" r="2"/><circle cx="210" cy="104" r="2"/></g>
+            <!-- sea -->
+            <path d="M0 132 Q20 128 40 132 T80 132 T120 132 T160 132 T200 132 T240 132 T280 132 T320 132" stroke="#3fd6ff" stroke-opacity="0.55" stroke-width="1.4" fill="none"/>
+            <path d="M0 141 Q25 137 50 141 T100 141 T150 141 T200 141 T250 141 T300 141" stroke="#3fd6ff" stroke-opacity="0.3" stroke-width="1.2" fill="none"/>
+          </svg>
+          <div class="cc-label"><b>ბათუმი</b><small>ზღვისპირა ნეონი · მალე</small></div>
+          <div class="cc-status">🔒 ჩაკეტილია</div>
+        </div>
+
+        <div class="city-card locked" data-city="kutaisi">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-kt" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a18"/><stop offset="0.7" stop-color="#151b38"/><stop offset="1" stop-color="#25203f"/>
+              </linearGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-kt)"/>
+            <circle cx="230" cy="50" r="14" fill="#7ceaff" opacity="0.5"/>
+            <circle cx="230" cy="50" r="26" fill="#7ceaff" opacity="0.12"/>
+            <!-- hill -->
+            <path d="M40 150 Q150 96 260 150 Z" fill="#0a0f22"/>
+            <!-- Bagrati cathedral -->
+            <g stroke="#3fd6ff" stroke-width="1.5" fill="#0a0f22">
+              <rect x="118" y="88" width="64" height="34"/>
+              <path d="M126 88 L126 74 L174 74 L174 88"/>
+              <path d="M138 74 L150 56 L162 74"/>
+              <path d="M150 56 L150 46 M145 50 L155 50"/>
+            </g>
+            <g fill="#ffd257" opacity="0.9">
+              <rect x="128" y="96" width="3" height="6"/><rect x="148" y="96" width="3" height="6"/><rect x="168" y="96" width="3" height="6"/>
+            </g>
+            <path d="M0 132 L300 132 M0 142 L300 142" stroke="#3fd6ff" stroke-opacity="0.18" stroke-width="1"/>
+          </svg>
+          <div class="cc-label"><b>ქუთაისი</b><small>ბაგრატის ტაძარი · მალე</small></div>
+          <div class="cc-status">🔒 ჩაკეტილია</div>
+        </div>
+
+        <div class="city-card locked" data-city="gori">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-gr" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a18"/><stop offset="0.7" stop-color="#141b38"/><stop offset="1" stop-color="#2a1c45"/>
+              </linearGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-gr)"/>
+            <circle cx="72" cy="52" r="18" fill="#ff3e8a" opacity="0.35"/>
+            <!-- fortress hill -->
+            <path d="M50 150 Q150 76 250 150 Z" fill="#0a0f22"/>
+            <!-- Gori fortress wall -->
+            <g stroke="#3fd6ff" stroke-width="1.4" fill="#0a0f22">
+              <path d="M105 106 L105 90 L112 90 L112 84 L119 84 L119 90 L134 90 L134 96 L166 96 L166 90 L181 90 L181 84 L188 84 L188 90 L195 90 L195 106 Q150 96 105 106 Z"/>
+              <path d="M140 96 L140 82 L147 82 L147 76 L153 76 L153 82 L160 82 L160 96"/>
+            </g>
+            <g fill="#ffd257" opacity="0.9"><rect x="147" y="84" width="2.5" height="4"/><rect x="115" y="93" width="2.5" height="4"/><rect x="183" y="93" width="2.5" height="4"/></g>
+            <path d="M0 134 L300 134 M0 144 L300 144" stroke="#3fd6ff" stroke-opacity="0.18" stroke-width="1"/>
+          </svg>
+          <div class="cc-label"><b>გორი</b><small>ციხესიმაგრე · მალე</small></div>
+          <div class="cc-status">🔒 ჩაკეტილია</div>
+        </div>
+
+        <div class="city-card locked" data-city="rustavi">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-rs" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#070a18"/><stop offset="0.7" stop-color="#1a1430"/><stop offset="1" stop-color="#3a1230"/>
+              </linearGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-rs)"/>
+            <!-- industry -->
+            <g stroke="#3fd6ff" stroke-width="1.5" fill="#0a0f22">
+              <path d="M70 150 L70 60 L86 60 L86 150"/>
+              <path d="M120 150 L120 44 L136 44 L136 150"/>
+              <path d="M170 150 L170 70 L186 70 L186 150"/>
+              <rect x="200" y="100" width="70" height="50"/>
+              <path d="M200 100 L212 88 L224 100 L236 88 L248 100 L260 88 L270 100"/>
+              <rect x="30" y="112" width="34" height="38"/>
+            </g>
+            <!-- smoke -->
+            <g stroke="#7ceaff" stroke-opacity="0.45" stroke-width="1.4" fill="none">
+              <path d="M78 56 C 74 46, 84 42, 80 32 C 77 25, 85 22, 83 14"/>
+              <path d="M128 40 C 124 30, 134 26, 130 16"/>
+              <path d="M178 66 C 174 56, 184 52, 180 42"/>
+            </g>
+            <g fill="#ff3e8a"><circle cx="78" cy="62" r="2"/><circle cx="128" cy="46" r="2"/><circle cx="178" cy="72" r="2"/></g>
+            <g fill="#ffd257" opacity="0.9">
+              <rect x="208" y="110" width="3" height="5"/><rect x="222" y="110" width="3" height="5"/><rect x="236" y="110" width="3" height="5"/><rect x="250" y="110" width="3" height="5"/>
+              <rect x="38" y="120" width="3" height="5"/><rect x="50" y="120" width="3" height="5"/>
+            </g>
+          </svg>
+          <div class="cc-label"><b>რუსთავი</b><small>ინდუსტრიული ზონა · მალე</small></div>
+          <div class="cc-status">🔒 ჩაკეტილია</div>
+        </div>
+
+        <div class="city-card locked" data-city="kazbegi">
+          <svg viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sky-kz" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#05070f"/><stop offset="0.7" stop-color="#101a36"/><stop offset="1" stop-color="#16294a"/>
+              </linearGradient>
+            </defs>
+            <rect width="300" height="150" fill="url(#sky-kz)"/>
+            <circle cx="250" cy="34" r="12" fill="#7ceaff" opacity="0.75"/>
+            <circle cx="250" cy="34" r="24" fill="#7ceaff" opacity="0.12"/>
+            <g fill="#7ceaff" opacity="0.7">
+              <circle cx="40" cy="26" r="1.3"/><circle cx="90" cy="16" r="1"/><circle cx="140" cy="30" r="1.2"/><circle cx="190" cy="14" r="1"/><circle cx="70" cy="44" r="1"/>
+            </g>
+            <!-- Kazbek peaks -->
+            <path d="M0 150 L60 66 L104 118 L150 40 L204 116 L240 84 L300 150 Z" fill="#0a0f22"/>
+            <path d="M60 66 L74 86 L66 86 L84 108 M150 40 L166 64 L154 64 L176 92" stroke="#7ceaff" stroke-width="1.6" fill="none"/>
+            <path d="M0 150 L60 66 L104 118 L150 40" stroke="#3fd6ff" stroke-opacity="0.6" stroke-width="1.4" fill="none"/>
+            <path d="M150 40 L204 116 L240 84 L300 150" stroke="#3fd6ff" stroke-opacity="0.6" stroke-width="1.4" fill="none"/>
+            <!-- Gergeti church -->
+            <g stroke="#ffd257" stroke-width="1.3" fill="#0a0f22">
+              <rect x="216" y="98" width="18" height="12"/>
+              <path d="M220 98 L225 88 L230 98 M225 88 L225 83 M222.5 85 L227.5 85"/>
+            </g>
+          </svg>
+          <div class="cc-label"><b>ყაზბეგი</b><small>მყინვარწვერი 5054მ · მალე</small></div>
+          <div class="cc-status">🔒 ჩაკეტილია</div>
+        </div>
+
+      </div>
+      <div id="map-spot" class="map-spot hidden"></div>
+      <button id="btn-map" class="big-btn">ფრენა ✈</button>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="screen-game" class="screen">
+    <div id="game-container"></div>
+
+    <div id="loading-overlay">
+      <div class="loader-box">
+        <div class="spinner"></div>
+        <p id="loading-text">იტვირთება თბილისი…</p>
+      </div>
+    </div>
+
+    <div id="hud" class="hidden">
+      <div class="hud-box">
+        <div class="hud-item"><span id="hud-speed">0</span><small>კმ/სთ</small></div>
+        <div class="hud-item"><span id="hud-alt">0</span><small>მ სიმაღლე</small></div>
+      </div>
+      <div id="healthbar">
+        <div class="hb-head">
+          <span class="hb-label">კორპუსი // HULL</span>
+          <span id="healthbar-num">1000</span>
+        </div>
+        <div class="hb-track"><div id="healthbar-fill"></div></div>
+      </div>
+      <div id="compass">
+        <div id="compass-needle">▲</div>
+        <div id="compass-dial">
+          <span class="c-mark c-n">N</span>
+          <span class="c-mark c-e">E</span>
+          <span class="c-mark c-s">S</span>
+          <span class="c-mark c-w">W</span>
+          <div class="c-cross"></div>
+        </div>
+        <div id="compass-deg">0°</div>
+      </div>
+      <div id="hud-controls">
+        W/S — გაზი/მუხრუჭი &nbsp;·&nbsp; ↑/↓ — სიმაღლე &nbsp;·&nbsp; ←/→ — გადახრა &nbsp;·&nbsp; Q/E — საჭე &nbsp;·&nbsp; 1/2 — უნარი &nbsp;·&nbsp; SPACE — ცეცხლი &nbsp;·&nbsp; ENTER — გმირით გადმოსვლა &nbsp;·&nbsp; M — რუკა
+      </div>
+      <canvas id="minimap" width="230" height="230"></canvas>
+      <div id="attribution"></div>
+      <button id="btn-settings" title="პარამეტრები (Esc)">⚙</button>
+      <button id="btn-cinema" title="კინო სცენები — აირჩიე სცენა (Esc — გამოსვლა)">🎬</button>
+      <!-- the reel's scene list: opens off the 🎬 chip, one row per SCENES entry -->
+      <div id="cinema-menu" class="hidden">
+        <div class="cm-title">კინო სცენა</div>
+        <button class="cm-row" data-scene="0">
+          <span class="cm-n">1</span>
+          <span class="cm-t">ტირი</span>
+          <span class="cm-d">სროლა ბარეტათი</span>
+        </button>
+        <button class="cm-row" data-scene="1">
+          <span class="cm-n">2</span>
+          <span class="cm-t">ყუთები</span>
+          <span class="cm-d">აძვრომა · სალტო · კალაშნიკოვი</span>
+        </button>
+        <button class="cm-row" data-scene="2">
+          <span class="cm-n">3</span>
+          <span class="cm-t">ფრენა</span>
+          <span class="cm-d">კაბინიდან · ფრთა · ქალაქი ქვემოთ</span>
+        </button>
+      </div>
+      <button id="btn-airport" title="აეროპორტში დაბრუნება — საწყობთან (H)">🛬</button>
+    </div>
+
+
+    <!-- WoW-style map window (M) -->
+    <div id="mapwin" class="hidden">
+      <div id="mapwin-title">
+        <span class="mw-dot"></span>
+        <span class="mw-name">თბილისი // GRID-41.72N</span>
+        <span class="mw-sub">ტაქტიკური რუკა</span>
+        <div class="mw-btns">
+          <button id="mapwin-full" class="mw-btn" title="მთელ ეკრანზე / ფანჯარაში">⛶</button>
+          <button id="mapwin-close" class="mw-btn mw-close" title="დახურვა (M)">✕</button>
+        </div>
+      </div>
+      <div id="mapwin-body">
+        <canvas id="bigmap-canvas"></canvas>
+        <div id="mapwin-hint">M / Esc — დახურვა · სქროლი — ზუმი · გადაათრიე — გადაადგილება · კლიკი — 📍 პინი · მარჯვენა კლიკი — პინის წაშლა</div>
+      </div>
+      <div id="mapwin-resize"></div>
+      <i class="mw-corner tl"></i><i class="mw-corner tr"></i><i class="mw-corner bl"></i><i class="mw-corner br"></i>
+    </div>
+
+    <div id="crash-overlay" class="hidden">
+      <div id="wasted-band">
+        <div id="wasted-tag">■ SIGNAL LOST // GRID-41.72N</div>
+        <div id="wasted-text">ჩამოვარდი</div>
+        <div id="wasted-sub">კორპუსი განადგურებულია</div>
+      </div>
+      <button id="btn-restart" class="big-btn">კიდევ ერთხელ ↻</button>
+    </div>
+
+    <div id="error-overlay" class="hidden">
+      <div class="loader-box">
+        <h2>⚠ შეცდომა</h2>
+        <p id="error-text"></p>
+        <button id="btn-back" class="big-btn">უკან ↩</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- settings (Esc / ⚙) — outside the game screen so the menu can open it too -->
+  <div id="settingswin" class="hidden">
+      <div class="sw-frame">
+        <div class="sw-head">
+          <span class="sw-tag">◄ SETTINGS //</span>
+          <h3>პარამეტრები</h3>
+          <button id="settings-close" class="mw-btn mw-close" title="დახურვა (Esc)">✕</button>
+        </div>
+        <div class="sw-tabs">
+          <button class="sw-tab active" data-tab="gfx">გრაფიკა</button>
+          <button class="sw-tab" data-tab="snd">ხმა</button>
+          <button class="sw-tab" data-tab="ctl">მართვა</button>
+        </div>
+        <div class="sw-page" id="sw-gfx">
+          <div class="sw-row">
+            <label>გრაფიკის ხარისხი
+              <span class="sw-note">რამდენად მკვეთრად დაიხატოს ქალაქი. თუ თამაში ეშვება
+                ნელა — დაწიე. „ულტრა“ ყველაზე ლამაზია და ყველაზე მძიმე.</span>
+            </label>
+            <div class="sw-seg" id="set-quality">
+              <button data-v="low">დაბალი</button>
+              <button data-v="med">საშუალო</button>
+              <button data-v="high">მაღალი</button>
+              <button data-v="ultra">ულტრა</button>
+            </div>
+          </div>
+          <div class="sw-row">
+            <label>მთელი ეკრანი
+              <span class="sw-note">თამაში მთელ ეკრანზე გაიშლება. გამოსვლა — Esc.</span>
+            </label>
+            <button class="sw-toggle" id="set-fullscreen"></button>
+          </div>
+        </div>
+        <div class="sw-page hidden" id="sw-snd">
+          <div class="sw-row">
+            <label>ძრავის ხმა
+              <span class="sw-note">თვითმფრინავის ძრავა, ტყვიამფრქვევი და აფეთქებები.
+                ბრაუზერი ხმას პირველ დაწკაპუნებამდე არ უშვებს.</span>
+            </label>
+            <button class="sw-toggle" id="set-engine"></button>
+          </div>
+          <div class="sw-row">
+            <label>ხმის დონე<span class="sw-val" id="set-vol-num">70%</span>
+              <span class="sw-note">ყველა ხმის საერთო სიმაღლე.</span>
+            </label>
+            <input type="range" class="sw-range" id="set-volume" min="0" max="100" value="70" />
+          </div>
+        </div>
+        <div class="sw-page hidden" id="sw-ctl">
+          <div class="sw-row">
+            <label>მინი-რუკა
+              <span class="sw-note">მარცხნივ ქვემოთ მრგვალი რუკა — გიჩვენებს სად ხარ
+                ქალაქში. დიდი რუკა — M.</span>
+            </label>
+            <button class="sw-toggle on" id="set-minimap"></button>
+          </div>
+          <div class="sw-row">
+            <label>მართვის მინიშნებები
+              <span class="sw-note">ეკრანის ბოლოში მწვანე ტექსტი, რომელიც გეუბნება რომელი
+                ღილაკი რას აკეთებს. თუ უკვე იცი — გამორთე.</span>
+            </label>
+            <button class="sw-toggle on" id="set-hints"></button>
+          </div>
+          <div class="sw-row">
+            <label>იარაღის მხარე
+              <span class="sw-note">რომელი მხრიდან უყურებს კამერა იარაღს დამიზნებისას —
+                როგორც Counter-Strike-ში მარჯვენა/მარცხენა ხელი.</span>
+            </label>
+            <div class="sw-seg" id="set-side">
+              <button data-v="right">მარჯვენა</button>
+              <button data-v="left">მარცხენა</button>
+            </div>
+          </div>
+          <div class="sw-row">
+            <label>ამოღებისას დამიზნება
+              <span class="sw-note">იარაღი ამოღებისთანავე მიზანში იღებს (PUBG-ის მსგავსად).
+                მარჯვენა ღილაკი მაინც რთავს/თიშავს.</span>
+            </label>
+            <button class="sw-toggle on" id="set-aimdraw"></button>
+          </div>
+          <div class="sw-keys-title">თვითმფრინავში</div>
+          <div class="sw-keys">
+            <div><b>W / Shift</b>გაზი — რაც მეტს იჭერ, მით უფრო სწრაფად მიდიხარ</div>
+            <div><b>S</b>მუხრუჭი, გაჩერების შემდეგ კი უკუსვლა</div>
+            <div><b>↑ / ↓</b>ცხვირი ზევით ან ქვევით — ასე აფრინდები და დაეშვები</div>
+            <div><b>← / →</b>ფრთებზე გადახრა (გვერდულად მოხვევა)</div>
+            <div><b>Q / E</b>ცხვირის მოტრიალება ადგილზე</div>
+            <div><b>1–0</b>უნარების ზოლი — 1 ტყვიამფრქვევი · 2 რაკეტები</div>
+            <div><b>SPACE</b>არჩეული იარაღით სროლა. შენობებს აქვთ ჯანმრთელობა — რაკეტა
+              უფრო მალე ანგრევს ვიდრე ტყვიები</div>
+            <div><b>R</b>თვითმფრინავი თავიდან, მთელი და გამართული</div>
+          </div>
+          <div class="sw-keys-title">ფეხით (გმირით)</div>
+          <div class="sw-keys">
+            <div><b>ENTER</b>გააჩერე თვითმფრინავი და გადმოდი. თვითმფრინავთან ახლოს
+              ისევ Enter — ჩაჯდომა</div>
+            <div><b>W A S D</b>სირბილი. კამერა სადაც იყურება, იქით გარბიხარ</div>
+            <div><b>Shift</b>სპრინტი — ყველაზე სწრაფი სირბილი</div>
+            <div><b>Ctrl</b>ნაბიჯით სიარული — ნელა და წყნარად</div>
+            <div><b>SPACE</b>ხტომა. კიდეზე გადახტომა ცოტა გვიანაც მუშაობს</div>
+            <div><b>კედელთან მირბენა</b>დაბალ კედელზე, ყუთზე ან თვითმფრინავის ფრთაზე
+              გმირი თვითონ აძვრება — უბრალოდ შეურბინე</div>
+            <div><b>1–8</b>იარაღის სლოტები. ჯერ ცარიელია — იარაღი რომ იშოვო, თავის
+              სლოტში ჩაჯდება</div>
+            <div><b>მაღლიდან ჩამოხტომა</b>7 მეტრამდე უვნებელია, უფრო მაღლიდან გტკივა,
+              26 მეტრიდან კი — სიკვდილი</div>
+          </div>
+          <div class="sw-keys-title">საერთო</div>
+          <div class="sw-keys">
+            <div><b>M</b>დიდი რუკა · <b>T</b>HQ გრაფიკა · <b>N</b>ხმა · <b>Esc</b>პარამეტრები</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

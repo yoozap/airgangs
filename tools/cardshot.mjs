@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+import fs from 'fs';
+const OUT = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/effacba5-9c0d-43bd-ac9c-0565a77831d7/scratchpad';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 760, height: 760 } });
+p.on('pageerror', (e) => console.log('PAGE ERROR', e.message));
+await p.goto('http://localhost:5173/_cardview.html');
+await p.waitForFunction(() => window.__ready, null, { timeout: 30000 });
+console.log('sheet       :', JSON.stringify(await p.evaluate(() => window.__card())));
+console.log('aimed group :', JSON.stringify(await p.evaluate(() => window.__shoot(10, 28))));
+fs.writeFileSync(`${OUT}/card_group.png`, await p.locator('canvas').screenshot());
+console.log('hip fire    :', JSON.stringify(await p.evaluate(() => window.__shoot(14, 150, 9.27))));
+fs.writeFileSync(`${OUT}/card_hip.png`, await p.locator('canvas').screenshot());
+await b.close();

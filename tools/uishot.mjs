@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import fs from 'fs';
+const OUT = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/effacba5-9c0d-43bd-ac9c-0565a77831d7/scratchpad';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 900, height: 600 } });
+p.on('pageerror', (e) => console.log('PAGE ERROR', e.message));
+await p.goto('http://localhost:5173/_uiview.html');
+await p.waitForFunction(() => window.__ready, null, { timeout: 30000 });
+fs.writeFileSync(`${OUT}/ui_idle.png`, await p.locator('#lane-ctl').screenshot());
+await p.evaluate(() => window.__green('out'));
+fs.writeFileSync(`${OUT}/ui_green.png`, await p.locator('#lane-ctl').screenshot());
+console.log('ok');
+await b.close();

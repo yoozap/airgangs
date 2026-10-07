@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import fs from 'fs';
+const OUT = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/effacba5-9c0d-43bd-ac9c-0565a77831d7/scratchpad';
+const b = await chromium.launch({ args: ['--use-gl=angle','--use-angle=metal','--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: 460, height: 660 } });
+p.on('pageerror', (e) => console.log('PAGE ERROR', e.message));
+await p.goto('http://localhost:5173/_cardview.html');
+await p.waitForFunction(() => window.__ready, null, { timeout: 60000 });
+await p.evaluate(() => { window.__sz = String(window.__sheetView()); });
+console.log('sheet size:', await p.evaluate(() => window.__sz));
+await p.waitForTimeout(300);
+fs.writeFileSync(`${OUT}/sheet3d.png`, await p.locator('#sheet3d').screenshot());
+await b.close();

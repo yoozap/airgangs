@@ -1,0 +1,31 @@
+import { chromium } from 'playwright';
+const OUT = process.env.SHOT_DIR || '/tmp';
+const browser = await chromium.launch({ args: ['--use-angle=metal'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+page.on('pageerror', (e) => console.log('PAGEERROR:', e.message));
+await page.goto('http://localhost:5173/');
+await page.click('#btn-plane');
+await page.click('#btn-map');
+await page.waitForFunction(() => window.__game?.world?.ready, null, { timeout: 240000 });
+await page.waitForTimeout(5000);
+await page.evaluate(() => window.__game.renderer.setAnimationLoop(null));
+const ok = await page.evaluate(() => {
+  const g = window.__game; const w = g.world;
+  // find a balcony InstancedMesh (concrete color 0xc5bfb2) with many instances
+  const m = w.chunkMeshes.find((c) => c.mesh.isInstancedMesh && c.mesh.material.color?.getHex() === 0xc5bfb2 && c.mesh.count > 300);
+  if (!m) return 'no balcony mesh';
+  const mat = new g.camera.matrix.constructor();
+  m.mesh.getMatrixAt(12, mat);
+  const p = { x: mat.elements[12], y: mat.elements[13], z: mat.elements[14] };
+  g.camera.up.set(0, 1, 0);
+  g.camera.position.set(p.x + 26, p.y + 6, p.z + 30);
+  g.camera.lookAt(p.x, p.y, p.z);
+  w.update(g.camera.position);
+  return `balcony at ${p.x | 0},${p.y | 0},${p.z | 0}, chunk has ${m.mesh.count}`;
+});
+console.log(ok);
+await page.waitForTimeout(1500);
+await page.evaluate(() => { const g = window.__game; g.world.update(g.camera.position); (g.composer && g.hq ? g.composer.render() : g.renderer.render(g.scene, g.camera)); });
+await page.screenshot({ path: `${OUT}/balconies_3d_c.png` });
+console.log('done');
+await browser.close();

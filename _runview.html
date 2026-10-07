@@ -1,0 +1,184 @@
+<!doctype html>
+<!-- A personage on a treadmill: the body, its own Run clip, and the arm layer
+     from characters.js, with nothing else in the scene. The city takes minutes
+     to build and the login screens take clicks; tuning how a run LOOKS needs
+     neither, and needs to be a two-second loop instead of a five-minute one.
+     Dev tool, served by vite in dev only. -->
+<meta charset="utf-8"><title>run view</title>
+<style>html,body{margin:0;background:#20242b;overflow:hidden}canvas{display:block}</style>
+<script type="module">
+import * as THREE from 'three';
+import { makeCharacter } from '/src/characters.js';
+import * as WEAPONS from '/src/weapons.js';
+import * as GUNANIM from '/src/gunanim.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x20242b);
+const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+const rnd = new THREE.WebGLRenderer({ antialias: true });
+rnd.setSize(700, 700);
+document.body.appendChild(rnd.domElement);
+scene.add(new THREE.HemisphereLight(0xbcd3ff, 0x40433f, 2.0));
+const key = new THREE.DirectionalLight(0xfff3e0, 2.4);
+key.position.set(3, 6, 4); scene.add(key);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(6, 48),
+  new THREE.MeshStandardMaterial({ color: 0x3b4049 }));
+floor.rotation.x = -Math.PI / 2; scene.add(floor);
+// a grid so the stride reads against something
+const grid = new THREE.GridHelper(12, 24, 0x555b66, 0x474c55);
+scene.add(grid);
+
+const id = new URLSearchParams(location.search).get('body') ?? 'astronaut';
+const rig = await makeCharacter(id);
+scene.add(rig.obj);
+rig.play('Run');
+rig._dbgOn = true;   // the stats readout below
+
+let speed = 9, stroll = 0, turn = 0, accel = 0, layer = 1, view = 90, grip = 0, climb = 0;
+let dist = 4.2, aim = 0.95, gripLock = false;
+window.__set = (o = {}) => {
+  if (o.speed !== undefined) speed = o.speed;
+  if (o.stroll !== undefined) stroll = o.stroll;
+  if (o.turn !== undefined) turn = o.turn;
+  if (o.layer !== undefined) { layer = o.layer; if (!layer) { rig.anim.rotation.x = 0; rig.anim.rotation.z = 0; } }
+  if (o.view !== undefined) view = o.view;
+  if (o.climb !== undefined) climb = o.climb;
+  if (o.dist !== undefined) dist = o.dist;
+  if (o.aim !== undefined) aim = o.aim;
+  if (o.grip !== undefined) { grip = o.grip; gripLock = true; }
+  rig.setTimeScale('Run', THREE.MathUtils.clamp(speed / 6.5, stroll ? 0.34 : 0.6, 1.7));
+};
+window.__set({});
+window.__clock = 0;
+// step the world by a FIXED dt so a frame grab is repeatable
+window.__step = (n = 1, dt = 1 / 60) => {
+  for (let i = 0; i < n; i++) {
+    window.__clock += dt;
+    rig.update(dt);
+    rig.locomote(dt, speed, 6.5);
+    rig.obj.updateMatrixWorld(true);
+    if (layer) {
+      const o = { speed, runSpeed: 6.5, turn, accel, stroll, crouch: 0, blend: 1 };
+      if (!gripLock) grip += (THREE.MathUtils.clamp(speed / 6.5 * 1.8, 0, 1) * (stroll ? 0.3 : 1) - grip) * Math.min(1, 7 * dt);
+      rig.setGrip(climb ? 1 : grip);
+      rig.swingArms(dt, o);
+      rig.swingBody(dt, o);
+    }
+  }
+  const a = THREE.MathUtils.degToRad(view);
+  cam.position.set(Math.sin(a) * dist, aim + dist * 0.12, Math.cos(a) * dist);
+  cam.lookAt(0, aim, 0);
+  rnd.render(scene, cam);
+};
+// WHAT THE CLIP ALREADY DOES TO THE WHOLE BODY, so nothing is written twice:
+// how far the hips rise and fall over a stride, how far the torso leans, how far
+// the shoulder line counter-rotates against the hip line, and whether the head
+// is held level. Sampled across one full stride.
+window.__body = (n = 60, dt = 1 / 60) => {
+  const bone = (re) => { let b = null; rig.obj.traverse((o) => { if (!b && o.isBone && re.test(o.name)) b = o; }); return b; };
+  const hips = bone(/^(hips|pelvis)$/i);
+  const chest = bone(/^(torso|chest|spine_03|spine_02|abdomen)$/i) ?? bone(/spine/i);
+  const head = bone(/^(head|neck)$/i);
+  const arms = rig._rollRig();
+  const out = { hipY: [], lean: [], twist: [], headPitch: [], rootY: [] };
+  const v = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
+  const yawOf = (l, r) => {
+    l.updateWorldMatrix(true, false); r.updateWorldMatrix(true, false);
+    a.setFromMatrixPosition(l.matrixWorld); b.setFromMatrixPosition(r.matrixWorld);
+    return THREE.MathUtils.radToDeg(Math.atan2(b.x - a.x, b.z - a.z));
+  };
+  for (let i = 0; i < n; i++) {
+    window.__step(1, dt);
+    if (hips) { hips.updateWorldMatrix(true, false); out.hipY.push(+v.setFromMatrixPosition(hips.matrixWorld).y.toFixed(4)); }
+    out.rootY.push(+rig.anim.position.y.toFixed(4));
+    if (hips && chest) {
+      hips.updateWorldMatrix(true, false); chest.updateWorldMatrix(true, false);
+      a.setFromMatrixPosition(chest.matrixWorld).sub(b.setFromMatrixPosition(hips.matrixWorld));
+      out.lean.push(+THREE.MathUtils.radToDeg(Math.atan2(-a.z, a.y)).toFixed(2));
+    }
+    if (arms?.L.upper && arms?.R.upper && hips) {
+      const sh = yawOf(arms.L.upper, arms.R.upper);
+      // the hip line: the two thigh bones
+      const tl = bone(/^(upperleg|thigh)\.?l$/i), tr = bone(/^(upperleg|thigh)\.?r$/i);
+      out.twist.push(+(tl && tr ? sh - yawOf(tl, tr) : sh).toFixed(2));
+    }
+    if (head) {
+      head.updateWorldMatrix(true, false);
+      const q = new THREE.Quaternion().setFromRotationMatrix(head.matrixWorld);
+      const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+      out.headPitch.push(+THREE.MathUtils.radToDeg(e.x).toFixed(2));
+    }
+  }
+  const rng = (k) => out[k].length ? `${Math.min(...out[k]).toFixed(2)} .. ${Math.max(...out[k]).toFixed(2)} (span ${(Math.max(...out[k]) - Math.min(...out[k])).toFixed(3)})` : 'n/a';
+  return { dbg: rig._dbg, bones: { hips: hips?.name, chest: chest?.name, head: head?.name },
+    hipY: rng('hipY'), rootY: rng('rootY'), lean: rng('lean'), twist: rng('twist'), headPitch: rng('headPitch') };
+};
+// How closed a hand actually is: index fingertip to wrist, as a fraction of the
+// same distance with the hand open. 1.0 = flat open palm, ~0.5 = a fist.
+// Park the camera on the left hand itself, so a fist can actually be seen.
+window.__lookHand = (d = 0.3) => {
+  const h = rig._handRig()?.L; if (!h) return false;
+  const b = h.chains[0].bones[0];
+  rig.obj.updateMatrixWorld(true); b.updateWorldMatrix(true, false);
+  const p = new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+  cam.position.set(p.x + d, p.y + d * 0.5, p.z + d);
+  cam.lookAt(p);
+  rnd.render(scene, cam);
+  return true;
+};
+window.__grip = () => {
+  const hands = rig._handRig();
+  if (!hands?.L) return 'no finger bones on this body';
+  const w = hands.L.a, tip = rig._limbTip(hands.L.a) ?? hands.L.a;
+  const d = () => {
+    rig.obj.updateMatrixWorld(true);
+    w.updateWorldMatrix(true, false); tip.updateWorldMatrix(true, false);
+    return new THREE.Vector3().setFromMatrixPosition(tip.matrixWorld)
+      .distanceTo(new THREE.Vector3().setFromMatrixPosition(w.matrixWorld));
+  };
+  const probe = hands.L.chains[0].bones[0];
+  const tipPos = () => { rig.obj.updateMatrixWorld(true); tip.updateWorldMatrix(true, false);
+    return new THREE.Vector3().setFromMatrixPosition(tip.matrixWorld); };
+  rig.setGrip(0); const open = d(); const p0 = tipPos(); const q0 = probe.quaternion.clone();
+  rig.setGrip(1); const q1 = probe.quaternion.clone();
+  const moved = +q0.angleTo(q1).toFixed(4);
+  rig.setGrip(0);
+  rig.setGrip(1); const fist = d(); const p1 = tipPos();
+  const tipMoved = +p0.distanceTo(p1).toFixed(4);
+  rig.setGrip(0.5); const half = d();
+  return { tipMoved, fingerLen: +open.toFixed(4), chains: hands.L.chains.map((c) => c.bones.length).join('+'), probe: probe.name, moved,
+    axisOK: !!(hands.L.a && hands.L.b), a: hands.L.a?.name, b: hands.L.b?.name,
+    open: +open.toFixed(4), half: +(half / open).toFixed(3), fist: +(fist / open).toFixed(3) };
+};
+window.__elbow = () => {
+  const arms = rig._rollRig();
+  const up = arms.L.upper, fo = arms.L.fore;
+  let tip = arms.L.hand, far = -1;
+  fo.updateWorldMatrix(true, true);
+  const p0 = new THREE.Vector3().setFromMatrixPosition(fo.matrixWorld);
+  fo.traverse((o) => { if (o.isBone && o !== fo) {
+    const d = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).distanceTo(p0);
+    if (d > far) { far = d; tip = o; } } });
+  const a = new THREE.Vector3().setFromMatrixPosition(up.matrixWorld);
+  const b = p0.clone();
+  const c = new THREE.Vector3().setFromMatrixPosition(tip.matrixWorld);
+  const v1 = b.clone().sub(a).normalize(), v2 = c.clone().sub(b).normalize();
+  const bend = 180 - THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(v1.dot(v2), -1, 1)));
+  // and where each hand is, fore-aft, so alternation is a number too
+  const hand = (s) => {
+    let t = arms[s].hand, f = -1;
+    const fp = new THREE.Vector3().setFromMatrixPosition(arms[s].fore.matrixWorld);
+    arms[s].fore.traverse((o) => { if (o.isBone && o !== arms[s].fore) {
+      const d = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).distanceTo(fp);
+      if (d > f) { f = d; t = o; } } });
+    return new THREE.Vector3().setFromMatrixPosition(t.matrixWorld);
+  };
+  return { bend: +bend.toFixed(1), armSign: arms.sign,
+    hL: +hand('L').z.toFixed(3), hR: +hand('R').z.toFixed(3) };
+};
+// dev handles for probes (tools/*.mjs): the rig, the pose solvers, the renderer
+window.__rig = rig; window.__THREE = THREE; window.__scene = scene; window.__cam = cam; window.__rnd = rnd;
+window.__WEAPONS = WEAPONS; window.__GUNANIM = GUNANIM;
+window.__render = () => rnd.render(scene, cam);
+window.__ready = true;
+</script>

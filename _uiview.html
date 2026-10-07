@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- The HUD cards on their own, so a tooltip can be looked at without walking
+     across a city to find one. Dev tool. -->
+<meta charset="utf-8"><title>ui view</title>
+<style>html,body{margin:0;height:100%;background:#243041;font-family:ui-monospace,Menlo,monospace}
+#hud{position:relative;width:900px;height:600px;margin:0;background:
+  linear-gradient(160deg,#2b3a4e,#141c26)}</style>
+<div id="hud"></div>
+<script type="module">
+import { RangeLanes } from '/src/rangelane.js';
+const hud = document.getElementById('hud');
+const lanes = new RangeLanes({ ui: { hud }, sound: { volume: 0 } });
+const el = lanes._ui();
+el.style.display = 'flex';
+el.querySelector('#lc-dist').innerHTML = '7.5 <small>მ</small>';
+window.__green = (which) => {
+  el.querySelector('#lc-out').classList.toggle('on', which === 'out');
+  el.querySelector('#lc-in').classList.toggle('on', which === 'in');
+  el.querySelector('#lc-hint').textContent = which === 'out' ? 'მიდის შორს…'
+    : which === 'in' ? 'ბრუნდება…' : '▲ შორს · ▼ ახლოს';
+};
+window.__ready = true;
+</script>

@@ -1,0 +1,81 @@
+[
+ {
+  "key": "rail_motor",
+  "id": 683806,
+  "title": "SFX Electric ACtuator Under Load 1.mp3",
+  "author": "mpuffenbarger",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/683806/",
+  "files": [
+   "rail_motor_683806.wav"
+  ]
+ },
+ {
+  "key": "rail_motor",
+  "id": 683807,
+  "title": "SFX Electric Actuator 2.mp3",
+  "author": "mpuffenbarger",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/683807/",
+  "files": [
+   "rail_motor_683807.wav"
+  ]
+ },
+ {
+  "key": "rail_motor",
+  "id": 741372,
+  "title": "Garage_door_opening_motor_sounds",
+  "author": "Artninja",
+  "licence": "CC-BY 4.0",
+  "page": "https://freesound.org/s/741372/",
+  "files": [
+   "rail_motor_741372.wav"
+  ]
+ },
+ {
+  "key": "rail_motor",
+  "id": 717554,
+  "title": "220329 Garage door open close, motorized, EM272st",
+  "author": "TRP",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/717554/",
+  "files": [
+   "rail_motor_717554.wav"
+  ]
+ },
+ {
+  "key": "rail_stop",
+  "id": 865928,
+  "title": "Motorised Garage Door open and close",
+  "author": "Limbo_Pete",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/865928/",
+  "files": [
+   "rail_stop_865928_0.wav",
+   "rail_stop_865928_1.wav"
+  ]
+ },
+ {
+  "key": "rail_stop",
+  "id": 717554,
+  "title": "220329 Garage door open close, motorized, EM272st",
+  "author": "TRP",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/717554/",
+  "files": [
+   "rail_stop_717554_0.wav"
+  ]
+ },
+ {
+  "key": "rail_stop",
+  "id": 545024,
+  "title": "electric gate open.wav",
+  "author": "gecop",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/545024/",
+  "files": [
+   "rail_stop_545024_0.wav",
+   "rail_stop_545024_1.wav"
+  ]
+ }
+]

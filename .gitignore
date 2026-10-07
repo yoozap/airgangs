@@ -1,0 +1,18 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Downloaded / intermediate asset sources — the Blender + GIS pipelines pull
+# these in and bake what the game actually loads into public/. 11 GB, all of
+# it re-fetchable by the scripts in tools/.
+tools/cache/
+tools/trees_src/
+tools/park_src/
+tools/gis/
+tools/__pycache__/
+models_raw/
+
+# scratch
+undefined/
+Screenshot*.png

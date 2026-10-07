@@ -1,0 +1,23 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: tbilisifly-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  api:
+    build: ./server
+    container_name: tbilisifly-api
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/tbilisifly
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

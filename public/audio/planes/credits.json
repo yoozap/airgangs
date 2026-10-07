@@ -1,0 +1,264 @@
+[
+ {
+  "key": "jet_start",
+  "id": 322178,
+  "title": "F16 fighter jet start up.aif",
+  "author": "ikbenraar",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/322178/",
+  "files": [
+   "jet_start_322178.wav"
+  ]
+ },
+ {
+  "key": "jet_start",
+  "id": 491407,
+  "title": "Jet engine startup",
+  "author": "SamsterBirdies",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/491407/",
+  "files": [
+   "jet_start_491407.wav"
+  ]
+ },
+ {
+  "key": "jet_idle",
+  "id": 187734,
+  "title": "Idle F-22 Jet Plane.flac",
+  "author": "qubodup",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/187734/",
+  "files": [
+   "jet_idle_187734.wav"
+  ]
+ },
+ {
+  "key": "jet_idle",
+  "id": 437890,
+  "title": "G08-27-Jet Idle or Taxi.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437890/",
+  "files": [
+   "jet_idle_437890.wav"
+  ]
+ },
+ {
+  "key": "jet_run",
+  "id": 152509,
+  "title": "jet_engine.wav",
+  "author": "minian89",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/152509/",
+  "files": [
+   "jet_run_152509.wav"
+  ]
+ },
+ {
+  "key": "jet_run",
+  "id": 437922,
+  "title": "G10-07-Constant Jet Noise - Interior.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437922/",
+  "files": [
+   "jet_run_437922.wav"
+  ]
+ },
+ {
+  "key": "canopy",
+  "id": 479492,
+  "title": "R02-48-Jet Fighter Canopy Closing.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/479492/",
+  "files": [
+   "canopy_479492_0.wav",
+   "canopy_479492_1.wav",
+   "canopy_479492_2.wav",
+   "canopy_479492_3.wav"
+  ]
+ },
+ {
+  "key": "belt",
+  "id": 384406,
+  "title": "Seat belt unbuckle & buckling",
+  "author": "Caitlin_100",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/384406/",
+  "files": [
+   "belt_384406_0.wav",
+   "belt_384406_1.wav"
+  ]
+ },
+ {
+  "key": "belt",
+  "id": 538704,
+  "title": "Seat belt buckle wiggle VEHMECH.wav",
+  "author": "JoshvanHansen",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/538704/",
+  "files": [
+   "belt_538704_0.wav",
+   "belt_538704_1.wav"
+  ]
+ },
+ {
+  "key": "belt",
+  "id": 830198,
+  "title": "Seat Belt",
+  "author": "Filmscore",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/830198/",
+  "files": [
+   "belt_830198_0.wav",
+   "belt_830198_1.wav"
+  ]
+ },
+ {
+  "key": "gear",
+  "id": 425273,
+  "title": "Landing Gear",
+  "author": "77Pacer",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/425273/",
+  "files": [
+   "gear_425273_0.wav"
+  ]
+ },
+ {
+  "key": "gear",
+  "id": 763119,
+  "title": "landing gear",
+  "author": "Ramstar757",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/763119/",
+  "files": [
+   "gear_763119_0.wav",
+   "gear_763119_1.wav"
+  ]
+ },
+ {
+  "key": "touchdown",
+  "id": 437756,
+  "title": "G03-08-Light Plane Cessna Lands.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437756/",
+  "files": [
+   "touchdown_437756_0.wav",
+   "touchdown_437756_1.wav",
+   "touchdown_437756_2.wav"
+  ]
+ },
+ {
+  "key": "prop_start",
+  "id": 437835,
+  "title": "G06-16_C-47 2 Engine Prop Int Start and Idle.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437835/",
+  "files": [
+   "prop_start_437835.wav"
+  ]
+ },
+ {
+  "key": "prop_start",
+  "id": 437861,
+  "title": "G07-17_DC-4 4 Engine Prop Starts and Takes Off.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437861/",
+  "files": [
+   "prop_start_437861.wav"
+  ]
+ },
+ {
+  "key": "prop_idle",
+  "id": 437757,
+  "title": "G03-09-Light Plane Cessna Idles.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437757/",
+  "files": [
+   "prop_idle_437757.wav"
+  ]
+ },
+ {
+  "key": "prop_idle",
+  "id": 437764,
+  "title": "G03-16-Proctor Light Plane Slow Idle.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437764/",
+  "files": [
+   "prop_idle_437764.wav"
+  ]
+ },
+ {
+  "key": "prop_idle",
+  "id": 437758,
+  "title": "G03-10-Light Plane Piper Cub Interior.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437758/",
+  "files": [
+   "prop_idle_437758.wav"
+  ]
+ },
+ {
+  "key": "prop_run",
+  "id": 437792,
+  "title": "G04-25-WWII Fighter Revs Engine.wav",
+  "author": "craigsmith",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/437792/",
+  "files": [
+   "prop_run_437792.wav"
+  ]
+ },
+ {
+  "key": "prop_run",
+  "id": 614743,
+  "title": "Mustang radial Engine.wav",
+  "author": "GMagic",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/614743/",
+  "files": [
+   "prop_run_614743.wav"
+  ]
+ },
+ {
+  "key": "prop_run",
+  "id": 547068,
+  "title": "PropPlane.wav",
+  "author": "gorkylmz1",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/547068/",
+  "files": [
+   "prop_run_547068.wav"
+  ]
+ },
+ {
+  "key": "jet_ab",
+  "id": 104883,
+  "title": "Afterburner sound.wav",
+  "author": "StoneyJ",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/104883/",
+  "files": [
+   "jet_ab_104883.wav"
+  ]
+ },
+ {
+  "key": "jet_ab",
+  "id": 829068,
+  "title": "Afterburner (Close, Screamer, Quick Onset)",
+  "author": "JSK_Productions",
+  "licence": "CC0",
+  "page": "https://freesound.org/s/829068/",
+  "files": [
+   "jet_ab_829068.wav"
+  ]
+ }
+]

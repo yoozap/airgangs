@@ -1,0 +1,26 @@
+import { chromium } from 'playwright';
+const OUT = process.env.SHOT_DIR || '/tmp';
+const browser = await chromium.launch({ args: ['--use-angle=metal'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+page.on('pageerror', (e) => console.log('PAGEERROR:', e.message));
+page.on('console', (m) => { if (m.text().includes('facade props')) console.log(m.text()); });
+await page.goto('http://localhost:5173/');
+await page.click('#btn-plane');
+await page.click('#btn-map');
+await page.waitForFunction(() => window.__game?.world?.ready, null, { timeout: 240000 });
+await page.waitForTimeout(5000);
+await page.evaluate(() => window.__game.renderer.setAnimationLoop(null));
+await page.evaluate(() => {
+  const g = window.__game; const w = g.world;
+  const x = -(44.7565 - w.meta.origin.lon) * w.meta.mlon;
+  const z = (41.7259 - w.meta.origin.lat) * w.meta.mlat;
+  const gy = w.heightAt(x, z) ?? 450;
+  g.camera.up.set(0, 1, 0);
+  g.camera.position.set(x + 95, gy + 30, z - 45);
+  g.camera.lookAt(x - 60, gy + 18, z + 45);
+});
+await page.waitForTimeout(1800);
+await page.evaluate(() => { const g = window.__game; g.world.update(g.camera.position); (g.composer && g.hq ? g.composer.render() : g.renderer.render(g.scene, g.camera)); });
+await page.screenshot({ path: `${OUT}/balconies_3d_b.png` });
+console.log('shot done', await page.evaluate(() => window.__game.renderer.info.render.triangles));
+await browser.close();

@@ -1,0 +1,56 @@
+{
+ "prop_start": [
+  "prop_start_437835.wav",
+  "prop_start_437861.wav"
+ ],
+ "prop_idle": [
+  "prop_idle_437757.wav",
+  "prop_idle_437758.wav",
+  "prop_idle_437764.wav"
+ ],
+ "prop_run": [
+  "prop_run_437792.wav",
+  "prop_run_547068.wav",
+  "prop_run_614743.wav"
+ ],
+ "jet_start": [
+  "jet_start_322178.wav",
+  "jet_start_491407.wav"
+ ],
+ "jet_idle": [
+  "jet_idle_187734.wav",
+  "jet_idle_437890.wav"
+ ],
+ "jet_run": [
+  "jet_run_152509.wav",
+  "jet_run_437922.wav"
+ ],
+ "jet_ab": [
+  "jet_ab_104883.wav",
+  "jet_ab_829068.wav"
+ ],
+ "canopy": [
+  "canopy_479492_0.wav",
+  "canopy_479492_1.wav",
+  "canopy_479492_2.wav",
+  "canopy_479492_3.wav"
+ ],
+ "belt": [
+  "belt_384406_0.wav",
+  "belt_384406_1.wav",
+  "belt_538704_0.wav",
+  "belt_538704_1.wav",
+  "belt_830198_0.wav",
+  "belt_830198_1.wav"
+ ],
+ "gear": [
+  "gear_425273_0.wav",
+  "gear_763119_0.wav",
+  "gear_763119_1.wav"
+ ],
+ "touchdown": [
+  "touchdown_437756_0.wav",
+  "touchdown_437756_1.wav",
+  "touchdown_437756_2.wav"
+ ]
+}

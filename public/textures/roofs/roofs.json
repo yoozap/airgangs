@@ -1,0 +1,39 @@
+{
+ "metal_corrugated": {
+  "file": "metal_corrugated.jpg",
+  "family": "metal",
+  "scale_m": 3.0
+ },
+ "metal_seam": {
+  "file": "metal_seam.jpg",
+  "family": "metal",
+  "scale_m": 3.5
+ },
+ "metal_patched": {
+  "file": "metal_patched.jpg",
+  "family": "metal",
+  "scale_m": 3.0
+ },
+ "flat_bitumen": {
+  "file": "flat_bitumen.jpg",
+  "family": "flat",
+  "scale_m": 6.0
+ },
+ "flat_screed": {
+  "file": "flat_screed.jpg",
+  "family": "flat",
+  "scale_m": 6.0
+ },
+ "roof_flat": {
+  "file": "roof_flat.jpg",
+  "family": "flat",
+  "scale_m": 9.0,
+  "credit": "ambientCG.com, CC0"
+ },
+ "roof_metal": {
+  "file": "roof_metal.jpg",
+  "family": "metal",
+  "scale_m": 6.0,
+  "credit": "ambientCG.com, CC0"
+ }
+}
