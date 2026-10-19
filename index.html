@@ -56,6 +56,9 @@
           <div id="pb-name" class="pb-name">PILOT</div>
           <div id="pb-sub" class="pb-sub">LVL 1 • 0 ★</div>
         </div>
+        <!-- Logout lives INSIDE the badge: the badge is shown exactly when
+             someone is logged in, so the button needs no state of its own. -->
+        <button id="btn-logout-top" class="pb-out" title="ანგარიშიდან გასვლა — გმირი და ადგილი შეინახება">გასვლა ⎋</button>
       </div>
     </div>
     <div class="chrome-bottom">
@@ -88,6 +91,10 @@
         <label class="fld hidden" id="fld-pass2">
           <span>გაიმეორე პაროლი</span>
           <input id="auth-pass2" type="password" autocomplete="new-password" placeholder="••••••••" />
+        </label>
+        <label class="fld-check">
+          <input type="checkbox" id="auth-remember" checked />
+          <span>დამიმახსოვრე — შესვლა აღარ დამჭირდება</span>
         </label>
         <div id="auth-error" class="auth-error hidden"></div>
         <button id="btn-auth" class="cta-btn">▶ შესვლა</button>
@@ -152,12 +159,21 @@
         <div class="hangar-title">PERSONAGE<span> //</span></div>
         <div id="char-sub" class="hangar-sub">შექმენი შენი გმირი — აირჩიე რასა და დაარქვი სახელი</div>
       </div>
+      <!-- CREATE lays out like WoW's: one race down each side of the hero,
+           its bodies as portrait tiles, the name and the button under the
+           model. ROSTER keeps the old three columns (heroes | hero | info). -->
       <div class="hangar-cols">
         <div id="race-list"></div>
-        <div class="hangar-preview">
-          <canvas id="char-preview"></canvas>
-          <div class="hp-tag">HERO PREVIEW // 1:1 HOLO SCAN</div>
+        <div class="hangar-mid">
+          <div class="hangar-preview">
+            <canvas id="char-preview"></canvas>
+            <div class="hp-tag">HERO PREVIEW // 1:1 HOLO SCAN</div>
+          </div>
+          <div id="create-bar" class="hidden">
+            <div id="cb-line" class="cb-line"></div>
+          </div>
         </div>
+        <div id="race-list-2" class="hidden"></div>
         <div class="hangar-info">
           <div id="ci-code" class="hi-code">RACE // ARTSIVI</div>
           <div id="ci-name" class="hi-name">არწივი</div>
@@ -171,14 +187,6 @@
               <button id="cp-prev" class="cm-btn">◄</button>
               <div id="cp-label">✈ Spitfire</div>
               <button id="cp-next" class="cm-btn">►</button>
-            </div>
-          </div>
-          <div id="char-model-row" class="cm-row">
-            <span class="cm-tag">პერსონაჟი — სხეული</span>
-            <div class="cm-cycler">
-              <button id="cm-prev" class="cm-btn">◄</button>
-              <div id="cm-label">🏹 მონადირე</div>
-              <button id="cm-next" class="cm-btn">►</button>
             </div>
           </div>
           <label class="fld char-name-fld" id="char-name-fld">
@@ -433,6 +441,9 @@
       <canvas id="minimap" width="230" height="230"></canvas>
       <div id="attribution"></div>
       <button id="btn-settings" title="პარამეტრები (Esc)">⚙</button>
+      <!-- logout from inside the game: the snapshot is pushed first, so the
+           hero waits exactly where it is standing -->
+      <button id="btn-logout-game" title="ანგარიშიდან გასვლა — გმირი ადგილზე შეინახება">🚪</button>
       <button id="btn-cinema" title="კინო სცენები — აირჩიე სცენა (Esc — გამოსვლა)">🎬</button>
       <!-- the reel's scene list: opens off the 🎬 chip, one row per SCENES entry -->
       <div id="cinema-menu" class="hidden">

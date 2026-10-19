@@ -57,6 +57,12 @@ export class HeroLink {
     this._connect();
   }
 
+  // Logging out. The flush comes first (the last spawn place is still worth
+  // sending), and the ACCOUNT IS FORGOTTEN LAST: with `username` gone, a late
+  // save() or _writeLocal() -- a pagehide a second after the logout, a game
+  // still winding down -- can no longer write this emptied `states` over
+  // `tf-heroes-<user>` and take every other hero's saved spot with it. The
+  // mirror is how a personage finds its way back on the next login.
   close() {
     this._wanted = false;
     clearTimeout(this._retryT);
@@ -66,6 +72,8 @@ export class HeroLink {
     this.ws = null;
     this.connected = false;
     this.states = {};
+    this.username = null;
+    this.token = null;
   }
 
   stateOf(hid) {
@@ -75,7 +83,7 @@ export class HeroLink {
   // The game hands over a snapshot (or null: the hero died, so its spawn place
   // goes back to the city default). Local first, socket second.
   save(hid, state) {
-    if (!hid) return;
+    if (!hid || !this.username) return; // logged out: this is nobody's hero now
     if (state) {
       // AN EMPTY KIT NEVER OVERWRITES A STORED ONE. There is no way in the
       // game to end up owning nothing once you own something -- swapping a
@@ -217,6 +225,7 @@ export class HeroLink {
   }
 
   _writeLocal() {
+    if (!this.username) return; // no account open -- never write a stray mirror
     try {
       localStorage.setItem(LS_KEY(this.username), JSON.stringify(this.states));
     } catch { /* storage full/blocked — the socket still has it */ }

@@ -664,6 +664,16 @@ export class Game {
 
   stopEngine() { this.sound.shutdown(); }
 
+  // IS THE SEAT EMPTY? Every "start the engine" below asks this instead of
+  // reading foot.active, because foot.active lies for the first second of a
+  // session: a hero saved on the apron is OUT from the first frame, but the
+  // body is a download and does not stand up until it lands, so the synchronous
+  // ignites ran first and left the aeroplane turning over beside a pilot who
+  // was walking away from it.
+  seatEmpty() {
+    return !!(this.foot?.active || this._resumeOnFoot);
+  }
+
   resetPlane() {
     if (this.foot?.active) this.foot._board(); // R teleports the plane — take the pilot along
     this.crashed = false;
@@ -696,7 +706,7 @@ export class Game {
     // pilot sitting in a fresh aeroplane is a pilot who starts it. Without
     // this, a crash restart handed back a machine that would not move and gave
     // no reason why.
-    if (!this.foot?.active) this.igniteEngine();
+    if (!this.seatEmpty()) this.igniteEngine();
     if (this.started) this.saveState(true, 'plane reset'); // crash restart / fresh hero
   }
 
@@ -952,6 +962,9 @@ export class Game {
     console.log(`hero spot: restoring ${s.onFoot ? 'ON FOOT' : 'in the plane'}`
       + ` at ${(s.onFoot ? s.foot : s.pos).map((v) => Math.round(v)).join(', ')} (${age})`);
     this._resuming = true; // the restore itself must not overwrite the save
+    // ...AND THE SEAT IS ALREADY EMPTY if that is where the hero was left.
+    // Known before resetPlane() so nothing below ever lights the engine.
+    this._resumeOnFoot = !!(s.onFoot && Array.isArray(s.foot) && s.foot.length >= 3);
     this.resetPlane(); // clean airframe and full tank, then move it back
     const [px, py, pz] = s.pos;
     this.plane.position.set(px, py, pz);
@@ -1006,6 +1019,7 @@ export class Game {
         .catch((e) => console.error('on-foot resume threw:', e))
         .then(() => {
           this._resuming = false;
+          this._resumeOnFoot = false;
           this._savedMark = null;
           if (this.foot.active) return;
           this._resumeFailed = true;
@@ -1229,7 +1243,7 @@ export class Game {
       // THE SOUND ITSELF. Started here rather than left to the N key: the
       // AudioContext needs a user gesture and it has had a dozen by now.
       if (this.settings?.state?.engine !== false) this.sound.start();
-      if (!this.foot?.active) {
+      if (!this.seatEmpty()) {
         if (this.airborne) {
           this.sound.setPlane(this.def);
           this.sound.state = 'running';
@@ -2277,6 +2291,20 @@ export class Game {
         throttle: flying ? this._readStick().throttle : 0,
         airborne: flying && this.airborne,
       });
+      // AND IT STAYS OFF. `flying` only takes the throttle away from a pilot
+      // who is not in the seat -- the engine itself would idle on for ever
+      // under a hero standing on the apron. Nobody in the cockpit and nobody
+      // climbing into it means the mixture is out, whichever way the hero got
+      // out: the climb down the wing, a teleport, a cinema cue, or a session
+      // that resumed on foot. ("when i am goin out of plane always turn off
+      // engine".) shutdown() is idempotent, so this is a guarantee, not a
+      // second shutdown -- the climb's own one still runs the blades down
+      // while the pilot is stepping past them.
+      if (this.started && !this.crashed && this.foot?.active
+        && !this.foot._boardSeq && !this.foot._boardAfter
+        && (this.sound.state === 'running' || this.sound.state === 'starting')) {
+        this.stopEngine();
+      }
       // 0..1 of max revs -> real crankshaft rpm, for the blur threshold. A
       // piston aero engine idles near 700 and redlines around 2700.
       spinPropellers(this.plane, this.sound.rpm * 2700, dt);

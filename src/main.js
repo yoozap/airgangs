@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PLANES, planeById, loadPlane, makeGameplayPlane } from './planes.js';
-import { RACES, raceById, PERSONAGES, personageById, makeCharacter } from './characters.js';
+import { RACES, raceById, bodiesOf, PERSONAGES, personageById, makeCharacter } from './characters.js';
 import { Game } from './game.js';
 import { SettingsUI } from './settings.js';
 import { HeroLink } from './net.js';
@@ -65,11 +65,46 @@ function showScreen(name) {
 // around in localStorage so a reload goes straight to the start menu.
 
 const TOKEN_KEY = 'tf-token';
+// WHAT LOGOUT IS ALLOWED TO TOUCH. Exactly this one key -- the session token.
+// Everything else in localStorage belongs to the ACCOUNT, not to the session:
+// `tf-chars-<user>` is the hero roster, `tf-heroes-<user>` every personage's
+// saved spawn place, `tf-autostart` the straight-into-the-game flag, plus the
+// settings and the city's damage map. Clearing storage wholesale on the way out
+// would log you back in to a pilot with no heroes standing nowhere. ("if i will
+// made logout dont broke login with my personage auto login".)
+const LAST_USER_KEY = 'tf-last-user'; // so logging back in is one field, not two
+const REMEMBER_KEY = 'tf-remember';   // the checkbox's own state, not a session
+
+// WHERE THE SESSION LIVES. "დამიმახსოვრე" ticked puts the token in
+// localStorage, so the browser comes back logged in days later; unticked puts
+// it in sessionStorage, which still survives a RELOAD (that is the whole point
+// -- refreshing must never throw you out) but dies with the tab.
+const remembering = () => {
+  try { return localStorage.getItem(REMEMBER_KEY) !== '0'; } catch { return true; }
+};
+const getToken = () => {
+  try { return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY); } catch { return null; }
+};
+function setToken(token, remember) {
+  try {
+    localStorage.setItem(REMEMBER_KEY, remember ? '1' : '0');
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+    (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
+  } catch { /* private mode: the session simply does not outlive the page */ }
+}
+function clearToken() {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY); // the preference above is NOT touched
+  } catch { /* nothing to clear */ }
+}
+
 let currentUser = null;
 
 async function api(path, { method = 'GET', body } = {}) {
   const headers = {};
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers['Content-Type'] = 'application/json';
   try {
@@ -108,11 +143,15 @@ function updateBadge() {
 const newHid = () => `h${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 let hidsMinted = false; // an older hero got an id just now — persist the roster
 
+const RACE_MOVED = { kori: 'veggie', artsivi: 'veggie', devi: 'toys' };
+
 const validHeroes = (list) => {
   hidsMinted = false;
   return (Array.isArray(list) ? list : [])
-    // the HEALER class is retired — old ქორი heroes fly on as DPS
-    .map((c) => (c?.race === 'kori' ? { ...c, race: 'artsivi' } : c))
+    // THE OLD RACES. ქორი (healer) was retired long ago; არწივი and დევი are
+    // now ხილ-ბოსტნეული and სათამაშოები, and each kept its own plane list, so
+    // a hero crossing over keeps the machine it was flying and its body.
+    .map((c) => (c ? { ...c, race: RACE_MOVED[c.race] ?? c.race } : c))
     .filter((c) => c?.name && RACES.some((r) => r.id === c.race))
     .map((c) => {
       const race = raceById(c.race);
@@ -161,7 +200,7 @@ function setUser(user) {
   updateBadge();
   if (user) {
     // open the hero socket: it answers with every hero's last spawn place
-    heroes.open(localStorage.getItem(TOKEN_KEY), user.username);
+    heroes.open(getToken(), user.username);
     if (hidsMinted) saveRoster(); // freshly minted ids have to stick
   }
 }
@@ -200,7 +239,8 @@ async function submitAuth() {
   });
   btn.disabled = false;
   if (!ok) return authError(data.error || 'შეცდომა — სცადე თავიდან');
-  localStorage.setItem(TOKEN_KEY, data.token);
+  setToken(data.token, $('auth-remember').checked);
+  try { localStorage.setItem(LAST_USER_KEY, data.user?.username ?? username); } catch { /* private mode */ }
   setUser(data.user);
   $('auth-pass').value = $('auth-pass2').value = '';
   openCharacter('menu'); // WoW-style: character select comes right after login
@@ -210,20 +250,12 @@ for (const id of ['auth-user', 'auth-pass', 'auth-pass2']) {
   $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAuth(); });
 }
 
-$('btn-logout').addEventListener('click', async () => {
-  api('/auth/logout', { method: 'POST' }); // fire and forget
-  heroes.close(); // flush the last spawn place, then drop the socket
-  localStorage.removeItem(TOKEN_KEY);
-  currentUser = null;
-  showScreen('login');
-});
-
 window.addEventListener('resize', () => {
   sizeCharPreview();
 });
 
 // ---- character creation (WoW-style: race cards + live hero preview) ----
-let selectedRace = 'artsivi';
+let selectedRace = RACES[0].id;
 let charPrev = null;
 let charPrevToken = 0;
 // Where picking a hero leads next: 'menu' (WoW-style entry after login),
@@ -248,6 +280,7 @@ let charPlaneToken = 0;
 async function setCharPreviewPlane(planeId) {
   if (!charPrev) return;
   const token = ++charPlaneToken;
+  if (!planeId) { charPrev.planeHolder.clear(); return; }
   const model = await loadPlane(planeId);
   if (!charPrev || token !== charPlaneToken) return;
   const g = charPrev.planeHolder;
@@ -359,57 +392,96 @@ function stopCharPreview() {
 // the whole model folder + name → new hero).
 let charMode = 'roster';
 let selectedHero = 0; // roster mode selection
-let selectedModel = 'astronaut'; // create mode: which body the hero wears
-let selectedCreatePlane = raceById(selectedRace).planes[0]; // create mode: the hero's plane
+let selectedModel = raceById(selectedRace).defModel; // create mode: which body the hero wears
+let starterPlane = raceById(selectedRace).planes[0]; // create mode: the role's starter machine, shown but not chosen
 
-function renderModelRow() {
-  const row = $('char-model-row');
-  row.classList.toggle('hidden', charMode !== 'create');
-  const def = personageById(selectedModel);
-  $('cm-label').textContent = `${def.icon} ${def.name}`;
-}
-
-function cycleModel(dir) {
-  const i = PERSONAGES.findIndex((p) => p.id === selectedModel);
-  const next = PERSONAGES[(i + dir + PERSONAGES.length) % PERSONAGES.length];
-  selectedModel = next.id;
-  renderModelRow();
+// Pick a body straight off its tile: the tile knows which race it belongs to,
+// so choosing a banana chooses ხილ-ბოსტნეული with it. (The old ◄ ► cycler is
+// gone — the WoW screen shows every body at once.)
+function selectBody(raceId, bodyId) {
+  const changedRace = raceId !== selectedRace;
+  selectedRace = raceId;
+  selectedModel = bodyId;
+  if (changedRace) starterPlane = raceById(raceId).planes[0];
+  renderCharList();
+  renderCharInfo();
   setCharPreviewModel(selectedModel);
+  // (no plane in the preview while creating — the bar under the hero says it)
 }
 
-$('cm-prev').addEventListener('click', () => cycleModel(-1));
-$('cm-next').addEventListener('click', () => cycleModel(1));
-
-// Plane cycler — only the machines the chosen role (race) can fly.
+// Plane cycler — only the machines the chosen role (race) can fly, and ONLY
+// for a hero that already exists. You do not pick your machine while you are
+// being born: a new hero is handed its role's lightest one and changes it here
+// afterwards, the way WoW gives you a class and not a mount. ("like in wow. u
+// are not take plane on start")
 function renderPlaneRow() {
-  $('char-plane-row').classList.toggle('hidden', charMode !== 'create');
-  $('cp-label').textContent = `✈ ${planeById(selectedCreatePlane).name}`;
+  const hero = charMode === 'roster' ? roster[selectedHero] : null;
+  $('char-plane-row').classList.toggle('hidden', !hero);
+  if (hero) $('cp-label').textContent = `✈ ${planeById(hero.plane).name}`;
 }
 
 function cyclePlane(dir) {
-  const allowed = raceById(selectedRace).planes;
-  const i = Math.max(0, allowed.indexOf(selectedCreatePlane));
-  selectedCreatePlane = allowed[(i + dir + allowed.length) % allowed.length];
-  renderCharInfo(); // banner + code line show the plane too
-  setCharPreviewPlane(selectedCreatePlane);
+  const hero = charMode === 'roster' ? roster[selectedHero] : null;
+  if (!hero) return;
+  const allowed = raceById(hero.race).planes;
+  const i = Math.max(0, allowed.indexOf(hero.plane));
+  hero.plane = allowed[(i + dir + allowed.length) % allowed.length];
+  if (selectedHero === activeIdx) chosenPlane = hero.plane; // the one you fly
+  saveRoster();
+  renderCharList();  // the row prints the plane's code
+  renderCharInfo();  // banner + code line show the plane too
+  setCharPreviewPlane(hero.plane);
 }
 
 $('cp-prev').addEventListener('click', () => cyclePlane(-1));
 $('cp-next').addEventListener('click', () => cyclePlane(1));
 
+// One race down a column: its banner, then every body it owns as a tile.
+function renderRaceColumn(el, race) {
+  el.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'race-head' + (race.id === selectedRace ? ' on' : '');
+  head.innerHTML = `
+    <div class="rh-top"><span class="rh-icon">${race.icon}</span><span class="rh-name">${race.name}</span><span class="rh-latin">${race.latin}</span></div>
+    <div class="rh-role">${race.roleKa}</div>
+    <div class="rh-desc">${race.desc}</div>`;
+  head.addEventListener('click', () => selectBody(race.id, race.defModel));
+  el.appendChild(head);
+  const grid = document.createElement('div');
+  grid.className = 'body-grid';
+  for (const id of bodiesOf(race.id)) {
+    const body = personageById(id);
+    const card = document.createElement('div');
+    card.className = 'body-card'
+      + (race.id === selectedRace && id === selectedModel ? ' selected' : '');
+    card.innerHTML = `<div class="bc-icon">${body.icon}</div><div class="bc-name">${body.name}</div>`;
+    card.addEventListener('click', () => selectBody(race.id, id));
+    grid.appendChild(card);
+  }
+  el.appendChild(grid);
+}
+
+// CREATE: the two races take the two side columns, the hero stands between
+// them and the name goes under it. ROSTER: the old heroes list on the left.
+// The name field and the big button MOVE between the create bar and the info
+// panel rather than being duplicated — one of each, whatever the mode.
+function applyCharLayout() {
+  const create = charMode === 'create';
+  const info = document.querySelector('.hangar-info');
+  const bar = $('create-bar');
+  info.classList.toggle('hidden', create);
+  bar.classList.toggle('hidden', !create);
+  $('race-list-2').classList.toggle('hidden', !create);
+  (create ? bar : info).append($('char-name-fld'), $('btn-char-create'));
+}
+
 function renderCharList() {
   const list = $('race-list');
+  applyCharLayout();
   list.innerHTML = '';
   if (charMode === 'create') {
-    for (const def of RACES) {
-      const item = document.createElement('div');
-      item.className = 'pl-item' + (def.id === selectedRace ? ' selected' : '');
-      item.innerHTML = `
-        <div class="pl-row1"><span class="pl-name"><span class="race-icon">${def.icon}</span>${def.name}</span><span class="pl-code">${def.latin}</span></div>
-        <div class="pl-row2"><span class="pl-cls">${def.roleKa}</span><span class="pl-tag">${def.role}</span></div>`;
-      item.addEventListener('click', () => selectRace(def.id));
-      list.appendChild(item);
-    }
+    renderRaceColumn(list, RACES[0]);
+    renderRaceColumn($('race-list-2'), RACES[1] ?? RACES[0]);
     return;
   }
   roster.forEach((hero, i) => {
@@ -438,7 +510,7 @@ function renderCharList() {
 function renderCharInfo() {
   const hero = charMode === 'roster' ? roster[selectedHero] : null;
   const def = raceById(hero ? hero.race : selectedRace);
-  const plane = planeById(hero ? hero.plane : selectedCreatePlane);
+  const plane = planeById(hero ? hero.plane : starterPlane);
   $('ci-code').textContent = `RACE // ${def.latin} // ${plane.code}`;
   $('ci-name').textContent = hero ? hero.name : `${def.icon} ${def.name}`;
   $('ci-role').textContent = hero
@@ -461,8 +533,12 @@ function renderCharInfo() {
       <div class="hs-track"><div class="hs-fill" style="width:${v}%"></div></div>`;
     stats.appendChild(row);
   });
-  renderModelRow();
   renderPlaneRow();
+  if (charMode === 'create') {
+    const body = personageById(selectedModel);
+    $('cb-line').innerHTML = `${def.icon} <b>${def.name}</b> · ${body.icon} ${body.name}`
+      + `<br>${def.roleKa} · ✈ <b>${planeById(starterPlane).name}</b>`;
+  }
   $('char-name-fld').classList.toggle('hidden', charMode !== 'create');
   $('btn-char-delete').classList.toggle('hidden', charMode !== 'roster' || !hero);
   // Entry flow (after login) has nowhere to go "back" to until a hero exists.
@@ -481,17 +557,6 @@ function renderCharInfo() {
   }
 }
 
-function selectRace(id) {
-  selectedRace = id;
-  const race = raceById(id);
-  selectedModel = race.defModel; // race default body; ◄ ► cycles all
-  selectedCreatePlane = race.planes[0]; // role switch resets to its lightest machine
-  renderCharList();
-  renderCharInfo();
-  setCharPreviewModel(selectedModel);
-  setCharPreviewPlane(selectedCreatePlane);
-}
-
 function selectHero(i) {
   selectedHero = i;
   renderCharList();
@@ -504,15 +569,15 @@ function selectHero(i) {
 
 function enterCreateMode() {
   charMode = 'create';
-  $('char-sub').textContent = 'ახალი გმირი — როლი, თვითმფრინავი, პერსონაჟი (◄ ►) და სახელი';
+  $('char-sub').textContent = 'ახალი გმირი — აირჩიე მხარე და სხეული, მერე დაარქვი სახელი';
   $('char-name').value = '';
   const race = raceById(selectedRace);
   selectedModel = race.defModel;
-  selectedCreatePlane = race.planes[0];
+  starterPlane = race.planes[0];
   renderCharList();
   renderCharInfo();
   setCharPreviewModel(selectedModel);
-  setCharPreviewPlane(selectedCreatePlane);
+  setCharPreviewPlane(null); // the hero alone, WoW-style
 }
 
 function openCharacter(next = null) {
@@ -527,8 +592,8 @@ function openCharacter(next = null) {
     $('char-name').value = '';
     const race = raceById(selectedRace);
     selectedModel = race.defModel;
-    selectedCreatePlane = race.planes[0];
-    $('char-sub').textContent = 'შექმენი შენი პირველი გმირი — როლი, თვითმფრინავი, პერსონაჟი და სახელი';
+    starterPlane = race.planes[0];
+    $('char-sub').textContent = 'შექმენი შენი პირველი გმირი — აირჩიე მხარე და სხეული';
   }
   renderCharList();
   renderCharInfo();
@@ -536,7 +601,7 @@ function openCharacter(next = null) {
   startCharPreview();
   sizeCharPreview(); // canvas has real dimensions only after the screen is visible
   setCharPreviewModel(charMode === 'roster' ? roster[selectedHero].model : selectedModel);
-  setCharPreviewPlane(charMode === 'roster' ? roster[selectedHero].plane : selectedCreatePlane);
+  setCharPreviewPlane(charMode === 'roster' ? roster[selectedHero].plane : null);
 }
 
 $('btn-char-create').addEventListener('click', () => {
@@ -552,11 +617,11 @@ $('btn-char-create').addEventListener('click', () => {
       name,
       race: selectedRace,
       model: selectedModel,
-      plane: selectedCreatePlane,
+      plane: raceById(selectedRace).planes[0], // the role's lightest machine
     });
     activeIdx = roster.length - 1; // a newborn hero becomes the active one
     selectedHero = activeIdx;
-    chosenPlane = selectedCreatePlane; // the hero brings their own machine
+    chosenPlane = roster[activeIdx].plane; // the hero brings their own machine
     charMode = 'roster';
     $('char-sub').textContent = 'შენი გმირები — აირჩიე ან შექმენი ახალი';
     saveRoster();
@@ -609,7 +674,7 @@ $('btn-char-back').addEventListener('click', () => {
 let chosenPlane = 'spitfire'; // what the active hero flies
 
 // Weight class, WoW-style: the active hero's race decides which planes are
-// flyable — a devi only fits the heavies, an artsivi takes the fighters.
+// flyable — the toys only fit the heavies, the fruit takes the fighters.
 const planeAllowed = (id) => {
   const hero = activeHero();
   return !hero || raceById(hero.race).planes.includes(id);
@@ -782,48 +847,101 @@ $('btn-restart').addEventListener('click', () => game?.resetPlane());
 }
 $('btn-airport').addEventListener('click', () => game?.goAirport());
 
-$('btn-back').addEventListener('click', () => {
-  game?.dispose(); // pushes the final snapshot: this is where the hero waits
+// Put the game down and push the hero's final snapshot. The ORDER is the whole
+// point: dispose first (that is what takes the snapshot), flush second.
+function leaveGame() {
+  // dispose() SAVES FIRST and frees the GPU after, so a throw half way through
+  // costs some memory but never the hero's spot -- and the shell must come back
+  // either way, or a bad frame in the teardown traps you on the game screen.
+  try {
+    game?.dispose(); // pushes the final snapshot: this is where the hero waits
+  } catch (e) {
+    console.error('teardown threw:', e);
+  }
   heroes.flush();
   heroes.provider = null;
   game = null;
   settings.game = null;
   $('error-overlay').classList.add('hidden');
   $('hud').classList.add('hidden');
+}
+
+$('btn-back').addEventListener('click', () => {
+  leaveGame();
   showScreen('menu');
 });
 
-// ---- autostart: skip the menus and drop straight into the active hero ------
-// For testing. `?auto=1` turns it on and REMEMBERS it, so every plain reload
-// goes straight back in on the hero you were playing, exactly where the
-// snapshot left it; `?auto=0` turns it off again. Without a hero to resume
-// it falls through to the normal character screen.
-const AUTOSTART_KEY = 'tf-autostart';
-function autostartWanted() {
-  const q = new URLSearchParams(location.search).get('auto');
-  if (q !== null) {
-    const on = q !== '0' && q !== 'false';
-    try { localStorage.setItem(AUTOSTART_KEY, on ? '1' : ''); } catch { /* private mode */ }
-    return on;
+// ---- logout ----------------------------------------------------------------
+// Reachable from the start menu, from the pilot badge on every menu screen
+// (the character screen included -- that is where a login lands, and there was
+// no way out of it without flying first), and from the 🚪 chip in the game.
+//
+// It ends the SESSION and nothing else: the hero, its spawn place, its kit and
+// the autostart flag all stay exactly as they are, so logging back in puts the
+// same personage back in the same spot.
+const lastUser = () => {
+  try { return localStorage.getItem(LAST_USER_KEY) || ''; } catch { return ''; }
+};
+
+function doLogout() {
+  if (game) leaveGame();   // mid-flight: the snapshot goes up BEFORE the socket closes
+  stopCharPreview();       // the character screen's holo loop, if it is running
+  settings.close?.();
+  api('/auth/logout', { method: 'POST' }); // fire and forget
+  heroes.close();          // flushes the last spawn place, then drops the socket
+  // Remember the callsign, never forget it: a logout with no user somehow in
+  // hand must not blank the name the login form opens on.
+  if (currentUser?.username) {
+    try { localStorage.setItem(LAST_USER_KEY, currentUser.username); } catch { /* private mode */ }
   }
-  try { return localStorage.getItem(AUTOSTART_KEY) === '1'; } catch { return false; }
+  clearToken(); // the one thing logout owns
+  currentUser = null;
+  roster = [];
+  activeIdx = -1;
+  charNext = null;
+  setAuthMode('login');
+  $('auth-user').value = lastUser();
+  $('auth-pass').value = $('auth-pass2').value = '';
+  showScreen('login');
+}
+for (const id of ['btn-logout', 'btn-logout-top', 'btn-logout-game']) {
+  $(id).addEventListener('click', doLogout);
 }
 
-// ---- boot: token → straight to the menu, otherwise login ----
+// ---- ?auto=1: skip the screens and drop straight into the active hero ------
+// FOR TESTING ONLY, and ONLY while it is in the URL. It used to be remembered
+// in localStorage, so one `?auto=1` meant every later reload went straight into
+// the game -- and the stored token meant a plain load walked past the login
+// screen as well. Both are gone: a normal load always asks who you are.
+function autostartWanted() {
+  const q = new URLSearchParams(location.search).get('auto');
+  return q !== null && q !== '0' && q !== 'false';
+}
+
+// ---- boot: a live session goes back to its personages, ?auto=1 straight in --
+//
+// A RELOAD MUST NEVER LOG YOU OUT. The token is read from wherever the tick
+// box put it (localStorage = for keeps, sessionStorage = this tab), and it
+// lands you on the character screen exactly as it did before you refreshed.
+// `?auto=1` is still the only thing that skips the screens entirely and drops
+// you into the game on the active hero -- and it is NOT remembered, so the
+// next plain load is a normal one.
 (async () => {
-  if (localStorage.getItem(TOKEN_KEY)) {
+  $('auth-remember').checked = remembering();
+  if (getToken()) {
     const { ok, data } = await api('/auth/me');
     if (ok) {
       setUser(data.user);
       if (autostartWanted() && activeHero()) {
-        console.log(`autostart: ${activeHero().name} — add ?auto=0 to stop`);
+        console.log(`?auto=1: straight in on ${activeHero().name}`);
         startFlight();
         return;
       }
       openCharacter('menu'); // WoW-style: land on your personages first
       return;
     }
-    localStorage.removeItem(TOKEN_KEY);
+    clearToken(); // stale or revoked — ask again
   }
+  if (!$('auth-user').value) $('auth-user').value = lastUser();
   showScreen('login');
 })();

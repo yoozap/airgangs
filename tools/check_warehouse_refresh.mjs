@@ -6,6 +6,7 @@
 // Writes repro_before.png / repro_after.png next to the profile dir.
 import { chromium } from 'playwright';
 import { enterGame } from './enter.mjs';
+const AUTO = (process.env.GAME_URL || 'http://localhost:5173/') + '?auto=1';
 const SHOT = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/b05e8499-e7e4-4764-a47b-5b3bba36f639/scratchpad';
 const URL = process.env.GAME_URL || 'http://localhost:5173/';
 const ctx = await chromium.launchPersistentContext(SHOT + '/repro-profile', {
@@ -15,7 +16,6 @@ const page = ctx.pages()[0] ?? await ctx.newPage();
 page.on('console', (m) => { if (/hero spot|resuming/i.test(m.text())) console.log('  [page]', m.text()); });
 
 await enterGame(page, { user: 'reprowalk', pass: 'reprowalk123' });
-await page.evaluate(() => localStorage.setItem('tf-autostart', '1')); // so the reload boots straight in
 await page.waitForTimeout(12000);
 
 const wh = await page.waitForFunction(() => {
@@ -53,7 +53,7 @@ console.log('ON FOOT INSIDE WAREHOUSE (still running) ->', JSON.stringify(inside
 await page.screenshot({ path: SHOT + '/repro_before.png' });
 
 console.log('--- REFRESH (mid-stride, no warning) ---');
-await page.reload();
+await page.goto(AUTO);
 await page.waitForFunction(() => window.__game?.started, null, { timeout: 300000 });
 await page.waitForTimeout(13000);
 const after = await page.evaluate(() => ({

@@ -21,7 +21,6 @@ const errs = [];
 page.on('pageerror', (e) => { if (!/pointer lock/i.test(e.message)) errs.push(e.message); });
 
 await enterGame(page);
-await page.evaluate(() => localStorage.setItem('tf-autostart', '1'));
 await page.waitForTimeout(16000);
 
 await page.evaluate(async () => {

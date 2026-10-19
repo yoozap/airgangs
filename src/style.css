@@ -490,6 +490,25 @@ h2 {
 #btn-cinema:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(63, 214, 255, 0.35); }
 #btn-cinema.open { border-color: var(--cyan); box-shadow: 0 0 16px rgba(63, 214, 255, 0.45); }
 
+/* 🚪 — log out without going back through the menu first. The hero's spot is
+   pushed before the session ends, so nothing is lost by pressing it. */
+#btn-logout-game {
+  position: absolute;
+  top: 268px;   /* ⚙ 148, 🎬 188, 🛬 228 — fourth chip in the column */
+  right: 18px;
+  width: 34px;
+  height: 34px;
+  pointer-events: auto;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--cyan2);
+  background: var(--panel);
+  border: 1px solid var(--line-dim);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+#btn-logout-game:hover { border-color: var(--mag); box-shadow: 0 0 16px rgba(255, 62, 138, 0.35); }
+
 /* The scene list that drops off the 🎬 chip. Opens to its LEFT: the chip is
    already hard against the right edge of the screen. */
 #cinema-menu {
@@ -1291,6 +1310,15 @@ input[type="range"].sw-range::-webkit-slider-thumb {
   box-shadow: inset 0 0 0 1px var(--line); font-size: 16px;
 }
 .pb-name { font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+.pb-out {
+  margin-left: 6px; padding: 7px 12px; cursor: pointer;
+  font-family: inherit; font-size: 12px; letter-spacing: 0.04em;
+  color: var(--dim); background: rgba(8, 13, 22, 0.55);
+  border: 0; box-shadow: inset 0 0 0 1px rgba(125, 140, 161, 0.25);
+  clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%, 0 6px);
+  transition: color 0.15s ease, box-shadow 0.15s ease;
+}
+.pb-out:hover { color: var(--mag); box-shadow: inset 0 0 0 1px rgba(255, 62, 138, 0.5); }
 .pb-sub { font-family: var(--stm); font-size: 11px; color: var(--cyan); }
 .chrome-bottom {
   position: absolute; left: 0; right: 0; bottom: 0;
@@ -1346,6 +1374,23 @@ input[type="range"].sw-range::-webkit-slider-thumb {
 }
 .fld > input:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(63, 214, 255, 0.25); }
 .fld.hidden { display: none; }
+.fld-check {
+  display: flex; align-items: center; gap: 10px; margin: -4px 0 14px;
+  cursor: pointer; font-size: 13px; color: var(--dim); user-select: none;
+}
+.fld-check input {
+  appearance: none; width: 17px; height: 17px; margin: 0; cursor: pointer;
+  background: rgba(5, 7, 13, 0.9); border: 1px solid var(--line);
+  display: grid; place-items: center; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.fld-check input:checked {
+  border-color: var(--cyan); box-shadow: 0 0 12px rgba(63, 214, 255, 0.3);
+}
+.fld-check input:checked::after {
+  content: "✓"; color: var(--cyan); font-size: 13px; line-height: 1;
+}
+.fld-check:hover { color: var(--text); }
+
 .auth-error {
   margin: -4px 0 14px; padding: 9px 12px; font-size: 13px; color: #ffb3c8;
   background: rgba(255, 62, 138, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 62, 138, 0.45);
@@ -1427,7 +1472,62 @@ input[type="range"].sw-range::-webkit-slider-thumb {
 .hangar-sub { font-size: 15px; color: #9fb0c6; letter-spacing: 0.06em; }
 .hangar-cols { flex: 1; display: flex; gap: 22px; min-height: 0; }
 
-#plane-list, #race-list { width: 272px; flex: none; display: flex; flex-direction: column; gap: 9px; overflow-y: auto; padding-right: 2px; }
+#plane-list, #race-list, #race-list-2 { width: 272px; flex: none; display: flex; flex-direction: column; gap: 9px; overflow-y: auto; padding-right: 2px; }
+#race-list-2.hidden { display: none; }
+
+/* ---- WoW-style creation: a race down each side, the hero between them ---- */
+.hangar-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.hangar-mid .hangar-preview { flex: 1; min-height: 0; }
+#create-bar {
+  flex: none; display: flex; align-items: flex-end; gap: 14px;
+  background: rgba(8, 13, 22, 0.85); padding: 16px 20px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+#create-bar.hidden { display: none; }
+#create-bar .char-name-fld { margin: 0; flex: 1; }
+#create-bar .hi-select { margin: 0; flex: none; min-width: 190px; }
+.cb-line {
+  flex: none; align-self: center; max-width: 230px;
+  font-family: var(--stm); font-size: 11px; line-height: 1.5;
+  letter-spacing: 0.1em; color: var(--dim);
+}
+.cb-line b { color: var(--cyan); font-weight: 400; }
+
+/* the race header that tops each side column */
+.race-head {
+  flex: none; padding: 14px 15px; background: rgba(8, 13, 22, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(125, 140, 161, 0.25);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  cursor: pointer; transition: box-shadow 0.15s, background 0.15s;
+}
+.race-head:hover { background: rgba(63, 214, 255, 0.1); }
+.race-head.on { background: rgba(63, 214, 255, 0.14); box-shadow: inset 0 0 0 1px var(--cyan); }
+.rh-top { display: flex; align-items: center; gap: 9px; }
+.rh-icon { font-size: 24px; }
+.rh-name { font-weight: 800; font-size: 15px; letter-spacing: -0.01em; }
+.race-head.on .rh-name { color: var(--cyan); }
+.rh-latin { margin-left: auto; font-family: var(--stm); font-size: 10px; letter-spacing: 0.16em; color: var(--dim); }
+.rh-role { margin-top: 5px; font-size: 12px; color: #9fb0c6; letter-spacing: 0.05em; }
+.rh-desc {
+  margin-top: 7px; font-size: 11.5px; line-height: 1.45; color: var(--dim);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* the bodies of that race, as portrait tiles */
+.body-grid { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.body-card {
+  cursor: pointer; padding: 13px 8px 11px; text-align: center;
+  background: rgba(8, 13, 22, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(125, 140, 161, 0.25);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.body-card:hover { background: rgba(63, 214, 255, 0.12); }
+.body-card.selected { background: rgba(63, 214, 255, 0.18); box-shadow: inset 0 0 0 1px var(--cyan); }
+.bc-icon { font-size: 27px; line-height: 1.1; }
+.bc-name { margin-top: 5px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+.body-card.selected .bc-name { color: var(--cyan); }
 /* race cards are taller: icon + role tag */
 #race-list .pl-item { padding: 16px 15px; }
 #race-list .pl-name { font-size: 18px; }

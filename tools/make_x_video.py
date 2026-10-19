@@ -51,9 +51,11 @@ def fade_in(st):
     return f"fade=t=in:st={st:.3f}:d={FADE}:enable='between(t,{st:.3f},{st + FADE:.3f})'"
 def fade_out(st):
     return f"fade=t=out:st={st:.3f}:d={FADE}:enable='between(t,{st:.3f},{st + FADE + 0.05:.3f})'"
-# Opened part-way into a loop (START in the recorder): the first frame is the
-# hero, not the seam's black, so no fade-in.
-fades = [] if float(meta.get('start', 0)) > 0 else [fade_in(0)]
+# NO FADE-IN ON FRAME ONE. The fade exists to join a seam, and the first frame
+# of the file has no seam before it -- all it does there is hand X a black
+# poster frame, which is what everyone sees before they press play. Interior
+# seams (a multi-loop take) still get theirs, and the tail still fades out.
+fades = []
 for w in wraps[:-1]:
     fades += [fade_out(w - FADE), fade_in(w)]
 fades.append(fade_out(dur - FADE))

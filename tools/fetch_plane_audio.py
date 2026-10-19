@@ -87,7 +87,12 @@ MANIFEST = {
     'prop_idle':  dict(ids=[437757, 437764, 437758], kind='loop', dur=3.2, sr=32000),
     # Power: a WWII fighter's V-12 being revved, a Mustang, and a general prop
     # plane under load. This is the loop you hear at full throttle.
-    'prop_run':   dict(ids=[437792, 614743, 547068], kind='loop', dur=3.2, sr=32000),
+    # 614743 is OUT: it is a field recording of an airshow flypast ("Mustang
+    # fly past and then landing"), and a display field recording carries the
+    # PA commentator with it — band-limited background speech, which in a
+    # cockpit reads as radio chatter. 437792 is a WWII fighter revving, which
+    # is the right engine for this game anyway.
+    'prop_run':   dict(ids=[437792, 547068], kind='loop', dur=3.2, sr=32000),
     # Shutdown: the mixture is cut and the blades wind down to a stop. Both of
     # these recordings end in exactly that.
     'prop_stop':  dict(ids=[437834, 478218], kind='stop', dur=4.5, sr=32000),

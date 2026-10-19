@@ -7,6 +7,7 @@ import { EXCLUSIONS, addLandmarks } from './landmarks.js';
 import { addParks } from './parks.js';
 import { addMetro } from './metro.js';
 import { addAirport } from './airport.js';
+import { addPlaneHall, planeHallKeepOut } from './planehall.js';
 import { buildShopfronts } from './shopfronts.js';
 import { addMalls } from './malls.js';
 import { addInfrastructure } from './infra.js';
@@ -250,6 +251,18 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast;
 const CULL_SLICES = 4;
 
 const CHUNK = 1000; // m — buildings are merged per 1 km cell for culling
+// m — past this a chunk still DRAWS but stops casting into the shadow map.
+// 500 m: at the game's sun angle that is a shadow a couple of pixels long on
+// a ground texture that already has its own shading.
+const SHADOW_DIST = 500;
+// m — past this a building kit is drawn as its baked box (see _kitImposter).
+// Measured at 60 m over the centre: forcing every kit to its imposter took the
+// frame from 61 ms to 23 and the triangles from 108M to 17M, so the switch
+// wants to be as close as it can be without the swap being visible. The kits
+// are chunked at 700-800 m, so a chunk at this distance has its near edge
+// around 450 m — a block there is a hundred pixels tall and its windows are
+// already a texel.
+const KIT_LOD_DIST = 700;
 const HOUSE_STYLES = 21; // number of Kenney house models in public/models/houses/
 const APT_STYLES = 14; // Kenney commercial building models for apartment blocks
 
@@ -860,6 +873,10 @@ export class CityMap {
     this.ready = true;
     phase('READY — playable');
 
+    // Ground the scatter layers must leave alone — the plane hall's slab is
+    // 192 x 437 m of concrete dropped on open grass, and trees go down first.
+    this.keepOut = [planeHallKeepOut(this.meta)];
+
     const scenery = [
       ['trees', () => this._buildTrees(roads)],
       ['rocks', () => this._buildRocks()],
@@ -871,6 +888,7 @@ export class CityMap {
       ['parks', () => addParks(this)],
       ['metro', () => addMetro(this)],
       ['airport', () => addAirport(this)],
+      ['plane hall', () => addPlaneHall(this)],
       ['malls', () => addMalls(this)],
       ['infrastructure', () => addInfrastructure(this, roads)],
       ['shopfronts', () => buildShopfronts(this, city.buildings)],
@@ -1105,6 +1123,9 @@ export class CityMap {
     if (this._collapses.length) this._updateCollapses(dt);
     if (this._debris?.length) this._updateDebris(dt);
     if (camPos) this.shopSigns?.update(camPos, dt); // real-name shop signs near the camera
+    // the hall of every aeroplane in the game: builds itself when someone
+    // comes near enough to see it (src/planehall.js)
+    if (camPos) this.planeHall?.update(camPos);
     // Only draw building chunks near the camera — the rest is hidden so the GPU
     // isn't rendering all of Georgia every frame. View distance grows with
     // altitude so the skyline is still there when you fly high.
@@ -1165,6 +1186,14 @@ export class CityMap {
           if (lo) g.add(c.lodMesh);
           else g.remove(c.lodMesh);
         }
+        // and whether it is close enough to be worth a shadow
+        if (c.shadowD2) {
+          const sh = h2 < c.shadowD2 * ps2;
+          if (sh !== c.shOn) {
+            c.shOn = sh;
+            c.mesh.castShadow = sh;
+          }
+        }
       }
       this._cullSlice = ((this._cullSlice ?? 0) + 1) % CULL_SLICES;
       this._cullFull = false;
@@ -1185,6 +1214,20 @@ export class CityMap {
   // Add one mesh to the collision set WITHOUT invalidating the spatial hash:
   // blast shells appear mid-flight, and rebuilding the hash over every
   // collidable in the country for each new one is a visible hitch.
+  // Is this spot inside something that was built on top of the scatter?
+  // `keepOut` holds oriented rectangles (centre, the two unit axes, half
+  // sizes) — see planeHallKeepOut.
+  inKeepOut(x, z) {
+    if (!this.keepOut?.length) return false;
+    for (const k of this.keepOut) {
+      const dx = x - k.x;
+      const dz = z - k.z;
+      if (Math.abs(dx * k.vx + dz * k.vz) <= k.halfW
+        && Math.abs(dx * k.ux + dz * k.uz) <= k.halfL) return true;
+    }
+    return false;
+  }
+
   _addCollidable(mesh) {
     this.collidables.push(mesh);
     if (!this._colHash) return; // not built yet — it'll pick this up
@@ -2920,7 +2963,11 @@ export class CityMap {
         o.geometry.disposeBoundsTree?.();
         o.geometry.dispose();
       }
-      if (o.material) o.material.dispose();
+      // A mesh can carry an ARRAY of materials -- every merged chunk with more
+      // than one surface in it does -- and an array has no dispose(). This threw
+      // inside world.dispose(), which is near the END of Game.dispose(), so
+      // going back to the menu leaked the renderer and its canvas every time.
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m?.dispose();
     });
     // chunk meshes out of attach range aren't group children — free them too
     for (const c of this.chunkMeshes) {
@@ -5405,7 +5452,7 @@ export class CityMap {
       // update() attaches in-range chunks to the scene (raycasts don't need
       // scene membership — chunk transforms are identity, world coords baked)
       const [kx, kz] = key.split('_').map(Number);
-      this.chunkMeshes.push({ mesh, cx: kx * CHUNK + CHUNK / 2, cz: kz * CHUNK + CHUNK / 2, maxDist: 0, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false });
+      this.chunkMeshes.push({ mesh, cx: kx * CHUNK + CHUNK / 2, cz: kz * CHUNK + CHUNK / 2, maxDist: 0, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false, shadowD2: 0, shOn: true });
       if (++done % 40 === 0) {
         onProgress(`შენდება უბნები… ${done}/${chunks.size}`);
         await nextFrame();
@@ -5501,6 +5548,10 @@ export class CityMap {
     for (const [ki, list] of by) {
       const e = this._outKit[ki];
       // short range: a 4 m garage is invisible past a couple of hundred metres
+      // Past the switch the whole block becomes a textured box (see
+      // _kitImposter): these models are 16-45k triangles each and there
+      // are tens of thousands of them. Same distance rule as the trees.
+      const lod = { dist: KIT_LOD_DIST, ...(this._kitImposter(e.geo, e.mats) ?? {}) };
       this._placeChunkedInstanced(e.geo, e.mats, list, (m, it) => {
         q.setFromAxisAngle(up, -it.ang);
         sv.set(it.sx, 1, it.sz);
@@ -5508,7 +5559,7 @@ export class CityMap {
       }, 800, true, 700, (c, it) => {
         const h = ((it.bi * 2654435761) % 1024) / 1024;
         c.setHSL(0.08 + 0.3 * h, 0.03 + 0.06 * h, 0.58 + 0.12 * h);
-      });
+      }, null, lod);
       placed += list.length;
     }
     this._outPlacements = items;
@@ -5583,15 +5634,19 @@ export class CityMap {
     let placed = 0;
     for (const [ki, list] of by) {
       const e = this._aptKit[ki];
+      // Past the switch the whole block becomes a textured box (see
+      // _kitImposter): these models are 16-45k triangles each and there
+      // are tens of thousands of them. Same distance rule as the trees.
+      const lod = { dist: KIT_LOD_DIST, ...(this._kitImposter(e.geo, e.mats) ?? {}) };
       this._placeChunkedInstanced(e.geo, e.mats, list, (m, it) => {
         q.setFromAxisAngle(up, -it.ang);
         sv.set(it.sx, 1, it.sz);   // NEVER scale an apartment vertically:
         m.compose(new THREE.Vector3(it.x, it.y, it.z), q, sv);
-      }, 1500, true, 2600, (c, it) => {
+      }, 700, true, 2600, (c, it) => {
         const h = ((it.bi * 2654435761) % 1024) / 1024;
         const v = ((it.bi * 193) % 256) / 256;
         c.setHSL(0.05 + 0.12 * h, 0.05 + 0.12 * v, 0.58 + 0.13 * (1 - v));
-      });
+      }, null, lod);
       for (const it of list) {
         const geo = new THREE.BoxGeometry(e.W * it.sx * 0.92, e.H, e.D * it.sz * 0.92);
         const mesh = new THREE.Mesh(geo, this._invisibleMat ??= new THREE.MeshBasicMaterial({ visible: false }));
@@ -5676,15 +5731,19 @@ export class CityMap {
     let placed = 0;
     for (const [ki, list] of by) {
       const e = this._shedKit[ki];
+      // Past the switch the whole block becomes a textured box (see
+      // _kitImposter): these models are 16-45k triangles each and there
+      // are tens of thousands of them. Same distance rule as the trees.
+      const lod = { dist: KIT_LOD_DIST, ...(this._kitImposter(e.geo, e.mats) ?? {}) };
       this._placeChunkedInstanced(e.geo, e.mats, list, (m, it) => {
         q.setFromAxisAngle(up, -it.ang);
         sv.set(it.sx, it.sy, it.sz);
         m.compose(new THREE.Vector3(it.x, it.y, it.z), q, sv);
-      }, 2000, true, 3200, (c, it) => {
+      }, 800, true, 3200, (c, it) => {
         // industrial paint: pale grey-blue, grey-green, dirty cream
         const h = ((it.bi * 2654435761) % 1024) / 1024;
         c.setHSL(0.45 + 0.16 * h, 0.03 + 0.07 * h, 0.60 + 0.1 * (1 - h));
-      });
+      }, null, lod);
       for (const it of list) {
         const geo = new THREE.BoxGeometry(e.W * it.sx * 0.94, e.H * it.sy, e.D * it.sz * 0.94);
         const mesh = new THREE.Mesh(geo, this._invisibleMat ??= new THREE.MeshBasicMaterial({ visible: false }));
@@ -5771,16 +5830,20 @@ export class CityMap {
     let placed = 0;
     for (const [ki, list] of byKit) {
       const e = this._houseKit[ki];
+      // Past the switch the whole block becomes a textured box (see
+      // _kitImposter): these models are 16-45k triangles each and there
+      // are tens of thousands of them. Same distance rule as the trees.
+      const lod = { dist: KIT_LOD_DIST, ...(this._kitImposter(e.geo, e.mats) ?? {}) };
       this._placeChunkedInstanced(e.geo, e.mats, list, (m, it) => {
         q.setFromAxisAngle(up, -it.ang);
         sv.set(it.sx, (it.sx + it.sz) / 2, it.sz);   // height follows the mean
         m.compose(new THREE.Vector3(it.x, it.y, it.z), q, sv);
-      }, 1200, true, 1500, (c, it) => {
+      }, 700, true, 1500, (c, it) => {
         // village render colours: cream, ochre, pale green, washed pink
         const h = ((it.bi * 2654435761) % 1024) / 1024;
         const v = ((it.bi * 97) % 256) / 256;
         c.setHSL(0.03 + 0.22 * h, 0.07 + 0.14 * v, 0.60 + 0.12 * (1 - v));
-      });
+      }, null, lod);
       for (const it of list) {
         const geo = new THREE.BoxGeometry(e.W * it.sx * 0.86, 7.5, e.D * it.sz * 0.86);
         const mesh = new THREE.Mesh(geo, this._invisibleMat ??= new THREE.MeshBasicMaterial({ visible: false }));
@@ -5840,13 +5903,12 @@ export class CityMap {
         merged.computeBoundingSphere();
         for (const m of mats) {
           m.metalness = Math.min(m.metalness ?? 0, 0.25);
-          // The palette is authored for a neutral Blender render. This scene
-          // runs a 2.7 sun + a 2.0 hemisphere + an HDR environment through
-          // ACES, which blew the light concrete out to white plastic -- the
-          // blocks read brighter than the sky. Bring the albedo down to where
-          // the rest of the city sits.
-          // (see the note in _loadHouseKit: no double-dim with instanceColor)
-          m.vertexColors = false;
+          // THE WEATHERING IS IN COLOR_0 (tools/build_panel_block.py, weather()):
+          // splash-back up the plinth, run-off under the sills, and a tint per
+          // precast panel. White means untouched, so this only ever takes
+          // brightness away and the per-instance tint below still does the
+          // colouring -- no double-dim, which is why it used to be off.
+          m.vertexColors = true;
         }
         kit.set(+mm[1], { geo: merged, mats });
       }
@@ -5875,12 +5937,16 @@ export class CityMap {
     for (const [sections, list] of byVariant) {
       const entry = this._panelKit.get(sections);
       if (!entry) continue;
+      // Past the switch the whole block becomes a textured box (see
+      // _kitImposter): these models are 16-45k triangles each and there
+      // are tens of thousands of them. Same distance rule as the trees.
+      const lod = { dist: KIT_LOD_DIST, ...(this._kitImposter(entry.geo, entry.mats) ?? {}) };
       this._placeChunkedInstanced(entry.geo, entry.mats, list, (m, it) => {
         // the model's +x runs along the street frontage; the footprint's long
         // edge angle is measured in XZ, where +angle turns the other way
         q.setFromAxisAngle(up, -it.ang);
         m.compose(new THREE.Vector3(it.x, it.y, it.z), q, one);
-      }, 1500, true, 2600, (c, it) => {
+      }, 700, true, 2600, (c, it) => {
         // Per-instance tint. These blocks ARE repetitive in life, but 539
         // identical copies read as a copy-paste rather than a district --
         // instance colour is the cheapest way studios break that up, and it
@@ -5889,7 +5955,7 @@ export class CityMap {
         const hv = ((it.bi * 2654435761) % 1024) / 1024;
         const warm = ((it.bi * 40503) % 512) / 512;
         c.setHSL(0.07 + 0.10 * hv, 0.05 + 0.12 * warm, 0.56 + 0.14 * (1 - warm));
-      });
+      }, null, lod);
       placed += list.length;
       // Solid to fly into: one box collider per block. The extrusion that
       // used to provide collision here was skipped, and a district you can
@@ -6429,7 +6495,7 @@ export class CityMap {
       mesh.matrixAutoUpdate = false;
       mesh.userData.isTerrain = ground;
       const [kx, kz] = key.split('_').map(Number);
-      this.chunkMeshes.push({ mesh, cx: kx * tile + tile / 2, cz: kz * tile + tile / 2, maxDist: 0, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false });
+      this.chunkMeshes.push({ mesh, cx: kx * tile + tile / 2, cz: kz * tile + tile / 2, maxDist: 0, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false, shadowD2: 0, shOn: true });
       if (collidable) {
         g.computeBoundsTree();
         this.collidables.push(mesh);
@@ -7664,8 +7730,9 @@ export class CityMap {
 
     const parts = await this._loadTree('models/trees_new/chestnut.glb', 11);
     if (!parts) return;
-    this._instanceTrees(parts, street, rnd, 300, 430);
-    this._instanceTrees(parts, forest, rnd, 300, 620);
+    const clear = (p) => !this.inKeepOut(p.x, p.z); // not inside the plane hall
+    this._instanceTrees(parts, street.filter(clear), rnd, 300, 430);
+    this._instanceTrees(parts, forest.filter(clear), rnd, 300, 620);
   }
 
   // Load a real tree GLB and return per-material {geo, mat} parts, scaled so the
@@ -7812,7 +7879,15 @@ export class CityMap {
       // NOTE: keep this record's shape identical to every other chunkMeshes
       // push — the per-frame cull loop goes megamorphic (≈5× slower over 80k
       // records) if some records lack fields.
-      const rec = { mesh, cx: kx * chunkM + chunkM / 2, cz: kz * chunkM + chunkM / 2, maxDist, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false };
+      const rec = { mesh, cx: kx * chunkM + chunkM / 2, cz: kz * chunkM + chunkM / 2, maxDist, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false, shadowD2: 0, shOn: true };
+      // SHADOWS ONLY FROM WHAT IS NEAR. A real-model building kit is 16-45k
+      // triangles an instance and they are drawn out to 2.6 km, so every one
+      // of them was also being re-drawn into the shadow map: measured over the
+      // centre of Tbilisi, the kits alone put 21M triangles a frame through
+      // the depth pass. A house 800 m away casts a shadow nobody can pick out
+      // of the ground texture, so past SHADOW_DIST the chunk stops casting and
+      // keeps drawing. The cull loop already has the distance in hand.
+      if (castShadow) rec.shadowD2 = SHADOW_DIST * SHADOW_DIST;
       if (lod?.dist) {
         rec.lodD2 = lod.dist * lod.dist;
         // average instance height → the LOD switch uses real 3D distance
@@ -7931,6 +8006,51 @@ export class CityMap {
     }
   }
 
+  // BUILDING-KIT IMPOSTER: a textured box.
+  //
+  // The real-model kits (apartments, houses, sheds, panel blocks) are 16-45k
+  // triangles EACH and are instanced tens of thousands of times with no level
+  // of detail at all -- measured over the centre of Tbilisi they were 114M of
+  // the frame's 197M triangles. Past the switch distance a block is a few
+  // hundred pixels of flat wall, so it becomes twelve triangles wearing its
+  // own baked albedo: the front view on the four sides, the top view on the
+  // roof. Same colours, same silhouette, 0.03% of the geometry.
+  //
+  // The sides all share the FRONT bake rather than baking a separate side
+  // view: at the distance this switches in, the difference is a texel.
+  _kitImposter(geo, mats) {
+    if (!geo) return null;
+    try {
+      const b = this._bakeViews([{ geo, mat: mats }], ['front', 'top']);
+      if (!b?.tex?.front) return null;
+      const opts = { transparent: false, alphaTest: 0.35, depthWrite: true };
+      const side = new THREE.MeshLambertMaterial({ map: b.tex.front, ...opts });
+      const top = new THREE.MeshLambertMaterial({ map: b.tex.top ?? b.tex.front, ...opts });
+      const box = new THREE.BoxGeometry(b.size.x, b.size.y, b.size.z);
+      // into the kit's own local frame -- the imposter shares the hi mesh's
+      // instanceMatrix, so it has to sit exactly where the model sits
+      box.translate(b.ctr.x, b.ctr.y, b.ctr.z);
+      // TWO GROUPS, NOT SIX. three issues one draw call per group, so a box
+      // whose six faces name a material each costs six draws however many of
+      // them repeat -- and there are thousands of these chunks. Reorder the
+      // index so the four walls are contiguous, then the roof and floor: one
+      // draw for the sides, one for the top. (BoxGeometry's groups arrive as
+      // +X, -X, +Y, -Y, +Z, -Z, six indices each.)
+      const src = box.index.array;
+      const order = [0, 1, 4, 5, 2, 3];          // walls first, then +Y and -Y
+      const idx = new src.constructor(src.length);
+      order.forEach((face, n) => idx.set(src.subarray(face * 6, face * 6 + 6), n * 6));
+      box.setIndex(new THREE.BufferAttribute(idx, 1));
+      box.clearGroups();
+      box.addGroup(0, 24, 0);                    // the four walls
+      box.addGroup(24, 12, 1);                   // roof + floor
+      return { geo: box, mat: [side, top] };
+    } catch (e) {
+      console.warn('kit imposter bake failed:', e?.message ?? e);
+      return null;
+    }
+  }
+
   // Tree imposter: classic X-cross of two side-view quads plus a horizontal
   // canopy quad baked from above, so groves keep their read from the air too.
   _treeImposter(parts) {
@@ -7977,7 +8097,7 @@ export class CityMap {
         placed++;
       }
     }
-    this._instanceTrees(hero, spots, rnd, 250, 400);
+    this._instanceTrees(hero, spots.filter((p) => !this.inKeepOut(p.x, p.z)), rnd, 250, 400);
   }
 
   // Scatter real Kenney rock/stone models through the wooded/green areas so the
@@ -8001,6 +8121,7 @@ export class CityMap {
         if (rnd(r * g.w + c, 1) > 0.35) continue; // ~1 rock per 3 wooded cells
         const x = g.minx + c * g.step + (rnd(id, 2) - 0.5) * g.step;
         const z = g.minz + r * g.step + (rnd(id, 3) - 0.5) * g.step;
+        if (this.inKeepOut(x, z)) continue;   // not on the plane hall's slab
         buckets[id % N].push({ x, z, id });
         id++;
       }
@@ -8187,7 +8308,7 @@ export class CityMap {
         geo.computeVertexNormals();
         const mesh = new THREE.Mesh(geo, mat);
         mesh.matrixAutoUpdate = false;
-        this.chunkMeshes.push({ mesh, ...center, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false });
+        this.chunkMeshes.push({ mesh, ...center, lodD2: 0, cy: 0, lodMesh: null, hiOn: false, loOn: false, shadowD2: 0, shOn: true });
       }
     }
   }

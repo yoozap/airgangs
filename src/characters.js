@@ -8,14 +8,24 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 // a two-meter დევი only fits into the heavy machines.
 //
 // Stats are 0-100 bars: [შეტევა, დაცვა, განკურნება, სისწრაფე].
+// THE TWO RACES. Not eagles and giants any more — the bodies this game
+// actually ships are a fruit bowl and a toy box, so that is what you choose
+// between: ხილ-ბოსტნეული and სათამაშოები. ("in left side u wil have 2 race,
+// vege-fruits and toys", "not devi and artsivi")
+//
+// A race still carries the ROLE (DPS/TANK), the stats, the machines it may
+// fly — and now `bodies`, the personages that belong to it, which is what the
+// create screen's ◄ ► walks. The ids changed with the names; main.js migrates
+// the old `artsivi`/`devi` heroes, and the plane lists stayed with them so a
+// saved hero keeps the machine it was flying.
 export const RACES = [
   {
-    id: 'artsivi',
-    name: 'არწივი',
-    latin: 'ARTSIVI',
+    id: 'veggie',
+    name: 'ხილ-ბოსტნეული',
+    latin: 'VEGE-FRUIT',
     role: 'DPS',
     roleKa: '⚔ მებრძოლი — DPS',
-    icon: '🦅',
+    icon: '🍌',
     runSpeed: 7.2, // m/s — the fastest on foot
     stats: [88, 46, 22, 84],
     // every light and medium machine — fighters, racers, trainers
@@ -24,16 +34,17 @@ export const RACES = [
       'p51', 'hsp75', 'neonfly', 'p100', 'javelin', 'mig21', 'mig21nk',
       'tornado', 'f104', 'su33', 'f15', 'f117', 'a7', 'a10',
     ],
-    defModel: 'astronaut',
-    desc: 'მთის არწივის მოდგმა. მსუბუქი და სწრაფი მებრძოლი, რომელიც გამანადგურებლებით ბატონობს ცაში. ვინც მას დაბლა დაინახავს, უკვე გვიანია.',
+    bodies: ['banana', 'eggplant', 'toad'],
+    defModel: 'banana',
+    desc: 'ბაზრის რიგიდან აყვანილი რაზმი — მსუბუქი, მწიფე და სწრაფი. მსუბუქი და საშუალო მანქანები მათზეა მორგებული: ვინც ბანანს ჰაერში დაეწევა, ჯერ არ დაბადებულა.',
   },
   {
-    id: 'devi',
-    name: 'დევი',
-    latin: 'DEVI',
+    id: 'toys',
+    name: 'სათამაშოები',
+    latin: 'TOYS',
     role: 'TANK',
     roleKa: '🛡 ფარი — TANK',
-    icon: '👹',
+    icon: '🧸',
     runSpeed: 5.6,
     stats: [58, 96, 34, 42],
     // every BIG machine — bombers, transports, airliners, heavy wings
@@ -42,12 +53,26 @@ export const RACES = [
       'c130', 'yc130', 'cargobro', 'il76', 'b767', 'awacs', 'globemaster',
       'an225',
     ],
-    defModel: 'squid',
-    desc: 'ქართული ზღაპრების გოლიათი. მხოლოდ დიდი, მძიმე მანქანები უძლებს მის წონას — სამაგიეროდ დევის ჯავშანს ვერავინ გაანგრევს.',
+    // ONLY the elephant. The toy box used to offer ten bodies; the roster is
+    // down to the one the user wants to see on the create screen ("in toys
+    // race i need u remove all personage, and i must see only elephant").
+    // The others stay in PERSONAGES so an already-saved toys hero keeps the
+    // body it was created with.
+    bodies: ['elephant'],
+    defModel: 'elephant',
+    desc: 'თაროდან ჩამოსული ჯარი — პლასტმასის ჯავშანი და მძიმე მანქანები. ნელი, მძიმე და პრაქტიკულად დაუმხობელი.',
   },
 ];
 
 export const raceById = (id) => RACES.find((r) => r.id === id) ?? RACES[0];
+
+// The personages a race may wear, in its own order. A race that names a body
+// the roster does not have is simply skipped rather than crashing the screen.
+export const bodiesOf = (raceId) => {
+  const race = raceById(raceId);
+  const list = (race.bodies ?? []).filter((id) => PERSONAGES.some((p) => p.id === id));
+  return list.length ? list : [race.defModel];
+};
 
 // Every model from the personages folder is a playable BODY, whatever the
 // race. GLBs: modular humans baked in Blender (canonical Idle/Run clips),

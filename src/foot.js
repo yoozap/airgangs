@@ -3675,6 +3675,11 @@ export class OnFoot {
     this._jumpBuf = 0;
     this._land = 0;
     this.leaveSeat();
+    // OUT OF THE SEAT IS OUT OF THE ENGINE. Only the climb down the wing used
+    // to cut the mixture; the 🛬 teleport into the warehouse, a cinema cue and
+    // a session resumed on foot all came through here instead and left the
+    // aeroplane running behind them.
+    g.stopEngine?.();
     g.scene.add(this.rig.obj);
     this.rig.play('Idle');
     this.active = true;
@@ -3755,7 +3760,16 @@ export class OnFoot {
   // way the crouch and the roll do it.
   updateSeated(dt) {
     if (!this.seated || !this.rig) return;
-    this.rig.update(dt);
+    // THE CLOCK STOPS IN THE SEAT. A strapped-in pilot is still, and the idle
+    // clip is not: measured at the arm-chain tip it swings the hand 10 cm fore
+    // and aft at 0.7 Hz. _poseSeated puts the hands on the stick with
+    // _boneTwist, which is an OFFSET from wherever the clip left the bone and
+    // refreshes that base every time the mixer writes — so the whole idle
+    // sway came through the seated pose and the hands bounced as if he were
+    // still running. Stepping the mixer by ZERO (rather than not at all) keeps
+    // it asserting the same frame of the clip, which is what makes the base
+    // _boneTwist reads identical frame to frame.
+    this.rig.update(0);
     const hip = this.rig.setSeated(1);
     // Drop the body so its HIPS are on the seat. A personage's origin is
     // between its soles, so seating it by that origin leaves it floating a

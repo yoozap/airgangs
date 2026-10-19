@@ -468,8 +468,8 @@ const FLIGHT_SHOTS = [
   //    aeroplane behind it goes soft and the blades are the whole picture.
   {
     t: 2.10, d: 2.55, fov: [26, 23], roll: [-0.03, 0.02], shake: 0.3,
-    cam: (k, S) => S.nose(3.1 + 0.9 * smooth(k), 0.42, 1.5 - 0.35 * smooth(k)),
-    look: (k, S) => S.nose(0.25, 0.10, 0.1),
+    cam: (k, S) => S.nose(4.8 + 1.3 * smooth(k), 1.05, 3.2 - 0.7 * smooth(k)),
+    look: (k, S) => S.nose(0.15, 0.55, 0.2),
   },
   // 3. IT GOES. The camera is on the ground beside the runway and does not
   //    move: the aeroplane comes past it, lifts, and leaves frame. A static
@@ -481,7 +481,12 @@ const FLIGHT_SHOTS = [
     // Off the deck (at 2 m the grass bank stood in front of the aeroplane)
     // and only 62 m down the line — at 88 m the first two seconds of the
     // shot were an empty taxiway waiting for something to happen.
-    cam: (k, S) => S.ground(18, 5.0, 58),
+    // ON THE RUNWAY, not out in the grass beside it: at 18 m and at 10.5 m the
+    // lens had a tree in front of it (at 10.5 it was inside one). The paved
+    // strip the aeroplane rolls down is the one sightline that is reliably
+    // clear, so the camera sits just outside the wingtip and low, and the
+    // aeroplane comes over it.
+    cam: (k, S) => S.ground(5.5, 2.4, 70),
     look: (k, S) => S.plane(0, 1.2, 0),
   },
   // 4. DOWN THE ROOFTOPS. Low, fast and off the raised wing, with the city
@@ -1199,7 +1204,6 @@ export class Cinema {
       g.world.cullDist = FLY_CULL;
       g.world.propScale = FLY_PROPS;
       g.world._cullFull = true;
-      if (g.scene.fog) g.scene.fog.density = FLY_FOG;
     } else {
       g.world.cullDist = 0;
       g.world.propScale = 0;
@@ -1284,6 +1288,12 @@ export class Cinema {
         f.rpm = 1;
         f.air = true;
       }
+      // THE HAZE BELONGS TO THE CITY, not to the airport. It is there to meet
+      // the shortened draw distance (FLY_CULL) so the far edge of town
+      // dissolves instead of ending on a line — and over the runway there is
+      // no such edge to hide, only a milky grey wash over a shot that was
+      // clean. It comes up across the cut and goes back on teardown.
+      if (g.scene.fog) g.scene.fog.density = FLY_FOG;
       const turn = FLY_TURN * smooth(seg(FLY.cut + 0.4, FLY.cut + 2.4));
       f.yaw += turn * dt;
       f.roll = Math.atan((FLY_SPEED * turn) / G_ACC);

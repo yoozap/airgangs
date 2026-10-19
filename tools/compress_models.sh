@@ -21,8 +21,17 @@ while IFS= read -r f; do
   rel="${f#public/models/}"
   before=$(stat -f%z "$f")
   tmp="$(mktemp -t glbc).glb"
+  # --join/--flatten OFF: these are KITS. `optimize` happily merges five
+  # transform-applied nodes into one mesh, and citymap.js finds its variants
+  # BY NAME -- panel_block.glb came back as a single "block_2" and the other
+  # four were gone. --palette OFF: it bakes untextured materials into one
+  # atlas and the glass loses its own roughness. --prune-attributes OFF:
+  # it strips UVs from primitives whose material has no texture, and then
+  # mergeGeometries() refuses to merge them with the ones that kept theirs.
   if ! "$GT" optimize "$f" "$tmp" --compress draco --texture-compress webp \
-        --texture-size 1024 --simplify false >/dev/null 2>&1; then
+        --texture-size 1024 --simplify false \
+        --join false --flatten false --palette false --prune-attributes false \
+        >/dev/null 2>&1; then
     rm -f "$tmp"; skipped=$((skipped+1)); echo "SKIP  $rel"; continue
   fi
   after=$(stat -f%z "$tmp" 2>/dev/null || echo 0)

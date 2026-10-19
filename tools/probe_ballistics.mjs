@@ -21,7 +21,6 @@ const page = ctx.pages()[0] ?? await ctx.newPage();
 page.on('pageerror', (e) => { if (!/pointer lock/i.test(e.message)) console.log('  [pageerror]', e.message); });
 
 await enterGame(page, { user: 'ballbot', pass: 'ballbot123' });
-await page.evaluate(() => localStorage.setItem('tf-autostart', '1'));
 await page.waitForTimeout(16000);
 
 // ---- take a named pistol off the bench ------------------------------------

@@ -29,7 +29,18 @@ Blender is Z-up; export_yup=True hands three.js its usual Y-up. Origin is at
 the centre of the footprint, on the ground, so the game can drop it straight
 onto an OSM footprint centroid.
 
-Output: public/models/panel_block.glb
+Output: public/models/panel_block.glb  (27 MB raw)
+
+Then SHRINK IT -- the raw export is ten times the size it needs to be:
+
+  ./node_modules/.bin/gltf-transform optimize \
+      public/models/panel_block.glb public/models/panel_block.glb \
+      --compress draco --texture-compress webp --texture-size 1024 \
+      --simplify false --join false --flatten false --palette false \
+      --prune-attributes false        # 27.5 MB -> 1.8 MB
+
+(tools/compress_models.sh does the same to every model and carries the same
+flags; the four `false`s are not optional -- see the comment in it.)
 """
 
 import bpy
@@ -37,6 +48,8 @@ import bmesh
 import math
 import os
 import random
+
+import numpy as np
 from mathutils import Vector, noise
 
 # =============================================================================
@@ -101,6 +114,38 @@ BEVEL_W = 0.014         # m
 BEVEL_SEGMENTS = 1
 BEVEL_ON = os.environ.get("NO_BEVEL") != "1"   # NO_BEVEL=1 to measure raw cost
 
+# --- surface: real maps, and the dirt that proves the thing is outdoors -------
+# Geometry alone still reads as a render: a panel with no grain and no
+# weathering is a clean grey plane whatever shape its edges are. Two cheap
+# layers fix that, and neither costs a triangle.
+#
+#   1. a PBR pair on every concrete surface — albedo grain + a normal map, so
+#      the flat faces catch light instead of going matte,
+#   2. vertex colours: splash-back dirt up the plinth, rain stains running out
+#      of the sills, and a per-panel tint, because precast panels were cast in
+#      different batches and never matched.
+TEX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "..", "public", "textures")
+TEX_BASE = "concrete.jpg"       # ambientCG, already in the repo
+TEX_NORM = "concrete_nor.jpg"
+TEX_PX = 1024           # what goes into the glb; 2K is waste at this distance
+TEX_M = 1.4             # metres of wall per texture tile; finer reads better
+                        # at the distance you actually fly past these
+TEX_MEAN = 0.80         # the albedo is levelled to this before it is used, so
+                        # multiplying it by the palette does not halve the city
+TEX_GRAIN = 2.60        # how hard the levelled grain swings about that mean
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+
+# The block sits on the LOWEST terrain under its footprint, so on any slope
+# the plinth is partly buried -- dirt that stopped at 1.3 m was underground on
+# half the city. It also has to survive the vertex resolution: the wall is big
+# flat panels, so the only places to paint are their corners.
+DIRT_H = 2.60           # m — how far splash-back climbs the plinth
+DIRT_MIN = 0.52         # darkest value at the ground
+STREAK_DROP = 0.95      # m — how far a stain runs below a sill
+STREAK_MIN = 0.60       # darkest value right under the sill
+PANEL_TINT = 0.075      # +/- per-panel lightness jitter
+
 # --- output -------------------------------------------------------------------
 COLLECTION_NAME = "PanelBlock"
 OUTPUT_NAME = "panel_block"
@@ -151,16 +196,109 @@ def hex_rgb(hx):
     return tuple(out)
 
 
-def make_material(name, hx, roughness, metallic):
+def _load_image(fname, colorspace):
+    path = os.path.abspath(os.path.join(TEX_DIR, fname))
+    img = bpy.data.images.load(path, check_existing=True)
+    img.colorspace_settings.name = colorspace
+    return img
+
+
+_ALBEDO = None
+
+
+def _levelled_albedo():
+    """The albedo photograph as a DETAIL layer, not a colour.
+
+    concrete.jpg averages mid-grey. Multiply the palette by it as-is and every
+    block comes out half as bright as it was, under a tint the game already
+    tuned against the flat colours. So the tile is recentred on a near-white
+    mean first: the grain, the stains and the aggregate all survive, the
+    overall value does not move, and the palette still says what colour the
+    building is.
+
+    IT IS WRITTEN BACK OUT AS A FILE. Editing `img.pixels` of a file-backed
+    image does not stick -- the next read comes back off the disk (all three
+    materials printed the same raw 0.723 mean), and the glTF exporter embeds
+    the FILE, so the levelling silently never shipped. The levelled tile is
+    its own PNG in tools/cache/, loaded once and shared by every material.
+    """
+    global _ALBEDO
+    if _ALBEDO is not None:
+        return _ALBEDO
+    src = _load_image(TEX_BASE, "sRGB")
+    w, h = src.size
+    if max(w, h) > TEX_PX:                      # keep the aspect: these are 2:1
+        k = TEX_PX / max(w, h)
+        w, h = max(1, int(w * k)), max(1, int(h * k))
+        src.scale(w, h)
+    px = np.empty(w * h * 4, dtype=np.float32)
+    src.pixels.foreach_get(px)
+    px = px.reshape(-1, 4)
+    mean = float(px[:, :3].mean())
+    if mean > 1e-4:
+        # NOT a plain multiply: scaling a mid-grey photograph up to near-white
+        # pushes its top half past 1.0 and CLIPS it, and the grain -- the only
+        # reason the image is here -- flattens out in the highlights. Recentre
+        # it on TEX_MEAN as a variation around 1.0 instead, and give that
+        # variation a push, because concrete photographed in flat light has
+        # less contrast than concrete looks like in the sun.
+        px[:, :3] = np.clip(TEX_MEAN * (1.0 + TEX_GRAIN * (px[:, :3] / mean - 1.0)),
+                            0.0, 1.0)
+    px[:, 3] = 1.0
+    out = bpy.data.images.new("pb_albedo", w, h, alpha=False)
+    out.pixels.foreach_set(px.reshape(-1))
+    out.file_format = "PNG"
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    out.filepath_raw = os.path.join(CACHE_DIR, "pb_albedo.png")
+    out.save()
+    out.colorspace_settings.name = "sRGB"
+    after = float(px[:, :3].mean())
+    print(f"  albedo {TEX_BASE} {w}x{h}: mean {mean:.3f} -> {after:.3f} "
+          f"(grain x{TEX_GRAIN}) -> {out.filepath_raw}")
+    _ALBEDO = out
+    return out
+
+
+def make_material(name, hx, roughness, metallic, textured=False):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    nt = mat.node_tree
+    bsdf = nt.nodes.get("Principled BSDF")
     rgb = hex_rgb(hx)
     if bsdf:
         bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
     mat.diffuse_color = (*rgb, 1.0)   # solid-shading viewport colour
+    if textured and bsdf:
+        # albedo x palette -> Base Color. ONE multiply, because that is the
+        # shape the glTF exporter understands: it becomes baseColorTexture
+        # with baseColorFactor, not a baked copy of the image.
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = _levelled_albedo()
+        tex.location = (-760, 300)
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs["Factor"].default_value = 1.0
+        mix.location = (-420, 300)
+        nt.links.new(mix.inputs[6], tex.outputs["Color"])     # A
+        mix.inputs[7].default_value = (*rgb, 1.0)             # B = the palette
+        nt.links.new(bsdf.inputs["Base Color"], mix.outputs[2])
+        nrm_tex = nt.nodes.new("ShaderNodeTexImage")
+        nrm_img = _load_image(TEX_NORM, "Non-Color")
+        if max(nrm_img.size) > TEX_PX:
+            k = TEX_PX / max(nrm_img.size)
+            nrm_img.scale(max(1, int(nrm_img.size[0] * k)), max(1, int(nrm_img.size[1] * k)))
+        nrm_tex.image = nrm_img
+        nrm_tex.location = (-760, -40)
+        nrm = nt.nodes.new("ShaderNodeNormalMap")
+        nrm.location = (-420, -40)
+        # 1.0 is invisible on a wall lit this flatly; the exporter writes this
+        # straight through as the glTF normalTexture scale.
+        nrm.inputs["Strength"].default_value = 1.8
+        nt.links.new(nrm.inputs["Color"], nrm_tex.outputs["Color"])
+        nt.links.new(bsdf.inputs["Normal"], nrm.outputs["Normal"])
     return mat
 
 
@@ -631,7 +769,9 @@ def build(col):
     real OSM footprint best, so a 26 m block and a 50 m block are both real
     buildings rather than one model stretched."""
     objects = []
-    mats = [make_material(n, hx, r, m) for n, hx, r, m in PALETTE]
+    textured = {M_PANEL, M_SEAM, M_CONCRETE}   # everything made of concrete
+    mats = [make_material(n, hx, r, m, textured=(i in textured))
+            for i, (n, hx, r, m) in enumerate(PALETTE)]
     for i, sections in enumerate(SECTION_VARIANTS):
         bm = build_block(sections, SEED + i * 101)
         me = bpy.data.meshes.new(f"block_{sections}")
@@ -642,6 +782,10 @@ def build(col):
         for mat in mats:
             obj.data.materials.append(mat)
         _finish(obj, bevel=False)
+        # BEFORE the layout offset, so every variant is weathered and mapped
+        # in its own frame and the tiles line up across the kit.
+        box_uv(obj)
+        weather(obj)
         # lay the variants out side by side so the glb is also browsable
         obj.location = (0, i * (DEPTH + 8), 0)
         objects.append(obj)
@@ -705,6 +849,87 @@ def _finish(obj, bevel=False):
     mod.harden_normals = True
 
 
+def _hash01(*args):
+    """Deterministic 0..1 noise from any number of float arrays. The classic
+    sine hash: no tables, no seeds to thread around, same answer every build."""
+    a = 0.0
+    for i, v in enumerate(args):
+        a = a + np.asarray(v, dtype=np.float64) * (12.9898, 78.233, 37.719)[i % 3]
+    return np.abs(np.sin(a) * 43758.5453) % 1.0
+
+
+def box_uv(obj, scale=TEX_M):
+    """World-aligned box projection, in METRES.
+
+    Architecture is axis-aligned boxes, so the dominant face normal picks the
+    plane and the other two coordinates are the UV — every wall gets the same
+    grain at the same size whatever direction it faces, and a 2 m tile stays
+    2 m instead of stretching over a long block. No unwrap operator, no edit
+    mode, nothing that needs a window to be open."""
+    me = obj.data
+    uv = me.uv_layers.get("UVMap") or me.uv_layers.new(name="UVMap")
+    co = {v.index: v.co for v in me.vertices}
+    for poly in me.polygons:
+        n = poly.normal
+        axis = max(range(3), key=lambda i: abs(n[i]))
+        for li in poly.loop_indices:
+            p = co[me.loops[li].vertex_index]
+            if axis == 0:                      # faces +/-X: the gable ends
+                u, v = p.y, p.z
+            elif axis == 1:                    # faces +/-Y: the long facades
+                u, v = p.x, p.z
+            else:                              # faces +/-Z: roof, sills, soffits
+                u, v = p.x, p.y
+            uv.data[li].uv = (u / scale, v / scale)
+
+
+def weather(obj):
+    """Dirt, stains and batch variation as vertex colours — free realism.
+
+    Three things, all of them things you can see on any of these blocks from
+    the street:
+      * splash-back up the plinth, where rain throws grit off the pavement,
+      * a stain under each sill, because a khrushchevka sill has no drip and
+        the runoff goes straight down the panel,
+      * a per-panel tint, because the panels were cast in different batches
+        and no two of them ever matched.
+    White means untouched, so the game's per-instance tint keeps working
+    exactly as before -- this only ever takes brightness away."""
+    me = obj.data
+    n = len(me.vertices)
+    co = np.empty(n * 3, dtype=np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    x, z = co[:, 0], co[:, 2]
+
+    f = np.ones(n, dtype=np.float64)
+    # --- splash-back up the plinth -------------------------------------------
+    t = np.clip(1.0 - z / DIRT_H, 0.0, 1.0) ** 2
+    f *= 1.0 - (1.0 - DIRT_MIN) * t * (0.72 + 0.56 * _hash01(x * 0.9, z * 0.9))
+
+    # --- run-off under every sill --------------------------------------------
+    drop = np.full(n, 1e9)
+    for fl in range(FLOORS):
+        d = (PLINTH_H + fl * FLOOR_H + SILL_ABOVE_FLOOR) - z
+        drop = np.where((d > 0) & (d < drop), d, drop)
+    streak = np.clip(1.0 - drop / STREAK_DROP, 0.0, 1.0)
+    # not every window stains, and the ones that do are not even about it
+    bay = _hash01(np.floor(x / 1.2) * 7.0 + 0.5)
+    f *= 1.0 - (1.0 - STREAK_MIN) * streak * (bay > 0.30) * (0.55 + 0.45 * bay)
+
+    # --- the panels never matched --------------------------------------------
+    cell = np.floor(x / 1.2) * 13.0 + np.floor((z - PLINTH_H) / FLOOR_H)
+    tint = (_hash01(cell) - 0.5) * 2.0 * PANEL_TINT
+
+    rgba = np.ones((n, 4), dtype=np.float32)
+    rgba[:, :3] = np.clip(f + tint, 0.0, 1.0)[:, None]
+    attr = me.color_attributes.get("Col") or me.color_attributes.new(
+        name="Col", type="FLOAT_COLOR", domain="POINT")
+    attr.data.foreach_set("color", rgba.reshape(-1))
+    me.color_attributes.active_color = attr
+    me.update()
+
+
 def triangle_count(objects):
     total = 0
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -727,15 +952,27 @@ def export(objects, directory, name):
         obj.select_set(True)
     bpy.context.view_layer.objects.active = objects[0]
     path = os.path.abspath(os.path.join(directory, name + ".glb"))
-    call_op(
-        bpy.ops.export_scene.gltf,
+    opts = dict(
         filepath=path,
         export_format="GLB",
         use_selection=True,
         export_apply=True,      # bakes the bevel modifier
         export_yup=True,        # three.js convention
         export_materials="EXPORT",
+        # ACTIVE, not MATERIAL: the weathering is read by the GAME (glTF
+        # multiplies COLOR_0 into the base colour by spec), not by a Color
+        # Attribute node here, and MATERIAL mode would drop it on the floor.
+        export_vertex_color="ACTIVE",
+        export_all_vertex_colors=False,
     )
+    # Drop anything this Blender's exporter does not know rather than falling
+    # back to a bare export and losing export_yup with it.
+    known = set(bpy.ops.export_scene.gltf.get_rna_type().properties.keys())
+    unknown = [k for k in opts if k not in known]
+    for k in unknown:
+        print(f"  ! exporter has no '{k}' in this Blender — skipped")
+        opts.pop(k)
+    bpy.ops.export_scene.gltf(**opts)
     return path
 
 

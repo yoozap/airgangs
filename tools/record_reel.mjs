@@ -69,6 +69,17 @@ await page.evaluate(async () => {
   g._resScale = 1;
   g.renderer.setPixelRatio(1);
   g._resize();
+  // SOUND ON, whatever this profile remembers. The recorder has its own
+  // persistent profile, so a settings toggle flipped in some earlier session
+  // is still sitting in its localStorage -- and _flyStep only starts the
+  // engine when `engine` is not false, so a stale false records a silent
+  // aeroplane. Ask for it explicitly rather than inherit it.
+  if (g.settings?.state) {
+    g.settings.state.engine = true;
+    g.settings.state.soundChosen = true;
+    g.settings.setEngine?.(true);
+  }
+  g.sound?.setVolume?.(0.9);
 });
 await page.waitForTimeout(1500);
 // 🎬 is a menu of scenes now: open it, then pick one (SCENE=0 the range,

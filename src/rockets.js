@@ -327,7 +327,7 @@ export class RocketLauncher {
     this.tmpl.traverse((o) => {
       if (o.isMesh) {
         o.geometry.dispose();
-        o.material.dispose();
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) m?.dispose();
       }
     });
     this.glowMat.map?.dispose();

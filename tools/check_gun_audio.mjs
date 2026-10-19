@@ -44,7 +44,6 @@ await page.addInitScript(() => {
 });
 
 await enterGame(page, { user: 'audiobot', pass: 'audiobot123' });
-await page.evaluate(() => localStorage.setItem('tf-autostart', '1'));
 await page.waitForTimeout(16000);
 
 const bank = await page.evaluate(async () => {

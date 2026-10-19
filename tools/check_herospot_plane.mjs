@@ -6,6 +6,7 @@
 // Run:  GAME_URL=http://localhost:5173/ node tools/check_herospot_plane.mjs
 import { chromium } from 'playwright';
 import { enterGame } from './enter.mjs';
+const AUTO = (process.env.GAME_URL || 'http://localhost:5173/') + '?auto=1';
 const DIR = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/b05e8499-e7e4-4764-a47b-5b3bba36f639/scratchpad';
 const URL = process.env.GAME_URL || 'http://localhost:5173/';
 const ctx = await chromium.launchPersistentContext(DIR + '/repro-profile', {
@@ -15,7 +16,6 @@ const page = ctx.pages()[0] ?? await ctx.newPage();
 
 const boot = async () => {
   await enterGame(page, { user: 'planespot', pass: 'planespot123' });
-  await page.evaluate(() => localStorage.setItem('tf-autostart', '1'));
   await page.waitForFunction(() => window.__game?.started, null, { timeout: 300000 });
   await page.waitForTimeout(12000);
 };
@@ -54,7 +54,7 @@ for (const [name, place] of cases) {
     airborne: window.__game.airborne,
     speed: +window.__game.speed.toFixed(1),
   }));
-  await page.reload();
+  await page.goto(AUTO);
   await page.waitForFunction(() => window.__game?.started, null, { timeout: 300000 });
   // Sample AT the resume. A plane restored mid-flight rightly keeps flying, so
   // waiting before measuring just records how far it got, not where it woke up.

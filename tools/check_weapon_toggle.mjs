@@ -3,6 +3,7 @@
 //   Run:  GAME_URL=http://localhost:5173/ node tools/check_weapon_toggle.mjs
 import { chromium } from 'playwright';
 import { enterGame } from './enter.mjs';
+const AUTO = (process.env.GAME_URL || 'http://localhost:5173/') + '?auto=1';
 const DIR = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/b05e8499-e7e4-4764-a47b-5b3bba36f639/scratchpad';
 const ctx = await chromium.launchPersistentContext(DIR + '/toggle-profile', {
   headless: true, viewport: { width: 1280, height: 800 },
@@ -12,7 +13,6 @@ page.on('pageerror', (e) => console.log('  [pageerror]', e.message));
 page.on('console', (m) => { if (/loadout|hand bone|SAVING|restoring/i.test(m.text())) console.log('  [page]', m.text()); });
 
 await enterGame(page, { user: 'togglebot', pass: 'togglebot123' });
-await page.evaluate(() => localStorage.setItem('tf-autostart', '1'));
 await page.waitForTimeout(16000);
 
 const held = () => page.evaluate(() => {
@@ -56,7 +56,7 @@ await page.waitForTimeout(600);
 console.log('after 2 (draw)->', JSON.stringify(await held()));
 await page.screenshot({ path: DIR + '/gun_in_hand.png' });
 
-await page.reload();
+await page.goto(AUTO);
 await page.waitForFunction(() => window.__game?.started, null, { timeout: 300000 });
 await page.waitForTimeout(14000);
 console.log('after refresh ->', JSON.stringify(await held()));

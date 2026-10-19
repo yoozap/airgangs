@@ -3,6 +3,7 @@ import { newGltfLoader } from './gltf.js';
 import { wind } from './wind.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WEAPON_DEFS, GEAR_DEFS } from './weapons.js';
+import { buildShed, SHED_LL, SHED_YAW } from './shed.js';
 
 // Tbilisi International Airport (TBS), built from real OSM geometry
 // (tools/fetch_airport.py → public/tbilisi/airport.json): the 3 km runway
@@ -11,10 +12,8 @@ import { WEAPON_DEFS, GEAR_DEFS } from './weapons.js';
 // hangars, jet bridges at the real gates, parked airliners and apron props
 // (tools/build_airport_assets.py → public/models/airport/*.glb).
 
-// The warehouse, and with it the taxiway it stands along. Shared, because the
-// windsock beside it has to be nudged off that same centreline.
-const SHED_LL = [41.659490, 44.964696];
-const SHED_YAW = -2.366;      // rad — the shed's long axis, down the taxiway
+// The warehouse's site and heading now live in src/shed.js — the plane hall
+// is placed off the same spot, so both sheds read them from one place.
 const SOCK_CLEAR = 20;        // m — how far a windsock steps off the pavement
 
 const lambert = (c, extra = {}) => new THREE.MeshLambertMaterial({ color: c, ...extra });
@@ -370,193 +369,37 @@ export async function addAirport(citymap) {
   place(hangar, 41.666319, 44.965312, 302.6);
 
   // ---- warehouse beside the parallel taxiway ------------------------------
-  // A downloaded barrel-vault shed (Sketchfab "Warehouse FBX Model Free" by
-  // Nicholas-3D, CC-BY-4.0), scaled x3 to 48 x 138 x 15 m -- the size a real
-  // cargo warehouse is, rather than the 16 x 46 x 5 m the model ships at. It
-  // stands beside taxiway #8 near the 31L end, 22 m clear of any pavement at
-  // every corner and 89 m from the spawn. Shifted 55 m down the taxiway from
-  // the obvious spot because a REAL OSM windsock stood dead centre inside the
-  // shed there -- the windsock is airport furniture, the warehouse is the
-  // guest. Nearest real building is 692 m, so it fills empty airside grass.
+  // The shed itself -- shell, slab, ramps, collision -- is built by
+  // src/shed.js, which the plane hall next door uses too. What follows is
+  // what is INSIDE this one: the benches, the two shooting ranges, the ammo
+  // crates and the loot on the tables.
   //
-  // The GLB keeps its transforms as node MATRICES, not TRS, so the accessor
-  // bounds read as a 46 m tall slab while the node chain (a -90/+90 pair and a
-  // 0.01 x 100 scale) already stands it up correctly. Rotating it again tips
-  // it on its end -- so take the loaded bounds as truth, centre it on its own
-  // footprint and sit it on the ground, and let the group carry the heading.
-  newGltfLoader().load('models/warehouse.glb', (gltf) => {
-    const g = new THREE.Group();
-    g.name = 'warehouse';
-    const inner = gltf.scene;
-    inner.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
-    });
-    const SCALE = 3.0;
-    const box = new THREE.Box3().setFromObject(inner);
-    const c = box.getCenter(new THREE.Vector3());
-    inner.position.set(-c.x, -box.min.y, -c.z);
-    inner.scale.setScalar(SCALE);
-    // after scaling, the recentre above is in model units -- redo it in the
-    // scaled frame so the shed still sits on 0 and is centred on its footprint
-    inner.position.multiplyScalar(SCALE);
-    g.add(inner);
-
-    // The shed ships with a shut roller door plugging the opening at each
-    // gable end -- and the wall already HAS the hole, the panel just fills it.
-    // Cut both panels out (20 triangles) so each end is an open 24 x 9 m bay
-    // you can run, or taxi, straight into. The box is in shed-local metres:
-    // x across the 48 m width, y up from the slab, z along the 139 m length.
-    const DOOR = { x: 12.4, y: 9.15, z: 68.98 };
-    g.updateMatrixWorld(true); // g still sits at the origin: world == shed-local
-    const toShed = new THREE.Matrix4();
-    const vtx = new THREE.Vector3();
-    const solids = []; // what the player can actually bump into
-    inner.traverse((o) => {
-      if (!o.isMesh) return;
-      if (o.material?.name !== 'Emissive') solids.push(o); // strip lights are decor
-      const geo = o.geometry;
-      if (!geo.index) return;
-      toShed.copy(g.matrixWorld).invert().multiply(o.matrixWorld);
-      const pos = geo.attributes.position;
-      const inDoor = new Uint8Array(pos.count);
-      for (let i = 0; i < pos.count; i++) {
-        vtx.fromBufferAttribute(pos, i).applyMatrix4(toShed);
-        inDoor[i] = Math.abs(vtx.x) <= DOOR.x && vtx.y <= DOOR.y && Math.abs(vtx.z) >= DOOR.z ? 1 : 0;
-      }
-      const src = geo.index.array;
-      const keep = [];
-      for (let t = 0; t < src.length; t += 3) {
-        // only whole triangles inside the panel go: the wall around the
-        // opening shares vertices with it and has to stay
-        if (inDoor[src[t]] && inDoor[src[t + 1]] && inDoor[src[t + 2]]) continue;
-        keep.push(src[t], src[t + 1], src[t + 2]);
-      }
-      if (keep.length !== src.length) geo.setIndex(keep);
-    });
-
-    const size = box.getSize(new THREE.Vector3()).multiplyScalar(SCALE);
-    const YAW = SHED_YAW; // long axis along the taxiway
-    const p2 = ll(SHED_LL[0], SHED_LL[1]);
-
-    // A concrete pad, or you see the airport's grass through the floor: the
-    // model is walls and a roof with no slab under it. The pad is levelled to
-    // the HIGHEST ground it covers so no hummock pokes up inside, and skirted
-    // down past the lowest so no gap opens at the edges.
-    const APRON = 7;           // m of hardstanding beyond the walls
-    const halfW = size.x / 2 + APRON;
-    const halfL = size.z / 2 + APRON;
-    const ux = Math.sin(YAW);
-    const uz = Math.cos(YAW);   // local +Z (length) in world
-    const vx = Math.cos(YAW);
-    const vz = -Math.sin(YAW);  // local +X (width) in world
-    // Sample the ground under the whole slab on a ~4 m lattice. The old 9 x 9
-    // sweep left 19 m gaps along the 152 m length, and on this slope the
-    // terrain climbed well above the sampled maxima in between — which is how
-    // the grass came up THROUGH the warehouse floor in patches.
-    const SAMPLE = 4; // m
-    const nA = Math.max(8, Math.ceil((halfW * 2) / SAMPLE));
-    const nB = Math.max(8, Math.ceil((halfL * 2) / SAMPLE));
-    let hi = -Infinity;
-    let lo = Infinity;
-    for (let i = 0; i <= nA; i++) {
-      for (let j = 0; j <= nB; j++) {
-        const a = -1 + (2 * i) / nA;
-        const b = -1 + (2 * j) / nB;
-        const sx = p2.x + vx * halfW * a + ux * halfL * b;
-        const sz = p2.z + vz * halfW * a + uz * halfL * b;
-        const gy = h(sx, sz);
-        if (gy == null) continue;
-        if (gy > hi) hi = gy;
-        if (gy < lo) lo = gy;
-      }
-    }
-    if (!Number.isFinite(hi)) hi = h(p2.x, p2.z) ?? 0;
-    if (!Number.isFinite(lo)) lo = hi;
-    // +0.45: the grass sheet is drawn 20 cm ABOVE the terrain (citymap
-    // _buildGrass), so clearing the terrain alone still left blades showing
-    // inside. This clears the grass by 25 cm.
-    const padTop = hi + 0.45;                 // the slab stands proud of grade
-    const padDepth = Math.max(1.5, padTop - lo + 1.0);
-    const pad = new THREE.Mesh(
-      new THREE.BoxGeometry(halfW * 2, padDepth, halfL * 2), MAT.concrete);
-    pad.position.set(0, -padDepth / 2, 0);    // top face at the group's origin
-    pad.receiveShadow = true;
-    g.add(pad);
-
-    // A ramp up to each open bay. The slab is a flat table on sloping grass —
-    // 1.8 m proud of the grass at the middle and 2.9 m at the low end, more
-    // than anyone can pull themselves up onto — so each doorway gets the
-    // truck ramp a real cargo shed has, and you can run (or taxi) straight up
-    // and in. Built as a sheared box so the winding, and the normals, stay
-    // right; the slope is gentle, about 1:5.
-    const RAMP_LEN = 14;    // m out from the slab edge — inside the 22 m the
-    const RAMP_HALF = 12.1; // shed keeps clear of pavement; door width
-    for (const sgn of [1, -1]) {
-      const zNear = sgn * halfL;              // the slab edge, at y = 0
-      const zFar = sgn * (halfL + RAMP_LEN);  // the foot, out on the grass
-      const gy = h(p2.x + ux * zFar, p2.z + uz * zFar);
-      if (gy == null) continue;
-      const dy = gy + 0.05 - padTop;
-      if (dy > -0.35) continue;               // ground is already at slab level
-      const depth = Math.max(3, -dy + 1.5);
-      const k = dy / (zFar - zNear);
-      const geo = new THREE.BoxGeometry(RAMP_HALF * 2, depth, RAMP_LEN);
-      geo.translate(0, -depth / 2, (zNear + zFar) / 2);
-      geo.applyMatrix4(new THREE.Matrix4().set(1, 0, 0, 0, 0, 1, k, 0, 0, 0, 1, 0, 0, 0, 0, 1));
-      geo.translate(0, -k * zNear, 0);        // pin the top edge to the slab
-      const ramp = new THREE.Mesh(geo, MAT.concrete);
-      ramp.receiveShadow = true;
-      g.add(ramp);
-      solids.push(ramp);
-    }
-
-    g.position.set(p2.x, padTop, p2.z);
-    g.rotation.y = YAW;
-    group.add(g);
-
-    // WHAT THE SHED IS, for anyone who needs to put something in it.
-    // Shed-local metres: x across the 48 m span, z along the 139 m length,
-    // y = 0 on the slab. The 🛬 teleport parks the player's aeroplane in here
-    // (src/game.js _parkInShed) and needs to know whether it fits through the
-    // bay and where the floor is still empty.
-    g.userData.shed = {
-      width: size.x, length: size.z, height: size.y,
-      // each gable end is an open bay this wide and this tall
-      doorHalfW: DOOR.x, doorH: DOOR.y, doorZ: DOOR.z,
-      // THE ONLY BIG PIECE OF EMPTY FLOOR LEFT, and it is ON THE CENTRELINE.
-      // The benches run down the -X wall at z -59..-65, the two shooting
-      // ranges fill the middle (x ±21, z ±12) and the ammo crates sit at
-      // (5..12, -15) — which leaves the stretch between the crates and the
-      // benches clear right across the shed.
-      //
-      // x = 0 rather than off to one side, because the bay is only 24.8 m wide
-      // and centred: park a 22 m span seven metres off the axis and taxiing
-      // straight out puts a wingtip through the door jamb. On the centreline
-      // the widest aeroplane that fits through the opening can simply roll out.
-      park: new THREE.Vector3(0, 0, -46),
-      parkYawLocal: 0,   // nose toward the -Z bay, so you taxi straight out
-    };
-
-    // Physics. Without this the whole shed is scenery you walk and fly
-    // straight through: registering the slab and the steel shell in the
-    // collision set is what gives it walls, a floor to stand on and — since
-    // the slab stands ~1.7 m proud of the grass — an edge the personage can
-    // pull itself up onto. Each gets a BVH first; the shell is 10k triangles
-    // and every ground probe on the apron would otherwise walk all of them.
-    g.updateMatrixWorld(true);
-    for (const m of [pad, ...solids]) {
-      if (!m.geometry.boundsTree) m.geometry.computeBoundsTree();
-      if (citymap._addCollidable) citymap._addCollidable(m);
-      else citymap.collidables.push(m);
-    }
-    // Shootable and destructible like any landmark, but with the lean-and-sag
-    // pose switched off: a stray round from the range inside used to tilt the
-    // whole 152 m shed, which dropped the far end into the ground.
-    // The warehouse is the player's base -- the benches, the pistols and the
-    // firing range all live in it, so it must not be shootable or crashable.
-    citymap.registerLandmark?.(g, 'საწყობი', { pose: false, immune: true });
+  // It stands beside taxiway #8 near the 31L end, 22 m clear of any pavement
+  // at every corner and 89 m from the spawn. Shifted 55 m down the taxiway
+  // from the obvious spot because a REAL OSM windsock stood dead centre
+  // inside the shed there -- the windsock is airport furniture, the warehouse
+  // is the guest. Nearest real building is 692 m, so it fills empty airside
+  // grass.
+  buildShed(citymap, {
+    parent: group, lat: SHED_LL[0], lon: SHED_LL[1], yaw: SHED_YAW, scale: 3,
+    name: 'warehouse', label: 'საწყობი', material: MAT.concrete,
+    // THE ONLY BIG PIECE OF EMPTY FLOOR, and it is ON THE CENTRELINE. The
+    // benches run down the -X wall at z -59..-65, the two shooting ranges
+    // fill the middle (x ±21, z ±12) and the ammo crates sit at (5..12, -15)
+    // — which leaves the stretch between the crates and the benches clear
+    // right across the shed.
+    //
+    // x = 0 rather than off to one side, because the bay is only 24.8 m wide
+    // and centred: park a 22 m span seven metres off the axis and taxiing
+    // straight out puts a wingtip through the door jamb. On the centreline
+    // the widest aeroplane that fits through the opening can simply roll out.
+    park: new THREE.Vector3(0, 0, -46),
+    parkYawLocal: 0,   // nose toward the -Z bay, so you taxi straight out
+  }).then((g) => {
+    // the shed's own measurements, in shed-local metres: x across the 48 m
+    // span, z along the 139 m length, y = 0 on the slab
+    const d = g.userData.shedShell;
+    const size = new THREE.Vector3(d.width, d.height, d.length);
 
     // Everything standing on the slab has to be solid: you climb onto it, you
     // do not walk through it. These props are built from dozens of flat planes
@@ -1124,7 +967,7 @@ export async function addAirport(citymap) {
       // off the table. A hero who owns one still gets it back from the saved
       // loadout, see pickups.restore.)
     }, undefined, (e) => console.warn('table failed:', e?.message ?? e));
-  }, undefined, (e) => console.warn('warehouse failed:', e?.message ?? e));
+  }).catch((e) => console.warn('warehouse failed:', e?.message ?? e));
   place(hangar, 41.680858, 44.944375, 242.2, 0.62);
   place(radar, 41.672300, 44.959000, 0);
 

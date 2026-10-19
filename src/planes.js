@@ -20,6 +20,15 @@ import { tagPropellers, finishPropellers } from './propeller.js';
 //
 // Hangar metadata: code/cls/desc for the info panel, stats are 0-100 bars
 // [სიჩქარე, მანევრი, ჯავშანი, ცეცხლის ძალა].
+// TANK or DPS is a property of the MACHINE, not of the pilot: "tank and dps
+// are planes just man". The heavies -- bombers, transports, airliners -- are
+// the TANKs that soak damage and carry troops; every fighter, racer and
+// striker is a DPS. Each def below says which it is, and this is what the
+// plane hall splits its two sides by (src/planehall.js).
+export const planeRole = (p) =>
+  ((typeof p === 'string' ? planeById(p) : p)?.role ?? 'DPS');
+export const isTankPlane = (p) => planeRole(p) === 'TANK';
+
 export const PLANES = [
   {
     id: 'spitfire',
@@ -30,6 +39,7 @@ export const PLANES = [
     scale: 0.34, // 33-unit OBJ → ~11 m wingspan
     maxSpeed: 190,
     mass: 3000, tw: 2.8, gBreak: 11, clMax: 1.6, prop: true,
+    role: 'DPS',
     code: 'MK-IX', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [58, 88, 42, 55],
     desc: 'ლეგენდა, რომელიც ნეონის ეპოქასაც გადაურჩა. მოქნილი და მომტევებელი — ძველი თბილისის ვიწრო ქუჩებში მანევრირებისთვის იდეალურია.',
   },
@@ -42,6 +52,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 185,
     mass: 2500, tw: 2.6, gBreak: 9, clMax: 1.5, prop: true,
+    role: 'DPS',
     code: 'KW-R', cls: 'მზვერავი', tag: 'SCOUT', stats: [55, 92, 28, 38],
     desc: 'მსუბუქი სარბოლო აპარატი. თითქმის უჯავშნოა, მაგრამ მტკვრის ხიდების ქვეშ გაძრომისას მას ვერავინ დაეწევა.',
   },
@@ -54,6 +65,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 220,
     mass: 5200, tw: 3.0, gBreak: 10, clMax: 1.5, prop: true,
+    role: 'DPS',
     code: 'P-100', cls: 'მოიერიშე', tag: 'STRIKER', stats: [66, 72, 58, 74],
     desc: 'შემტევი გამანადგურებელი ორმაგი ქვემეხით. დაბალანსებული ბრძოლისთვის ნებისმიერ სიმაღლეზე — ნარიყალადან ტელეანძამდე.',
   },
@@ -67,6 +79,7 @@ export const PLANES = [
     maxSpeed: 420,
     // The widow-maker: razor wing, lands at ~280 km/h — treat it with respect.
     mass: 9300, tw: 3.6, gBreak: 8.5, clMax: 1.25,
+    role: 'DPS',
     code: 'F-104', cls: 'ჩამჭრელი', tag: 'INTERCEPT', stats: [98, 40, 45, 68],
     desc: '«ქვრივების მჭედელი». სამართებელივით ბასრი ფრთა და ზებგერითი სისწრაფე — ერთი შეცდომა და კედელი შენია.',
   },
@@ -79,6 +92,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 260,
     mass: 11000, tw: 3.0, gBreak: 9.5, clMax: 1.7,
+    role: 'DPS',
     code: 'A-7', cls: 'მოიერიშე', tag: 'STRIKER', stats: [74, 58, 72, 86],
     desc: 'მიწასთან მუშაობის ოსტატი. სქელი ჯავშანი და მძიმე დანადგარი — ბანდების საყვარელი იარაღი სახურავების დასაშლელად.',
   },
@@ -91,6 +105,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 400,
     mass: 55000, tw: 3.2, gBreak: 4.5, clMax: 1.3,
+    role: 'TANK',
     code: 'B-58', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [95, 26, 60, 92],
     desc: 'ზებგერითი დელტა-ბომბდამშენი. ფრთხილად მოუხვიე — მაგრამ როცა გაჩერდება მიზანზე, მთელი უბანი ინგრევა.',
   },
@@ -103,6 +118,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 260,
     mass: 14000, tw: 2.8, gBreak: 6, clMax: 1.4,
+    role: 'TANK',
     code: 'RQ-180', cls: 'პროტოტიპი', tag: 'STEALTH', stats: [80, 62, 34, 48],
     desc: 'ექსპერიმენტული სტელს-ფრთა. რადარები მას ვერ ხედავენ — მოწინააღმდეგე მხოლოდ აფეთქებას გაიგებს.',
   },
@@ -115,6 +131,7 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 230,
     mass: 140000, tw: 2.2, gBreak: 3.8, clMax: 2.3,
+    role: 'TANK',
     code: 'C-17', cls: 'მძიმე', tag: 'HEAVY', stats: [62, 18, 96, 30],
     desc: 'მფრინავი ციხესიმაგრე. ნელია და უზარმაზარი, მაგრამ მისი კორპუსი ტყვიების სეტყვას ისე იტანს, როგორც წვიმას.',
   },
@@ -123,6 +140,7 @@ export const PLANES = [
     id: 'a10', name: 'A-10 Thunderbolt II', tagline: 'მოიერიშე ჯავშანთმფრენი · 706 კმ/სთ',
     file: '/models/planes/a10.glb', thumb: '/textures/planes/a10.png', scale: 1, maxSpeed: 210,
     mass: 11300, tw: 2.6, gBreak: 9, clMax: 1.9,
+    role: 'DPS',
     code: 'A-10', cls: 'მოიერიშე', tag: 'STRIKER', stats: [55, 60, 90, 98],
     desc: 'მფრინავი ქვემეხი ტიტანის აბაზანაში. ნელია, მაგრამ რასაც მისი GAU-8 შეეხება, აღარ დგება.',
   },
@@ -130,6 +148,7 @@ export const PLANES = [
     id: 'aerobatic', name: 'Extra 330', tagline: 'აკრობატიული · 407 კმ/სთ',
     file: '/models/planes/aerobatic.glb', thumb: '/textures/planes/aerobatic.png', scale: 1, maxSpeed: 170,
     mass: 950, tw: 3.4, gBreak: 12, clMax: 1.8, prop: true,
+    role: 'DPS',
     code: 'EX-330', cls: 'აკრობატი', tag: 'ACRO', stats: [40, 100, 10, 8],
     desc: 'საჰაერო ცირკის ვარსკვლავი. ±10G და უსასრულო ტრიალი — ვიწრო ეზოებში მას ვერავინ დაიჭერს.',
   },
@@ -140,6 +159,7 @@ export const PLANES = [
     mass: 2500, tw: 1.8, gBreak: 6, clMax: 1.6, prop: true, props: 2,
     // Blades welded into the hull: measured with tools/_probe_hub.mjs.
     propHubs: [[1.94, 1.50, 3.06], [-1.94, 1.50, 3.06]], propRadius: 0.78, propDepth: 0.34,
+    role: 'DPS',
     code: 'C-310', cls: 'სამოქალაქო', tag: 'CIVIL', stats: [35, 55, 25, 10],
     desc: 'მშვიდობიანი ამხანაგი ფრთის წვერის ავზებით. იარაღი თითქმის არ აქვს — სამაგიეროდ ბენზინზე იაფად დადის.',
   },
@@ -147,6 +167,7 @@ export const PLANES = [
     id: 't28', name: 'T-28 Trojan', tagline: 'სასწავლო-საბრძოლო · 552 კმ/სთ',
     file: '/models/planes/t28.glb', thumb: '/textures/planes/t28.png', scale: 1, maxSpeed: 185,
     mass: 3856, tw: 2.4, gBreak: 9, clMax: 1.7, prop: true,
+    role: 'DPS',
     code: 'T-28', cls: 'სასწავლო', tag: 'TRAINER', stats: [48, 70, 35, 40],
     desc: 'სკოლის მერხი, რომელიც ვიეტნამში ომში წავიდა. პატიოსანი, გამძლე და მოთმინებით სავსე — დამწყები გმირის საუკეთესო მეგობარი.',
   },
@@ -155,6 +176,7 @@ export const PLANES = [
     file: '/models/planes/f4f.glb', thumb: '/textures/planes/f4f.png', scale: 1, maxSpeed: 180,
     yaw: -Math.PI / 2, // orientation fix — GLB stored nose-west (tools/probe_props.mjs)
     mass: 3200, tw: 2.3, gBreak: 9.5, clMax: 1.8, prop: true,
+    role: 'DPS',
     code: 'F4F', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [45, 68, 48, 50],
     desc: 'წყნარი ოკეანის ველური კატა. მოკლე ფრთები, ჯიუტი ხასიათი — და ბრძოლას არასდროს გაურბის.',
   },
@@ -163,6 +185,7 @@ export const PLANES = [
     file: '/models/planes/p47.glb', thumb: '/textures/planes/p47.png', scale: 1, maxSpeed: 205,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
     mass: 6600, tw: 2.5, gBreak: 10, clMax: 1.6, prop: true,
+    role: 'DPS',
     code: 'P-47', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [60, 62, 70, 72],
     desc: '«ქილა» — რვა ტყვიამფრქვევი და ჯავშანი, რომელსაც პიკირებაში ვერავინ დაეწევა. ძირს დაცემაც კი ეშინია მისი.',
   },
@@ -174,6 +197,7 @@ export const PLANES = [
     // a real one: 3.40 m Hamilton Standard, four blades, rooted on the
     // spinner the model does have (tools/_probe_hub.mjs).
     propMake: { hub: [0, 1.57, 4.95], radius: 1.70, blades: 4 },
+    role: 'DPS',
     code: 'P-51', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [66, 78, 45, 60],
     desc: 'კადილაკი ცაში. სწრაფი, ლამაზი და შორსმფრენი — ესკორტის მეფე, რომელიც მტკვრის ხეობასაც ბოლომდე გაჰყვება.',
   },
@@ -182,6 +206,7 @@ export const PLANES = [
     file: '/models/planes/hsp75.glb', thumb: '/textures/planes/hsp75.png', scale: 1, maxSpeed: 220,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
     mass: 5200, tw: 2.7, gBreak: 8.5, clMax: 1.5, prop: true,
+    role: 'DPS',
     code: 'P.75', cls: 'პროტოტიპი', tag: 'PROTO', stats: [58, 66, 40, 45],
     desc: 'ქაღალდიდან გამოქცეული ნახაზი: ფრთა უკან, საჭე წინ, ხრახნი კუდში. არავინ იცის როგორ დაფრინავს — მაგრამ დაფრინავს.',
   },
@@ -190,6 +215,7 @@ export const PLANES = [
     file: '/models/planes/neonfly.glb', thumb: '/textures/planes/neonfly.png', scale: 1, maxSpeed: 240,
     roll: Math.PI / 2, // orientation fix — GLB stored banked on its wing
     mass: 3100, tw: 3.2, gBreak: 11, clMax: 1.6,
+    role: 'DPS',
     code: 'NEON', cls: 'სარბოლო', tag: 'RACER', stats: [72, 95, 20, 15],
     desc: 'შეჯიბრის ჯეტი ნეონის ქალაქისთვის. მსუბუქი, ავხორცი და თავხედი — ჰაერშივე იცვლის მიმართულებას, როგორც ფიქრს.',
   },
@@ -198,6 +224,7 @@ export const PLANES = [
     file: '/models/planes/javelin.glb', thumb: '/textures/planes/javelin.png', scale: 1, maxSpeed: 265,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
     mass: 17500, tw: 2.9, gBreak: 7.5, clMax: 1.45,
+    role: 'DPS',
     code: 'FAW-9', cls: 'ჩამჭრელი', tag: 'INTERCEPT', stats: [70, 55, 60, 62],
     desc: 'ბრიტანული დელტა ღამის ცისთვის. ორი ძრავა, ორი კაცი და ერთი მიზანი — რომ ღამით ბომბდამშენი არ გაგეპაროს.',
   },
@@ -210,6 +237,7 @@ export const PLANES = [
     // Read off tools/_probe_cockpit.mjs: the canopy is at z -3.9, top 1.13.
     cockpit: { z: -3.9, closed: true },
     mass: 8800, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    role: 'DPS',
     code: 'МиГ-21', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [92, 60, 40, 58],
     desc: 'მფრინავი კალაშნიკოვი — მარტივი, იაფი და ულმობელი. ნახევარი მსოფლიო ამით სწავლობდა ზებგერით ფრენას.',
   },
@@ -217,6 +245,7 @@ export const PLANES = [
     id: 'mig21nk', name: 'MiG-21PFM', tagline: 'ზებგერითი გამანადგურებელი · 2175 კმ/სთ',
     file: '/models/planes/mig21nk.glb', thumb: '/textures/planes/mig21nk.png', scale: 1, maxSpeed: 410,
     mass: 8800, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    role: 'DPS',
     code: 'ПФМ-415', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [90, 58, 42, 56],
     desc: 'ჩრდილოეთის ნაცრისფერი ძმა, ბორტნომერი 415. იგივე რაკეტა ფრთებით — ოღონდ სხვისი დროშით და მკაცრი ხასიათით.',
   },
@@ -225,6 +254,7 @@ export const PLANES = [
     file: '/models/planes/tornado.glb', thumb: '/textures/planes/tornado.png', scale: 1, maxSpeed: 400,
     yaw: -0.658, // orientation fix — GLB sits 37.7deg off the fuselage axis (tools/probe_props.mjs)
     mass: 20000, tw: 3.1, gBreak: 7.5, clMax: 1.7,
+    role: 'DPS',
     code: 'GR-1', cls: 'მოიერიშე', tag: 'STRIKER', stats: [88, 64, 62, 80],
     desc: 'ევროპული ქარიშხალი საზეიმო შეფერილობით. ფრთებს კეცავს და მიწასთან აკრული მიქრის — რადარი ვერც ამჩნევს.',
   },
@@ -232,6 +262,7 @@ export const PLANES = [
     id: 'su33', name: 'Su-33 Flanker-D', tagline: 'გემბანის გამანადგურებელი · 2300 კმ/სთ',
     file: '/models/planes/su33.glb', thumb: '/textures/planes/su33.png', scale: 1, maxSpeed: 420,
     mass: 24000, tw: 3.5, gBreak: 9, clMax: 1.9,
+    role: 'DPS',
     code: 'Су-33', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [94, 86, 58, 78],
     desc: 'ზღვის ფლანკერი ქანარდებით. მძიმეა, მაგრამ კობრასავით იხრება — ჰაერში მასთან ჭიდაობა ცუდი იდეაა.',
   },
@@ -239,6 +270,7 @@ export const PLANES = [
     id: 'f15', name: 'F-15C Eagle', tagline: 'უზენაესობის მებრძოლი · 2655 კმ/სთ',
     file: '/models/planes/f15.glb', thumb: '/textures/planes/f15.png', scale: 1, maxSpeed: 440,
     mass: 20200, tw: 3.6, gBreak: 9, clMax: 1.6,
+    role: 'DPS',
     code: 'F-15C', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [97, 80, 60, 84],
     desc: '104:0 — ეს მისი ანგარიშია საჰაერო ბრძოლებში. არწივი, რომელიც ჯერ არავის ჩამოუგდია.',
   },
@@ -246,6 +278,7 @@ export const PLANES = [
     id: 'f117', name: 'F-117 Nighthawk', tagline: 'სტელს-მოიერიშე · 993 კმ/სთ',
     file: '/models/planes/f117.glb', thumb: '/textures/planes/f117.png', scale: 1, maxSpeed: 250,
     mass: 23800, tw: 2.4, gBreak: 6, clMax: 1.1,
+    role: 'DPS',
     code: 'F-117', cls: 'სტელსი', tag: 'STEALTH', stats: [70, 35, 45, 66],
     desc: 'ღამის შავი დანა. რადარისთვის უჩინარია, თვალისთვის — კოშმარი. ფრთხილად: ეს დანა ორივე მხარეს ჭრის.',
   },
@@ -259,6 +292,7 @@ export const PLANES = [
     propHubs: [[3.88, 4.16, 7.44], [-3.88, 4.16, 7.44],
                [8.09, 4.01, 6.91], [-8.09, 4.01, 6.91]],
     propRadius: 2.30, propDepth: 0.95,
+    role: 'TANK',
     code: 'LANC', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [40, 25, 70, 85],
     desc: 'ღამის ლეგენდა ოთხი «მერლინით». კუპოლები წრიპინებენ, ბომბსაცავი კი სავსეა — ძველი სკოლის მძიმე არგუმენტი.',
   },
@@ -267,6 +301,7 @@ export const PLANES = [
     file: '/models/planes/h6k.glb', thumb: '/textures/planes/h6k.png', scale: 1, maxSpeed: 250,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
     mass: 79000, tw: 2.5, gBreak: 4.5, clMax: 1.5,
+    role: 'TANK',
     code: 'H-6K', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [72, 22, 68, 90],
     desc: 'ძველი Ту-16-ის აღმოსავლური რეინკარნაცია. ექვსი ფრთისქვეშა რაკეტა — და უბანი აღარ არის უბანი.',
   },
@@ -275,6 +310,7 @@ export const PLANES = [
     file: '/models/planes/tu144.glb', thumb: '/textures/planes/tu144.png', scale: 1, maxSpeed: 430,
     yaw: -0.702, // orientation fix — GLB sits 40.2deg off the fuselage axis (tools/probe_props.mjs)
     mass: 180000, tw: 3.0, gBreak: 4, clMax: 1.4,
+    role: 'TANK',
     code: 'Ту-144', cls: 'ზებგერითი', tag: 'SUPERSONIC', stats: [99, 15, 55, 20],
     desc: '«კონკორდსკი» — სამგზავრო თვითმფრინავი, რომელიც ტყვიაზე სწრაფად დაფრინავს. მოხვევა? ჯერ ბათუმამდე გაფრინდი, მერე მოუხვიე.',
   },
@@ -282,6 +318,7 @@ export const PLANES = [
     id: 'xb35', name: 'Northrop XB-35', tagline: 'მფრინავი ფრთა · 630 კმ/სთ',
     file: '/models/planes/xb35.glb', thumb: '/textures/planes/xb35.png', scale: 1, maxSpeed: 200,
     mass: 82000, tw: 2.2, gBreak: 4.5, clMax: 1.8, prop: true, props: 4,
+    role: 'TANK',
     code: 'XB-35', cls: 'პროტოტიპი', tag: 'PROTO', stats: [55, 30, 75, 82],
     desc: 'ფუსელაჟი? კუდი? ზედმეტი დეტალებია. მხოლოდ ფრთა, ოთხი მბრუნავი ხრახნი და 52 მეტრი ჩრდილი ქალაქზე.',
   },
@@ -290,6 +327,7 @@ export const PLANES = [
     file: '/models/planes/carpet.glb', thumb: '/textures/planes/carpet.png', scale: 1, maxSpeed: 190,
     cockpit: { z: -11.5, closed: true }, // the measurement found the fin, not the nose
     mass: 30000, tw: 2.1, gBreak: 4.8, clMax: 1.8, prop: true, props: 4,
+    role: 'TANK',
     code: 'LCB', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [45, 28, 65, 88],
     desc: 'სახელი თავად ამბობს: სადაც ეს ჩაივლის, იქ ბალახიც ხელახლა ითესება. ფრთხილად შენს უბანთან.',
   },
@@ -297,6 +335,7 @@ export const PLANES = [
     id: 'b737', name: 'Boeing 737-300', tagline: 'ავიალაინერი · 880 კმ/სთ',
     file: '/models/planes/b737.glb', thumb: '/textures/planes/b737.png', scale: 1, maxSpeed: 235,
     mass: 56000, tw: 2.3, gBreak: 4, clMax: 2.0,
+    role: 'TANK',
     code: 'B-737', cls: 'ავიალაინერი', tag: 'LINER', stats: [66, 30, 62, 10],
     desc: 'სამოქალაქო კლასიკა. 148 სავარძელი, უფასო წვენი და გმირი შტურვალთან — რას იზამ, ომია.',
   },
@@ -307,6 +346,7 @@ export const PLANES = [
     propHubs: [[5.11, 5.99, 6.09], [-5.11, 5.99, 6.09],
                [10.31, 6.11, 6.00], [-10.31, 6.11, 6.00]],
     propRadius: 2.20, propDepth: 0.80,
+    role: 'TANK',
     code: 'C-130J', cls: 'სატრანსპორტო', tag: 'TRANSPORT', stats: [52, 34, 80, 25],
     desc: 'ჰერკულესი — სახელი ავალდებულებს. ზის იქ, სადაც ბილიკიც არ არის, და ოთხი ხრახნით ისევ ცაში ადის.',
   },
@@ -317,6 +357,7 @@ export const PLANES = [
     propHubs: [[5.19, 4.27, 6.73], [-5.19, 4.27, 6.73],
                [10.35, 4.57, 6.73], [-10.35, 4.57, 6.73]],
     propRadius: 2.08, propDepth: 0.88,
+    role: 'TANK',
     code: 'YC-130', cls: 'პროტოტიპი', tag: 'PROTO', stats: [50, 36, 74, 22],
     desc: 'პირველი ჰერკულესი — ჯერ კიდევ ქარხნული სუნით. ისტორია ფრთებზე: 1954 წლის 23 აგვისტო, პირველი აფრენა.',
   },
@@ -324,6 +365,7 @@ export const PLANES = [
     id: 'cargobro', name: 'Cargo Bro', tagline: 'სადესანტო ტრანსპორტი · 700 კმ/სთ',
     file: '/models/planes/cargobro.glb', thumb: '/textures/planes/cargobro.png', scale: 1, maxSpeed: 210,
     mass: 65000, tw: 2.3, gBreak: 4.5, clMax: 2.0, prop: true, props: 0,
+    role: 'TANK',
     code: 'CARGO', cls: 'სატრანსპორტო', tag: 'TRANSPORT', stats: [55, 32, 85, 30],
     desc: 'სადესანტო ძმაკაცი. უკანა რამპა იღება, ასი მებრძოლი გადმოდის — შენ კი უბრალოდ წრეებს ხაზავ ქალაქზე.',
   },
@@ -331,6 +373,7 @@ export const PLANES = [
     id: 'il76', name: 'Ilyushin Il-76', tagline: 'მძიმე სატრანსპორტო · 900 კმ/სთ',
     file: '/models/planes/il76.glb', thumb: '/textures/planes/il76.png', scale: 1, maxSpeed: 235,
     mass: 140000, tw: 2.3, gBreak: 4, clMax: 2.2,
+    role: 'TANK',
     code: 'Ил-76', cls: 'სატრანსპორტო', tag: 'TRANSPORT', stats: [64, 24, 88, 28],
     desc: 'საბჭოთა სამუშაო ცხენი სრული ინტერიერით. კაბინაში შუშის ცხვირია — ჩამოჯექი და უყურე, როგორ მიცურავს ქალაქი.',
   },
@@ -338,6 +381,7 @@ export const PLANES = [
     id: 'b767', name: 'Boeing 767', tagline: 'შორეული ლაინერი · 913 კმ/სთ',
     file: '/models/planes/b767.glb', thumb: '/textures/planes/b767.png', scale: 1, maxSpeed: 240,
     mass: 142000, tw: 2.3, gBreak: 3.8, clMax: 2.1,
+    role: 'TANK',
     code: 'B-767', cls: 'ავიალაინერი', tag: 'LINER', stats: [68, 22, 70, 5],
     desc: 'ორმილიანი ტრანსატლანტიკური დარბაისელი. დინჯად მოხვევს, დინჯად დაჯდება — და მთელი უბანი ჩრდილში ეხვევა.',
   },
@@ -345,6 +389,7 @@ export const PLANES = [
     id: 'awacs', name: 'Air Defense Sentinel', tagline: 'სადარაჯო თვითმფრინავი · 850 კმ/სთ',
     file: '/models/planes/awacs.glb', thumb: '/textures/planes/awacs.png', scale: 1, maxSpeed: 230,
     mass: 125000, tw: 2.3, gBreak: 4, clMax: 2.0,
+    role: 'TANK',
     code: 'AWACS', cls: 'სადარაჯო', tag: 'RADAR', stats: [60, 26, 78, 35],
     desc: 'ცის დიდი ძმა. ყველას ხედავს, ყველას ისმენს — შენს უბანში ბეღურაც ვერ აფრინდება მისი ნებართვის გარეშე.',
   },
@@ -352,6 +397,7 @@ export const PLANES = [
     id: 'an225', name: 'Antonov An-225 Mriya', tagline: 'მსოფლიოში უდიდესი · 850 კმ/სთ',
     file: '/models/planes/an225.glb', thumb: '/textures/planes/an225.png', scale: 1, maxSpeed: 235,
     mass: 285000, tw: 2.1, gBreak: 3.2, clMax: 2.3,
+    role: 'TANK',
     code: 'Ан-225', cls: 'გიგანტი', tag: 'GIANT', stats: [62, 8, 100, 15],
     desc: '«მრია» — ოცნება. ექვსი ძრავა, 32 ბორბალი, 88 მეტრი ფრთა. როცა ეს დაჯდება, აეროპორტი ორ დღეს ივსება ხალხით.',
   },
