@@ -9,7 +9,7 @@
 #   Blender -b --python tools/build_planes.py -- all          # convert
 #   Blender -b --python tools/build_planes.py -- sheet        # top-down grid
 #   Blender -b --python tools/build_planes.py -- thumbs       # hangar thumbs
-#   Blender -b --python tools/build_planes.py -- a10 mig21    # some ids
+#   Blender -b --python tools/build_planes.py -- f15 mig21    # some ids
 #
 # In Blender the nose is put at +Y (glTF export maps +Y → -Z). The `yaw`
 # per plane (degrees, about Z) fixes each source's arbitrary facing — filled
@@ -36,7 +36,6 @@ MAX_TRIS = 120_000
 # scaling the model's max horizontal extent to it works whatever way the
 # source happens to face. prop = mesh-name substrings to mark as propellers.
 PLANES = {
-    "a10":       {"src": "a-10a_thunderbolt_ii_usa.glb", "target": 17.5, "rot": (0, 0, 90)},
     "aerobatic": {"src": "aerobatic_airplane.glb", "target": 8.0, "rot": (0, 0, 90)},
     "an225":     {"src": "antonov_an-225.glb", "target": 88.4},
     "cargobro":  {"src": "battle_royale_plane.glb", "target": 40.4, "rot": (0, 0, 180)},
@@ -62,7 +61,8 @@ PLANES = {
     "t28":       {"src": "north_american_t-28_trojan.glb", "target": 12.2, "rot": (0, 0, 180),
                   "prop": ["propeller"]},
     "xb35":      {"src": "northrop_xb_35.glb", "target": 52.4, "rot": (0, 0, -90)},
-    "p47":       {"src": "p-47d22_razorback_thunderbolt.glb", "target": 12.4, "rot": (0, 0, -90)},
+    # p47 is NOT built here: its source parents every panel to an empty and is
+    # posed in flight, which this converter cannot undo — tools/build_p47.py.
     "p51":       {"src": "p_51_mustang_evo.glb", "target": 11.3},
     # the source scene is a framed display: Object_9/5 are backdrop quads,
     # Object_2 the plinth — strip them, keep the jet

@@ -15,8 +15,15 @@ import * as THREE from 'three';
 const G = 9.81;
 
 export class PlaneBreakup {
-  constructor(game) {
+  // `subject` is which aeroplane comes apart. It defaults to the player's own
+  // machine, which is what this class was written for; src/planephys.js hands
+  // it a PARKED one instead, so a machine you ram sheds its real wing the same
+  // way yours does -- same geometry surgery, same tumbling piece, same fire.
+  // `velOf` is where that aeroplane's velocity comes from at the moment of the
+  // tear: the torn part flies on with it.
+  constructor(game, subject = null) {
     this.game = game;
+    this.subject = subject;
     this.gone = new Set();
     this.parts = [];        // flying/settled wreckage bodies
     this._splits = [];      // {mesh, origGeo} — geometry swaps to undo
@@ -30,7 +37,7 @@ export class PlaneBreakup {
   _build() {
     if (this._built) return;
     this._built = true;
-    const plane = this.game.plane;
+    const plane = this.obj();
     plane.updateMatrixWorld(true);
     this._wrapperInv = new THREE.Matrix4().copy(plane.matrixWorld).invert();
 
@@ -51,7 +58,7 @@ export class PlaneBreakup {
         box.expandByPoint(tmp);
       }
     });
-    const size = this.game.plane.userData.size ?? 11;
+    const size = this.obj().userData.size ?? 11;
     // Wings snap at the fuselage side; tails break at the rear third.
     this.fusHalf = THREE.MathUtils.clamp(size * 0.1, 0.5, 3.5);
     this.tailZ = box.max.z - (box.max.z - box.min.z) * 0.3;
@@ -64,17 +71,54 @@ export class PlaneBreakup {
     };
   }
 
+  // Which aeroplane this instance takes apart, and how fast it is going.
+  obj() { return this.subject?.obj ?? this.game.plane; }
+
+  // WHERE THE STRUCTURE IS, measured. A caller that wants to place its own
+  // cut -- src/planedamage.js, when a line of bullet holes has been stitched
+  // across a wing -- needs to know where the fuselage ends and where the tail
+  // begins, and must not guess them a second time.
+  lines() {
+    this._build();
+    return { fusHalf: this.fusHalf, tailZ: this.tailZ, noseZ: this.noseZ };
+  }
+
+  // A CUT NOBODY DREW ON THE AIRFRAME. `region` is a predicate in the
+  // aeroplane's own frame saying which side of the line comes off, exactly
+  // like the four structural regions above -- so a wing sawn off along a row
+  // of holes gets the same geometry surgery, the same tumbling piece and the
+  // same fire as one torn off in a crash. Returns the detached part, or null.
+  cut(key, region, opts = {}) {
+    this._build();
+    this.regions[key] = region;
+    let ok = false;
+    try {
+      ok = this.detach(key, opts);
+    } finally {
+      if (!ok) delete this.regions[key];
+    }
+    return ok ? this.parts[this.parts.length - 1] : null;
+  }
+
+  baseVel() {
+    if (this.subject) return this.subject.velOf?.() ?? new THREE.Vector3();
+    return this.game.airborne ? this.game.vel.clone() : new THREE.Vector3();
+  }
+
   has(part) {
     return !this.gone.has(part);
   }
 
   // Tear a structural part off the airframe. impulse (world, m/s) is added to
   // the aircraft's velocity for the piece; burn attaches a fire + smoke trail.
-  detach(part, { impulse = null, spin = 5, burn = false } = {}) {
+  // `flutter` says this piece is a big flat sheet that see-saws down rather
+  // than dropping like a stone -- true for the two structural wings by name,
+  // and said outright for a cut whose key is not one of those.
+  detach(part, { impulse = null, spin = 5, burn = false, flutter = null } = {}) {
     if (this.gone.has(part)) return false;
     this._build();
     const game = this.game;
-    const plane = game.plane;
+    const plane = this.obj();
     plane.updateMatrixWorld(true);
     this._wrapperInv.copy(plane.matrixWorld).invert();
     const region = this.regions[part];
@@ -99,10 +143,15 @@ export class PlaneBreakup {
         pieces.push({ geo: null, mesh, rel: rel.clone() });
         mesh.parent.remove(mesh);
       } else {
-        this._splits.push({ mesh, origGeo: mesh.geometry });
-        const inGeo = buildSubGeometry(mesh.geometry, inside);
-        mesh.geometry = buildSubGeometry(mesh.geometry, outside);
+        const orig = mesh.geometry;
+        const inGeo = buildSubGeometry(orig, inside);
+        mesh.geometry = buildSubGeometry(orig, outside);
         pieces.push({ geo: inGeo, mesh, rel: rel.clone() });
+        // The player's machine gets its wings back on respawn, so the
+        // original is kept to unwind to. A WRECK never does: holding the
+        // uncut geometry there just doubles what the scene is carrying.
+        if (this.subject) orig.dispose();
+        else this._splits.push({ mesh, origGeo: orig });
       }
     }
     if (!pieces.length) return false;
@@ -127,8 +176,8 @@ export class PlaneBreakup {
 
     const span = bbox.getSize(new THREE.Vector3());
     const radius = Math.max(0.6, Math.min(span.x, span.y, span.z) * 0.4);
-    const isWing = part === 'wingL' || part === 'wingR';
-    const vel = (game.airborne ? game.vel.clone() : new THREE.Vector3())
+    const isWing = flutter ?? (part === 'wingL' || part === 'wingR');
+    const vel = this.baseVel()
       .add(impulse ?? new THREE.Vector3((Math.random() - 0.5) * 6, 3, (Math.random() - 0.5) * 6));
     this.parts.push({
       key: `breakup:${part}:${Math.random().toString(36).slice(2)}`,
@@ -233,6 +282,19 @@ export class PlaneBreakup {
     }
   }
 
+  // Drop the torn-off pieces and their fires WITHOUT putting the aeroplane
+  // back together: for a wreck the cut is what the machine is now, and the
+  // pieces lying around it are the part that has to be bounded (src/planephys
+  // keeps only the last few wrecks' debris).
+  clearParts() {
+    for (const p of this.parts) {
+      this.game.fx.clearBurning(p.key);
+      for (const g of p.geos) g.dispose();
+      p.group.parent?.remove(p.group);
+    }
+    this.parts.length = 0;
+  }
+
   // Undo everything — the plane gets its wings back on respawn.
   restore() {
     // Reverse order: a mesh split twice (wing, then tail) chains geometries —
@@ -248,12 +310,7 @@ export class PlaneBreakup {
       parent.add(obj);
     }
     this._removedWhole.length = 0;
-    for (const p of this.parts) {
-      this.game.fx.clearBurning(p.key);
-      for (const g of p.geos) g.dispose();
-      p.group.parent?.remove(p.group);
-    }
-    this.parts.length = 0;
+    this.clearParts();
     this.gone.clear();
   }
 

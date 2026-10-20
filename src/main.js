@@ -7,11 +7,13 @@ import { HeroLink } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 
+// WoW's flow, and nothing between: login → your personages → the world.
+// There is no start menu and no map page any more ("i dont need this intro
+// page") — ▶ ამ გმირით შესვლა on the personage screen loads the city, and
+// the settings live on that screen too.
 const screens = {
   login: $('screen-login'),
-  menu: $('screen-menu'),
   character: $('screen-character'),
-  map: $('screen-map'),
   game: $('screen-game'),
 };
 
@@ -24,7 +26,6 @@ heroes.onStates = () => {
     renderCharList();
     renderCharInfo();
   }
-  if (screens.map.classList.contains('active')) renderMapSpot();
 };
 
 // "ბოლო ადგილი" for a hero, as the character/map screens print it.
@@ -55,7 +56,6 @@ function agoKa(at) {
 function showScreen(name) {
   Object.values(screens).forEach((s) => s.classList.remove('active'));
   screens[name].classList.add('active');
-  if (name === 'map') renderMapSpot();
   $('chrome').classList.toggle('hidden', name === 'game');
   $('pilot-badge').classList.toggle('hidden', !currentUser);
 }
@@ -243,7 +243,7 @@ async function submitAuth() {
   try { localStorage.setItem(LAST_USER_KEY, data.user?.username ?? username); } catch { /* private mode */ }
   setUser(data.user);
   $('auth-pass').value = $('auth-pass2').value = '';
-  openCharacter('menu'); // WoW-style: character select comes right after login
+  openCharacter(); // WoW-style: character select comes right after login
 }
 $('btn-auth').addEventListener('click', submitAuth);
 for (const id of ['auth-user', 'auth-pass', 'auth-pass2']) {
@@ -258,10 +258,6 @@ window.addEventListener('resize', () => {
 let selectedRace = RACES[0].id;
 let charPrev = null;
 let charPrevToken = 0;
-// Where picking a hero leads next: 'menu' (WoW-style entry after login),
-// 'map' (came from ▶ PLAY without a hero), or null (browsing from the menu).
-let charNext = null;
-
 const RACE_STAT_LABELS = ['შეტევა', 'დაცვა', 'განკურნება', 'სისწრაფე'];
 
 async function setCharPreviewModel(raceId) {
@@ -273,26 +269,6 @@ async function setCharPreviewModel(raceId) {
   rig.play('Idle');
   charPrev.rig = rig;
   charPrev.heroHolder.add(rig.obj);
-}
-
-// The hero's machine hovers behind them in the holo scan — personage = body + plane.
-let charPlaneToken = 0;
-async function setCharPreviewPlane(planeId) {
-  if (!charPrev) return;
-  const token = ++charPlaneToken;
-  if (!planeId) { charPrev.planeHolder.clear(); return; }
-  const model = await loadPlane(planeId);
-  if (!charPrev || token !== charPlaneToken) return;
-  const g = charPrev.planeHolder;
-  g.clear();
-  const box = new THREE.Box3().setFromObject(model);
-  model.position.sub(box.getCenter(new THREE.Vector3()));
-  const size = box.getSize(new THREE.Vector3());
-  const wrap = new THREE.Group();
-  wrap.add(model);
-  // same frame for an 8.5 m racer and a 52 m C-17
-  wrap.scale.setScalar(3.4 / Math.max(size.x, size.y, size.z));
-  g.add(wrap);
 }
 
 function sizeCharPreview() {
@@ -329,15 +305,10 @@ function startCharPreview() {
   scene.add(holder);
   const heroHolder = new THREE.Group();
   holder.add(heroHolder);
-  // The plane sits above the hero on its own pivot — PUBG-lobby style, no spin.
-  const planeHolder = new THREE.Group();
-  planeHolder.position.set(0, 2.45, -2.2);
-  planeHolder.rotation.y = 0.55; // static 3/4 view
-  scene.add(planeHolder);
 
   wireCharDrag(canvas);
 
-  charPrev = { renderer, camera, holder, heroHolder, planeHolder, rig: null, clock: new THREE.Clock(), running: true };
+  charPrev = { renderer, camera, holder, heroHolder, rig: null, clock: new THREE.Clock(), running: true };
   sizeCharPreview();
   const animate = () => {
     if (!charPrev?.running) return;
@@ -349,8 +320,8 @@ function startCharPreview() {
   setCharPreviewModel(selectedRace);
 }
 
-// Drag to look around, PUBG-lobby style: the mouse turns hero and plane
-// together. Wired once — the same canvas survives screen open/close cycles.
+// Drag to look around, PUBG-lobby style: the mouse turns the hero. Wired
+// once — the same canvas survives screen open/close cycles.
 let charDragWired = false;
 function wireCharDrag(canvas) {
   if (charDragWired) return;
@@ -369,7 +340,6 @@ function wireCharDrag(canvas) {
     const dx = e.clientX - lastX;
     lastX = e.clientX;
     charPrev.holder.rotation.y += dx * 0.012;
-    charPrev.planeHolder.rotation.y += dx * 0.012;
   });
   const endDrag = () => {
     dragging = false;
@@ -406,35 +376,15 @@ function selectBody(raceId, bodyId) {
   renderCharList();
   renderCharInfo();
   setCharPreviewModel(selectedModel);
-  // (no plane in the preview while creating — the bar under the hero says it)
+  // (the preview is the hero alone — no plane behind them in either mode;
+  //  the plane is named in the panel and on the bar under the hero)
 }
 
-// Plane cycler — only the machines the chosen role (race) can fly, and ONLY
-// for a hero that already exists. You do not pick your machine while you are
-// being born: a new hero is handed its role's lightest one and changes it here
-// afterwards, the way WoW gives you a class and not a mount. ("like in wow. u
-// are not take plane on start")
-function renderPlaneRow() {
-  const hero = charMode === 'roster' ? roster[selectedHero] : null;
-  $('char-plane-row').classList.toggle('hidden', !hero);
-  if (hero) $('cp-label').textContent = `✈ ${planeById(hero.plane).name}`;
-}
-
-function cyclePlane(dir) {
-  const hero = charMode === 'roster' ? roster[selectedHero] : null;
-  if (!hero) return;
-  const allowed = raceById(hero.race).planes;
-  const i = Math.max(0, allowed.indexOf(hero.plane));
-  hero.plane = allowed[(i + dir + allowed.length) % allowed.length];
-  if (selectedHero === activeIdx) chosenPlane = hero.plane; // the one you fly
-  saveRoster();
-  renderCharList();  // the row prints the plane's code
-  renderCharInfo();  // banner + code line show the plane too
-  setCharPreviewPlane(hero.plane);
-}
-
-$('cp-prev').addEventListener('click', () => cyclePlane(-1));
-$('cp-next').addEventListener('click', () => cyclePlane(1));
+// NO MACHINE PICKING ON THIS SCREEN. The ◄ ► cycler that used to sit under
+// the stats is gone ("when u are choose personage, u cant choose plane,
+// remove this arrows"): a personage owns its role's machine, the panel and
+// the hero card just NAME it, and planes are taken in the world — the hall by
+// the warehouse is full of them.
 
 // One race down a column: its banner, then every body it owns as a tile.
 function renderRaceColumn(el, race) {
@@ -493,7 +443,7 @@ function renderCharList() {
     const spot = heroSpot(hero);
     item.innerHTML = `
       <div class="pl-row1"><span class="pl-name"><span class="race-icon">${def.icon}</span>${hero.name}</span><span class="pl-code">${body.icon} ✈ ${plane.code}</span></div>
-      <div class="pl-row2"><span class="pl-cls">${def.roleKa}</span><span class="pl-tag${i === activeIdx ? ' equipped' : ''}">${i === activeIdx ? 'ACTIVE' : def.role}</span></div>`
+      <div class="pl-row2"><span class="pl-cls">${def.roleKa}</span>${i === activeIdx ? '<span class="pl-tag equipped">ACTIVE</span>' : ''}</div>`
       + (spot ? `<div class="pl-row3">📍 ${spot.place} · ${spot.mode}</div>` : '');
     item.addEventListener('click', () => selectHero(i));
     list.appendChild(item);
@@ -533,7 +483,6 @@ function renderCharInfo() {
       <div class="hs-track"><div class="hs-fill" style="width:${v}%"></div></div>`;
     stats.appendChild(row);
   });
-  renderPlaneRow();
   if (charMode === 'create') {
     const body = personageById(selectedModel);
     $('cb-line').innerHTML = `${def.icon} <b>${def.name}</b> · ${body.icon} ${body.name}`
@@ -541,19 +490,16 @@ function renderCharInfo() {
   }
   $('char-name-fld').classList.toggle('hidden', charMode !== 'create');
   $('btn-char-delete').classList.toggle('hidden', charMode !== 'roster' || !hero);
-  // Entry flow (after login) has nowhere to go "back" to until a hero exists.
-  $('btn-char-back').classList.toggle('hidden', !activeHero() && charNext !== null);
+  // ◄ უკან only means "never mind, back to my heroes" — there is no screen
+  // behind this one, and a pilot with no hero yet has no roster to go back to.
+  $('btn-char-back').classList.toggle('hidden', charMode !== 'create' || !roster.length);
   const btn = $('btn-char-create');
   if (charMode === 'create') {
     btn.textContent = 'შექმნა';
     btn.classList.remove('equipped');
-  } else if (charNext) {
-    btn.textContent = '▶ ამ გმირით შესვლა'; // WoW's "Enter World"
-    btn.classList.remove('equipped');
   } else {
-    const isActive = selectedHero === activeIdx && hero;
-    btn.textContent = isActive ? '✓ აქტიური გმირი' : 'ამ გმირით თამაში';
-    btn.classList.toggle('equipped', !!isActive);
+    btn.textContent = '▶ ამ გმირით შესვლა'; // WoW's "Enter World" — straight in
+    btn.classList.remove('equipped');
   }
 }
 
@@ -563,7 +509,6 @@ function selectHero(i) {
   renderCharInfo();
   if (roster[i]) {
     setCharPreviewModel(roster[i].model);
-    setCharPreviewPlane(roster[i].plane);
   }
 }
 
@@ -577,16 +522,24 @@ function enterCreateMode() {
   renderCharList();
   renderCharInfo();
   setCharPreviewModel(selectedModel);
-  setCharPreviewPlane(null); // the hero alone, WoW-style
 }
 
-function openCharacter(next = null) {
-  charNext = next;
+// Back out of creation onto the roster (the head's ◄ უკან).
+function enterRosterMode() {
+  if (!roster.length) return;
+  charMode = 'roster';
+  selectedHero = activeIdx >= 0 ? activeIdx : 0;
+  $('char-sub').textContent = 'შენი გმირები — აირჩიე ან შექმენი ახალი';
+  renderCharList();
+  renderCharInfo();
+  setCharPreviewModel(roster[selectedHero].model);
+}
+
+function openCharacter() {
   if (roster.length) {
     charMode = 'roster';
     selectedHero = activeIdx >= 0 ? activeIdx : 0;
-    $('char-sub').textContent =
-      next === 'map' ? '⚠ აირჩიე გმირი ფრენამდე' : 'შენი გმირები — აირჩიე ან შექმენი ახალი';
+    $('char-sub').textContent = 'შენი გმირები — აირჩიე ან შექმენი ახალი';
   } else {
     charMode = 'create';
     $('char-name').value = '';
@@ -601,7 +554,6 @@ function openCharacter(next = null) {
   startCharPreview();
   sizeCharPreview(); // canvas has real dimensions only after the screen is visible
   setCharPreviewModel(charMode === 'roster' ? roster[selectedHero].model : selectedModel);
-  setCharPreviewPlane(charMode === 'roster' ? roster[selectedHero].plane : null);
 }
 
 $('btn-char-create').addEventListener('click', () => {
@@ -635,12 +587,8 @@ $('btn-char-create').addEventListener('click', () => {
   saveRoster();
   renderCharList();
   renderCharInfo();
-  if (charNext) {
-    const dest = charNext === 'map' ? 'map' : 'menu';
-    charNext = null;
-    stopCharPreview();
-    showScreen(dest);
-  }
+  stopCharPreview();
+  startFlight(); // the personage screen IS the door into the city
 });
 
 $('btn-char-delete').addEventListener('click', () => {
@@ -657,7 +605,6 @@ $('btn-char-delete').addEventListener('click', () => {
     renderCharList();
     renderCharInfo();
     setCharPreviewModel(roster[selectedHero].model);
-    setCharPreviewPlane(roster[selectedHero].plane);
   }
 });
 
@@ -665,10 +612,7 @@ $('char-name').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('btn-char-create').click();
 });
 
-$('btn-char-back').addEventListener('click', () => {
-  stopCharPreview();
-  showScreen('menu');
-});
+$('btn-char-back').addEventListener('click', enterRosterMode);
 
 // ---- equipped plane (no hangar page: the plane belongs to the personage) ----
 let chosenPlane = 'spitfire'; // what the active hero flies
@@ -682,32 +626,14 @@ const planeAllowed = (id) => {
 const firstAllowedPlane = () =>
   (PLANES.find((p) => planeAllowed(p.id)) ?? PLANES[0]).id;
 
-// ---- start menu ----
+// ---- settings: a chip on the personage screen, not a menu page ----
 const settings = new SettingsUI(null); // shared instance; the Game attaches to it
+$('btn-char-settings').addEventListener('click', () => settings.open());
 
-$('btn-play').addEventListener('click', () => {
-  if (!activeHero()) openCharacter('map'); // no hero yet — create one first
-  else showScreen('map');
-});
-$('btn-character').addEventListener('click', () => openCharacter(null));
-$('btn-menu-settings').addEventListener('click', () => settings.open());
-$('btn-map-back').addEventListener('click', () => showScreen('menu'));
-
-// City cards: only Tbilisi is unlocked for now; locked ones shake.
+// The only city there is. The map page that used to pick one is gone — the
+// others were locked cards anyway, and a second city belongs on the personage
+// screen when it unlocks.
 let selectedCity = 'tbilisi';
-document.querySelectorAll('.city-card').forEach((card) => {
-  card.addEventListener('click', () => {
-    if (card.classList.contains('locked')) {
-      card.classList.remove('shake');
-      void card.offsetWidth; // restart the animation
-      card.classList.add('shake');
-      return;
-    }
-    document.querySelectorAll('.city-card').forEach((c) => c.classList.remove('selected'));
-    card.classList.add('selected');
-    selectedCity = card.dataset.city;
-  });
-});
 
 // Spawn points: city-center avenues (the game snaps to the nearest road).
 const SPAWN_CITIES = {
@@ -729,20 +655,6 @@ const SPAWN_CITIES = {
   rustavi: { lat: 41.5495, lon: 45.011 },
   kazbegi: { lat: 42.657, lon: 44.641 },
 };
-
-// The map screen tells you up front that ▶ ფრენა continues the hero's session
-// instead of starting over at the airport.
-function renderMapSpot() {
-  const el = $('map-spot');
-  if (!el) return;
-  const spot = heroSpot(activeHero());
-  el.classList.toggle('hidden', !spot);
-  if (spot) {
-    el.innerHTML = `📍 ${activeHero().name} გაჩერდა: <b>${spot.place}</b> · ${spot.mode} (${agoKa(spot.at)})`
-      + '<small>გაგრძელდება იქიდან, სადაც გაჩერდი</small>';
-  }
-  $('btn-map').textContent = spot ? 'გაგრძელება ✈' : 'ფრენა ✈';
-}
 
 let game = null;
 
@@ -807,8 +719,6 @@ async function startFlight() {
   };
 }
 
-$('btn-map').addEventListener('click', startFlight);
-
 $('btn-restart').addEventListener('click', () => game?.resetPlane());
 
 // 🎬 — the looping cinematics. Wired once, on the live game: the Game object is
@@ -868,13 +778,13 @@ function leaveGame() {
 
 $('btn-back').addEventListener('click', () => {
   leaveGame();
-  showScreen('menu');
+  openCharacter(); // WoW's "exit to character select"
 });
 
 // ---- logout ----------------------------------------------------------------
-// Reachable from the start menu, from the pilot badge on every menu screen
-// (the character screen included -- that is where a login lands, and there was
-// no way out of it without flying first), and from the 🚪 chip in the game.
+// Reachable from the pilot badge on the personage screen (that is where a
+// login lands, and there was no way out of it without flying first) and from
+// the 🚪 chip in the game.
 //
 // It ends the SESSION and nothing else: the hero, its spawn place, its kit and
 // the autostart flag all stay exactly as they are, so logging back in puts the
@@ -898,13 +808,12 @@ function doLogout() {
   currentUser = null;
   roster = [];
   activeIdx = -1;
-  charNext = null;
   setAuthMode('login');
   $('auth-user').value = lastUser();
   $('auth-pass').value = $('auth-pass2').value = '';
   showScreen('login');
 }
-for (const id of ['btn-logout', 'btn-logout-top', 'btn-logout-game']) {
+for (const id of ['btn-logout-top', 'btn-logout-game']) {
   $(id).addEventListener('click', doLogout);
 }
 
@@ -937,7 +846,7 @@ function autostartWanted() {
         startFlight();
         return;
       }
-      openCharacter('menu'); // WoW-style: land on your personages first
+      openCharacter(); // WoW-style: land on your personages first
       return;
     }
     clearToken(); // stale or revoked — ask again

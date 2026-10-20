@@ -33,7 +33,7 @@ const rows = await page.evaluate(async (only) => {
         span1: +(plane.userData.halfSpan * 2).toFixed(2),
         grow: c ? +c.grow.toFixed(2) : 1,
         room: c ? +(c.room / (c.grow || 1)).toFixed(2) : null,
-        seat: c ? [0, +c.seat.y.toFixed(2), +c.seat.z.toFixed(2)] : null,
+        seat: c ? [+c.seat.x.toFixed(2), +c.seat.y.toFixed(2), +c.seat.z.toFixed(2)] : null,
         from: c?.from ?? '-',
       });
     } catch (e) { out.push({ id: def.id, error: e.message }); }
@@ -47,6 +47,6 @@ for (const r of rows) {
   const flag = r.grow >= 2.3 ? '  <-- CHECK' : '';
   console.log(`${r.id.padEnd(12)} ${String(r.span0).padStart(6)} m -> ${String(r.span1).padStart(6)} m`
     + `  ${('x' + r.grow.toFixed(2)).padStart(6)}   ${String(r.room ?? '-').padStart(5)} m`
-    + `   ${String(r.seat?.[1] ?? '-').padStart(6)} ${String(r.seat?.[2] ?? '-').padStart(6)}   ${r.from}${flag}`);
+    + `   x${String(r.seat?.[0] ?? '-').padStart(5)} ${String(r.seat?.[1] ?? '-').padStart(6)} ${String(r.seat?.[2] ?? '-').padStart(6)}   ${r.from}${flag}`);
 }
 await browser.close();

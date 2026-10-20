@@ -14,11 +14,7 @@ await page.click('#btn-auth');
 await page.waitForSelector('#screen-character.active', { timeout: 20000 });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: DIR + '/badge.png', clip: { x: 900, y: 0, width: 380, height: 70 } });
-await page.click('#btn-char-create');
-await page.waitForSelector('#screen-menu.active', { timeout: 15000 });
-await page.click('#btn-play');
-await page.waitForSelector('#btn-map', { timeout: 15000 });
-await page.click('#btn-map');
+await page.click('#btn-char-create'); // straight into the city — no menu, no map page
 await page.waitForFunction(() => window.__game?.world?.ready, null, { timeout: 420000 });
 await page.waitForTimeout(5000);
 await page.screenshot({ path: DIR + '/chips.png', clip: { x: 1180, y: 120, width: 100, height: 200 } });

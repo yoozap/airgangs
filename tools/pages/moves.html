@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- Contact sheet for the move library (src/anims.js): one body, one row of
+     clones, each frozen at the same phase of a different clip. Standalone on
+     purpose -- it never loads the game, so a look at a retarget costs a second
+     instead of the six minutes an enterGame probe takes.
+       http://localhost:5173/tools/pages/moves.html?body=banana&phase=0.45
+     Driven by tools/_shot_moves.mjs. -->
+<meta charset="utf-8">
+<title>moves</title>
+<style>html,body{margin:0;background:#1b2027;overflow:hidden}canvas{display:block}
+#t{position:fixed;left:0;top:0;right:0;color:#9fd;font:12px/1.4 monospace;padding:4px 8px;white-space:pre}</style>
+<div id="t"></div>
+<script type="module">
+import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { newGltfLoader } from '/src/gltf.js';
+import { loadMoves, movesFor, canTakeMoves } from '/src/anims.js';
+
+const qs = new URLSearchParams(location.search);
+// ?audit=1 — no pictures, just which bodies on disk the retarget can take and
+// what it costs them. tools/_shot_moves.mjs --audit prints the table.
+if (qs.get('audit')) {
+  const out = [];
+  for (const id of (qs.get('bodies') || '').split(',').filter(Boolean)) {
+    const t0 = performance.now();
+    try {
+      const g = await newGltfLoader().loadAsync(`/models/personages/${id}.glb`);
+      const take = await canTakeMoves(g.scene, id);
+      const m = take ? await movesFor(g.scene, id) : null;
+      out.push({ id, take, clips: m?.size ?? 0, ms: Math.round(performance.now() - t0) });
+    } catch (e) { out.push({ id, take: false, clips: 0, err: String(e.message || e) }); }
+  }
+  document.getElementById('t').textContent = out.map((r) => `${r.id} ${r.take}`).join('\n');
+  window.__ready = { audit: out };
+} else {
+const body = qs.get('body') || 'banana';
+const phase = parseFloat(qs.get('phase') ?? '0.45');
+const HEIGHT = 1.8;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b2027);
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x30343c, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+sun.position.set(2, 4, 3);
+scene.add(sun);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+try {
+  const gltf = await newGltfLoader().loadAsync(`/models/personages/${body}.glb`);
+  const take = await canTakeMoves(gltf.scene, body);
+  const names = (qs.get('clips') || '').split(',').filter(Boolean);
+  const moves = await movesFor(gltf.scene, body, names.length ? names : null);
+  const list = names.length ? names.filter((n) => moves?.has(n)) : [...(moves?.keys() ?? [])];
+
+  // every body comes in at its own scale; the game shows them all at 1.8 m
+  const box = new THREE.Box3().setFromObject(gltf.scene);
+  const k = HEIGHT / Math.max(1e-6, box.max.y - box.min.y);
+
+  const mixers = [];
+  const step = 1.1;
+  list.forEach((name, i) => {
+    const o = cloneSkeleton(gltf.scene);
+    o.scale.setScalar(k);
+    o.position.set((i - (list.length - 1) / 2) * step, -box.min.y * k, 0);
+    scene.add(o);
+    const m = new THREE.AnimationMixer(o);
+    const a = m.clipAction(moves.get(name));
+    a.play();
+    m.setTime(phase * moves.get(name).duration);
+    mixers.push(m);
+    const lbl = document.createElement('div');
+    lbl.textContent = name;
+    o.userData.label = lbl;
+  });
+
+  // a camera that frames the whole row
+  const span = Math.max(step * list.length, 2);
+  const cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 100);
+  cam.position.set(0, HEIGHT * 0.62, span * 1.25);
+  cam.lookAt(0, HEIGHT * 0.52, 0);
+
+  const grid = new THREE.GridHelper(span * 1.5, Math.round(span * 1.5), 0x33404d, 0x262c34);
+  scene.add(grid);
+
+  renderer.render(scene, cam);
+  document.getElementById('t').textContent =
+    `${body}  retarget=${take ? 'yes' : 'NO'}  phase=${phase}\n` + list.join('   ');
+  window.__ready = { body, take, clips: list };
+} catch (e) {
+  document.getElementById('t').textContent = `FAILED: ${e.message}`;
+  window.__ready = { error: String(e && e.stack || e) };
+}
+}
+</script>

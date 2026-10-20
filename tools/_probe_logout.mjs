@@ -37,11 +37,7 @@ const login = async () => {
   await page.waitForSelector('#screen-character.active', { timeout: 20000 });
 };
 const intoWorld = async () => {
-  await page.click('#btn-char-create');
-  await page.waitForSelector('#screen-menu.active', { timeout: 15000 });
-  await page.click('#btn-play');
-  await page.waitForSelector('#btn-map', { timeout: 15000 });
-  await page.click('#btn-map');
+  await page.click('#btn-char-create'); // straight into the city — no menu, no map page
   await page.waitForFunction(() => window.__game?.world?.ready, null, { timeout: 420000 });
 };
 

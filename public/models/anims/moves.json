@@ -1,0 +1,1690 @@
+{
+ "source": "Quaternius Universal Animation Library 2 (CC0)",
+ "note": "built by tools/build_anims.py -- rotations only; see src/anims.js",
+ "hipHeight": 0.9167,
+ "forward": [
+  0,
+  0,
+  1
+ ],
+ "bones": [
+  "root",
+  "pelvis",
+  "spine_01",
+  "spine_02",
+  "spine_03",
+  "neck_01",
+  "Head",
+  "clavicle_l",
+  "upperarm_l",
+  "lowerarm_l",
+  "hand_l",
+  "index_01_l",
+  "index_02_l",
+  "index_03_l",
+  "index_04_leaf_l",
+  "middle_01_l",
+  "middle_02_l",
+  "middle_03_l",
+  "middle_04_leaf_l",
+  "pinky_01_l",
+  "pinky_02_l",
+  "pinky_03_l",
+  "pinky_04_leaf_l",
+  "ring_01_l",
+  "ring_02_l",
+  "ring_03_l",
+  "ring_04_leaf_l",
+  "thumb_01_l",
+  "thumb_02_l",
+  "thumb_03_l",
+  "thumb_04_leaf_l",
+  "clavicle_r",
+  "upperarm_r",
+  "lowerarm_r",
+  "hand_r",
+  "index_01_r",
+  "index_02_r",
+  "index_03_r",
+  "index_04_leaf_r",
+  "middle_01_r",
+  "middle_02_r",
+  "middle_03_r",
+  "middle_04_leaf_r",
+  "pinky_01_r",
+  "pinky_02_r",
+  "pinky_03_r",
+  "pinky_04_leaf_r",
+  "ring_01_r",
+  "ring_02_r",
+  "ring_03_r",
+  "ring_04_leaf_r",
+  "thumb_01_r",
+  "thumb_02_r",
+  "thumb_03_r",
+  "thumb_04_leaf_r",
+  "thigh_l",
+  "calf_l",
+  "foot_l",
+  "ball_l",
+  "ball_leaf_l",
+  "thigh_r",
+  "calf_r",
+  "foot_r",
+  "ball_r",
+  "ball_leaf_r"
+ ],
+ "refPose": {
+  "root": [
+   -0.707107,
+   0.0,
+   0.0,
+   0.707107
+  ],
+  "pelvis": [
+   0.125841,
+   0.0,
+   0.0,
+   0.99205
+  ],
+  "spine_01": [
+   0.061389,
+   0.0,
+   0.0,
+   0.998114
+  ],
+  "spine_02": [
+   -0.015929,
+   0.0,
+   0.0,
+   0.999873
+  ],
+  "spine_03": [
+   -0.016197,
+   0.0,
+   0.0,
+   0.999869
+  ],
+  "neck_01": [
+   0.094874,
+   0.0,
+   0.0,
+   0.995489
+  ],
+  "Head": [
+   0.016261,
+   0.0,
+   0.0,
+   0.999868
+  ],
+  "clavicle_l": [
+   -0.614041,
+   -0.350836,
+   -0.351081,
+   0.613685
+  ],
+  "upperarm_l": [
+   -0.00604,
+   0.00607,
+   -0.707081,
+   0.707081
+  ],
+  "lowerarm_l": [
+   0.006095,
+   -0.006095,
+   -0.70708,
+   0.707081
+  ],
+  "hand_l": [
+   0.0,
+   0.0,
+   -0.707107,
+   0.707107
+  ],
+  "index_01_l": [
+   0.500002,
+   0.500002,
+   -0.499998,
+   0.499998
+  ],
+  "index_02_l": [
+   0.500002,
+   0.500002,
+   -0.499998,
+   0.499998
+  ],
+  "index_03_l": [
+   0.500002,
+   0.500002,
+   -0.499998,
+   0.499998
+  ],
+  "index_04_leaf_l": [
+   0.5,
+   0.5,
+   0.5,
+   -0.5
+  ],
+  "middle_01_l": [
+   0.488052,
+   0.511673,
+   -0.511669,
+   0.488048
+  ],
+  "middle_02_l": [
+   0.488826,
+   0.510933,
+   -0.51093,
+   0.488822
+  ],
+  "middle_03_l": [
+   0.488248,
+   0.511485,
+   -0.511482,
+   0.488245
+  ],
+  "middle_04_leaf_l": [
+   -0.511483,
+   -0.488247,
+   -0.488247,
+   0.511483
+  ],
+  "pinky_01_l": [
+   0.482958,
+   0.516483,
+   -0.51648,
+   0.482954
+  ],
+  "pinky_02_l": [
+   0.482527,
+   0.516886,
+   -0.516883,
+   0.482523
+  ],
+  "pinky_03_l": [
+   0.482842,
+   0.516592,
+   -0.516588,
+   0.482838
+  ],
+  "pinky_04_leaf_l": [
+   -0.51659,
+   -0.48284,
+   -0.48284,
+   0.51659
+  ],
+  "ring_01_l": [
+   0.491021,
+   0.508824,
+   -0.508821,
+   0.491017
+  ],
+  "ring_02_l": [
+   0.491027,
+   0.508818,
+   -0.508815,
+   0.491024
+  ],
+  "ring_03_l": [
+   0.490484,
+   0.509342,
+   -0.509338,
+   0.49048
+  ],
+  "ring_04_leaf_l": [
+   -0.50934,
+   -0.490482,
+   -0.490482,
+   0.50934
+  ],
+  "thumb_01_l": [
+   0.843725,
+   0.49383,
+   0.105965,
+   0.181745
+  ],
+  "thumb_02_l": [
+   0.843732,
+   0.493762,
+   0.105978,
+   0.181891
+  ],
+  "thumb_03_l": [
+   0.843504,
+   0.494255,
+   0.105827,
+   0.181698
+  ],
+  "thumb_04_leaf_l": [
+   0.673895,
+   0.518231,
+   0.518231,
+   -0.093479
+  ],
+  "clavicle_r": [
+   -0.614041,
+   0.350836,
+   0.351081,
+   0.613685
+  ],
+  "upperarm_r": [
+   -0.00604,
+   -0.00607,
+   0.707081,
+   0.707081
+  ],
+  "lowerarm_r": [
+   0.006095,
+   0.006095,
+   0.70708,
+   0.707081
+  ],
+  "hand_r": [
+   0.0,
+   0.0,
+   0.707107,
+   0.707107
+  ],
+  "index_01_r": [
+   0.500002,
+   -0.500002,
+   0.499998,
+   0.499998
+  ],
+  "index_02_r": [
+   0.500002,
+   -0.500002,
+   0.499998,
+   0.499998
+  ],
+  "index_03_r": [
+   0.500002,
+   -0.500002,
+   0.499998,
+   0.499998
+  ],
+  "index_04_leaf_r": [
+   -0.5,
+   0.5,
+   0.5,
+   0.5
+  ],
+  "middle_01_r": [
+   -0.488052,
+   0.511673,
+   -0.511669,
+   -0.488048
+  ],
+  "middle_02_r": [
+   -0.488826,
+   0.510933,
+   -0.51093,
+   -0.488822
+  ],
+  "middle_03_r": [
+   -0.488248,
+   0.511485,
+   -0.511482,
+   -0.488245
+  ],
+  "middle_04_leaf_r": [
+   -0.511483,
+   0.488247,
+   0.488246,
+   0.511483
+  ],
+  "pinky_01_r": [
+   -0.482958,
+   0.516483,
+   -0.51648,
+   -0.482954
+  ],
+  "pinky_02_r": [
+   -0.482527,
+   0.516886,
+   -0.516883,
+   -0.482523
+  ],
+  "pinky_03_r": [
+   -0.482842,
+   0.516592,
+   -0.516588,
+   -0.482838
+  ],
+  "pinky_04_leaf_r": [
+   -0.51659,
+   0.48284,
+   0.48284,
+   0.51659
+  ],
+  "ring_01_r": [
+   -0.491021,
+   0.508824,
+   -0.508821,
+   -0.491017
+  ],
+  "ring_02_r": [
+   -0.491027,
+   0.508818,
+   -0.508815,
+   -0.491024
+  ],
+  "ring_03_r": [
+   -0.490484,
+   0.509342,
+   -0.509338,
+   -0.49048
+  ],
+  "ring_04_leaf_r": [
+   -0.50934,
+   0.490482,
+   0.490482,
+   0.50934
+  ],
+  "thumb_01_r": [
+   0.843725,
+   -0.49383,
+   -0.105965,
+   0.181745
+  ],
+  "thumb_02_r": [
+   0.843732,
+   -0.493762,
+   -0.105978,
+   0.181891
+  ],
+  "thumb_03_r": [
+   0.843504,
+   -0.494255,
+   -0.105827,
+   0.181698
+  ],
+  "thumb_04_leaf_r": [
+   0.673895,
+   -0.518231,
+   -0.518231,
+   -0.093479
+  ],
+  "thigh_l": [
+   0.999994,
+   0.0,
+   0.0,
+   -0.003495
+  ],
+  "calf_l": [
+   0.999196,
+   5e-06,
+   -0.000131,
+   -0.040083
+  ],
+  "foot_l": [
+   0.869101,
+   -0.000256,
+   -0.00045,
+   0.494635
+  ],
+  "ball_l": [
+   -0.0,
+   0.707107,
+   0.707107,
+   0.0
+  ],
+  "ball_leaf_l": [
+   -0.0,
+   0.707107,
+   0.707107,
+   0.0
+  ],
+  "thigh_r": [
+   0.999994,
+   0.0,
+   0.0,
+   -0.003495
+  ],
+  "calf_r": [
+   0.999196,
+   5e-06,
+   -0.000131,
+   -0.040083
+  ],
+  "foot_r": [
+   0.869101,
+   -0.000256,
+   -0.00045,
+   0.494635
+  ],
+  "ball_r": [
+   -0.0,
+   0.707107,
+   0.707107,
+   0.0
+  ],
+  "ball_leaf_r": [
+   -0.0,
+   0.707107,
+   0.707107,
+   0.0
+  ]
+ },
+ "refPos": {
+  "root": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "pelvis": [
+   0.0,
+   0.9167,
+   -0.0501
+  ],
+  "spine_01": [
+   0.0,
+   1.0505,
+   -0.0156
+  ],
+  "spine_02": [
+   0.0,
+   1.1736,
+   -0.0004
+  ],
+  "spine_03": [
+   0.0,
+   1.3148,
+   -0.0049
+  ],
+  "neck_01": [
+   0.0,
+   1.4876,
+   -0.0105
+  ],
+  "Head": [
+   0.0,
+   1.5687,
+   0.0051
+  ],
+  "clavicle_l": [
+   0.0188,
+   1.4579,
+   0.0714
+  ],
+  "upperarm_l": [
+   0.1919,
+   1.4408,
+   -0.0654
+  ],
+  "lowerarm_l": [
+   0.4663,
+   1.4408,
+   -0.0701
+  ],
+  "hand_l": [
+   0.7389,
+   1.4408,
+   -0.0654
+  ],
+  "index_01_l": [
+   0.8588,
+   1.4388,
+   -0.0345
+  ],
+  "index_02_l": [
+   0.8995,
+   1.4388,
+   -0.0345
+  ],
+  "index_03_l": [
+   0.9343,
+   1.4388,
+   -0.0345
+  ],
+  "index_04_leaf_l": [
+   0.9644,
+   1.4388,
+   -0.0345
+  ],
+  "middle_01_l": [
+   0.8605,
+   1.4412,
+   -0.0602
+  ],
+  "middle_02_l": [
+   0.9028,
+   1.4412,
+   -0.0622
+  ],
+  "middle_03_l": [
+   0.9367,
+   1.4412,
+   -0.0637
+  ],
+  "middle_04_leaf_l": [
+   0.9711,
+   1.4412,
+   -0.0653
+  ],
+  "pinky_01_l": [
+   0.8466,
+   1.439201,
+   -0.1062
+  ],
+  "pinky_02_l": [
+   0.8868,
+   1.439201,
+   -0.1089
+  ],
+  "pinky_03_l": [
+   0.9144,
+   1.4392,
+   -0.1108
+  ],
+  "pinky_04_leaf_l": [
+   0.9425,
+   1.4392,
+   -0.1127
+  ],
+  "ring_01_l": [
+   0.858,
+   1.4409,
+   -0.0825
+  ],
+  "ring_02_l": [
+   0.8973,
+   1.440901,
+   -0.0839
+  ],
+  "ring_03_l": [
+   0.9282,
+   1.440901,
+   -0.085
+  ],
+  "ring_04_leaf_l": [
+   0.96,
+   1.440901,
+   -0.0862
+  ],
+  "thumb_01_l": [
+   0.7662,
+   1.418,
+   -0.0318
+  ],
+  "thumb_02_l": [
+   0.8004,
+   1.3988,
+   -0.0141
+  ],
+  "thumb_03_l": [
+   0.8394,
+   1.3769,
+   0.0061
+  ],
+  "thumb_04_leaf_l": [
+   0.8719,
+   1.3587,
+   0.0229
+  ],
+  "clavicle_r": [
+   -0.0188,
+   1.4579,
+   0.0714
+  ],
+  "upperarm_r": [
+   -0.1919,
+   1.4408,
+   -0.0654
+  ],
+  "lowerarm_r": [
+   -0.4663,
+   1.4408,
+   -0.0701
+  ],
+  "hand_r": [
+   -0.7389,
+   1.4408,
+   -0.0654
+  ],
+  "index_01_r": [
+   -0.8588,
+   1.4388,
+   -0.0345
+  ],
+  "index_02_r": [
+   -0.8995,
+   1.4388,
+   -0.0345
+  ],
+  "index_03_r": [
+   -0.9343,
+   1.438801,
+   -0.0345
+  ],
+  "index_04_leaf_r": [
+   -0.9644,
+   1.438801,
+   -0.0345
+  ],
+  "middle_01_r": [
+   -0.8605,
+   1.4412,
+   -0.0602
+  ],
+  "middle_02_r": [
+   -0.9028,
+   1.441201,
+   -0.0622
+  ],
+  "middle_03_r": [
+   -0.9367,
+   1.441201,
+   -0.0637
+  ],
+  "middle_04_leaf_r": [
+   -0.9711,
+   1.4412,
+   -0.0653
+  ],
+  "pinky_01_r": [
+   -0.8466,
+   1.4392,
+   -0.1062
+  ],
+  "pinky_02_r": [
+   -0.8868,
+   1.4392,
+   -0.1089
+  ],
+  "pinky_03_r": [
+   -0.9144,
+   1.439201,
+   -0.1108
+  ],
+  "pinky_04_leaf_r": [
+   -0.9425,
+   1.439201,
+   -0.1127
+  ],
+  "ring_01_r": [
+   -0.858,
+   1.4409,
+   -0.0825
+  ],
+  "ring_02_r": [
+   -0.8973,
+   1.440901,
+   -0.0839
+  ],
+  "ring_03_r": [
+   -0.9282,
+   1.440901,
+   -0.085
+  ],
+  "ring_04_leaf_r": [
+   -0.96,
+   1.440901,
+   -0.0862
+  ],
+  "thumb_01_r": [
+   -0.7662,
+   1.418,
+   -0.0318
+  ],
+  "thumb_02_r": [
+   -0.8004,
+   1.3988,
+   -0.0141
+  ],
+  "thumb_03_r": [
+   -0.8394,
+   1.3769,
+   0.0061
+  ],
+  "thumb_04_leaf_r": [
+   -0.8719,
+   1.358701,
+   0.0229
+  ],
+  "thigh_l": [
+   0.089,
+   0.9321,
+   0.0014
+  ],
+  "calf_l": [
+   0.089,
+   0.5318,
+   -0.001398
+  ],
+  "foot_l": [
+   0.089,
+   0.1037,
+   -0.0358
+  ],
+  "ball_l": [
+   0.089,
+   0.0152,
+   0.1132
+  ],
+  "ball_leaf_l": [
+   0.089,
+   0.0152,
+   0.1921
+  ],
+  "thigh_r": [
+   -0.089,
+   0.9321,
+   0.0014
+  ],
+  "calf_r": [
+   -0.089,
+   0.5318,
+   -0.001398
+  ],
+  "foot_r": [
+   -0.089,
+   0.1037,
+   -0.0358
+  ],
+  "ball_r": [
+   -0.089,
+   0.0152,
+   0.1132
+  ],
+  "ball_leaf_r": [
+   -0.089,
+   0.0152,
+   0.1921
+  ]
+ },
+ "boneAxis": {
+  "root": [
+   0.0,
+   0.054571,
+   0.99851
+  ],
+  "pelvis": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "spine_01": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "spine_02": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "spine_03": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "neck_01": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "clavicle_l": [
+   -0.135894,
+   0.987752,
+   -0.076679
+  ],
+  "upperarm_l": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "lowerarm_l": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "hand_l": [
+   -0.003288,
+   0.999082,
+   0.042724
+  ],
+  "index_01_l": [
+   -0.0,
+   1.0,
+   0.0
+  ],
+  "index_02_l": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "index_03_l": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "middle_01_l": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "middle_02_l": [
+   -0.0,
+   1.0,
+   5e-06
+  ],
+  "middle_03_l": [
+   -0.0,
+   1.0,
+   1e-06
+  ],
+  "pinky_01_l": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "pinky_02_l": [
+   -0.0,
+   1.0,
+   8e-06
+  ],
+  "pinky_03_l": [
+   -0.0,
+   1.0,
+   4e-06
+  ],
+  "ring_01_l": [
+   -0.0,
+   1.0,
+   -3e-06
+  ],
+  "ring_02_l": [
+   -0.0,
+   1.0,
+   -3e-06
+  ],
+  "ring_03_l": [
+   0.0,
+   1.0,
+   -4e-06
+  ],
+  "thumb_01_l": [
+   0.0,
+   1.0,
+   1e-06
+  ],
+  "thumb_02_l": [
+   -3e-06,
+   1.0,
+   -1e-06
+  ],
+  "thumb_03_l": [
+   -5e-06,
+   1.0,
+   -0.0
+  ],
+  "clavicle_r": [
+   0.135894,
+   0.987752,
+   -0.076679
+  ],
+  "upperarm_r": [
+   -1e-06,
+   1.0,
+   -0.0
+  ],
+  "lowerarm_r": [
+   -0.0,
+   1.0,
+   0.0
+  ],
+  "hand_r": [
+   0.003288,
+   0.999082,
+   0.042724
+  ],
+  "index_01_r": [
+   -0.0,
+   1.0,
+   -3e-06
+  ],
+  "index_02_r": [
+   -0.0,
+   1.0,
+   -3e-06
+  ],
+  "index_03_r": [
+   -0.0,
+   1.0,
+   0.0
+  ],
+  "middle_01_r": [
+   0.0,
+   1.0,
+   -2e-06
+  ],
+  "middle_02_r": [
+   0.0,
+   1.0,
+   1e-06
+  ],
+  "middle_03_r": [
+   0.0,
+   1.0,
+   1e-06
+  ],
+  "pinky_01_r": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "pinky_02_r": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "pinky_03_r": [
+   0.0,
+   1.0,
+   -4e-06
+  ],
+  "ring_01_r": [
+   -0.0,
+   1.0,
+   -6e-06
+  ],
+  "ring_02_r": [
+   0.0,
+   1.0,
+   -3e-06
+  ],
+  "ring_03_r": [
+   -0.0,
+   1.0,
+   0.0
+  ],
+  "thumb_01_r": [
+   -0.0,
+   1.0,
+   -0.0
+  ],
+  "thumb_02_r": [
+   -1e-06,
+   1.0,
+   0.0
+  ],
+  "thumb_03_r": [
+   -2e-06,
+   1.0,
+   0.0
+  ],
+  "thigh_l": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "calf_l": [
+   -0.0,
+   1.0,
+   0.0
+  ],
+  "foot_l": [
+   0.0,
+   1.0,
+   -0.0
+  ],
+  "thigh_r": [
+   -0.0,
+   1.0,
+   -0.0
+  ],
+  "calf_r": [
+   0.0,
+   1.0,
+   0.0
+  ],
+  "foot_r": [
+   -0.0,
+   1.0,
+   -0.0
+  ]
+ },
+ "parent": {
+  "pelvis": "root",
+  "spine_01": "pelvis",
+  "spine_02": "spine_01",
+  "spine_03": "spine_02",
+  "neck_01": "spine_03",
+  "Head": "neck_01",
+  "clavicle_l": "spine_03",
+  "upperarm_l": "clavicle_l",
+  "lowerarm_l": "upperarm_l",
+  "hand_l": "lowerarm_l",
+  "index_01_l": "hand_l",
+  "index_02_l": "index_01_l",
+  "index_03_l": "index_02_l",
+  "index_04_leaf_l": "index_03_l",
+  "middle_01_l": "hand_l",
+  "middle_02_l": "middle_01_l",
+  "middle_03_l": "middle_02_l",
+  "middle_04_leaf_l": "middle_03_l",
+  "pinky_01_l": "hand_l",
+  "pinky_02_l": "pinky_01_l",
+  "pinky_03_l": "pinky_02_l",
+  "pinky_04_leaf_l": "pinky_03_l",
+  "ring_01_l": "hand_l",
+  "ring_02_l": "ring_01_l",
+  "ring_03_l": "ring_02_l",
+  "ring_04_leaf_l": "ring_03_l",
+  "thumb_01_l": "hand_l",
+  "thumb_02_l": "thumb_01_l",
+  "thumb_03_l": "thumb_02_l",
+  "thumb_04_leaf_l": "thumb_03_l",
+  "clavicle_r": "spine_03",
+  "upperarm_r": "clavicle_r",
+  "lowerarm_r": "upperarm_r",
+  "hand_r": "lowerarm_r",
+  "index_01_r": "hand_r",
+  "index_02_r": "index_01_r",
+  "index_03_r": "index_02_r",
+  "index_04_leaf_r": "index_03_r",
+  "middle_01_r": "hand_r",
+  "middle_02_r": "middle_01_r",
+  "middle_03_r": "middle_02_r",
+  "middle_04_leaf_r": "middle_03_r",
+  "pinky_01_r": "hand_r",
+  "pinky_02_r": "pinky_01_r",
+  "pinky_03_r": "pinky_02_r",
+  "pinky_04_leaf_r": "pinky_03_r",
+  "ring_01_r": "hand_r",
+  "ring_02_r": "ring_01_r",
+  "ring_03_r": "ring_02_r",
+  "ring_04_leaf_r": "ring_03_r",
+  "thumb_01_r": "hand_r",
+  "thumb_02_r": "thumb_01_r",
+  "thumb_03_r": "thumb_02_r",
+  "thumb_04_leaf_r": "thumb_03_r",
+  "thigh_l": "pelvis",
+  "calf_l": "thigh_l",
+  "foot_l": "calf_l",
+  "ball_l": "foot_l",
+  "ball_leaf_l": "ball_l",
+  "thigh_r": "pelvis",
+  "calf_r": "thigh_r",
+  "foot_r": "calf_r",
+  "ball_r": "foot_r",
+  "ball_leaf_r": "ball_r"
+ },
+ "primary": {
+  "root": "pelvis",
+  "pelvis": "spine_01",
+  "spine_01": "spine_02",
+  "spine_02": "spine_03",
+  "spine_03": "neck_01",
+  "neck_01": "Head",
+  "clavicle_l": "upperarm_l",
+  "upperarm_l": "lowerarm_l",
+  "lowerarm_l": "hand_l",
+  "hand_l": "middle_01_l",
+  "index_01_l": "index_02_l",
+  "index_02_l": "index_03_l",
+  "index_03_l": "index_04_leaf_l",
+  "middle_01_l": "middle_02_l",
+  "middle_02_l": "middle_03_l",
+  "middle_03_l": "middle_04_leaf_l",
+  "pinky_01_l": "pinky_02_l",
+  "pinky_02_l": "pinky_03_l",
+  "pinky_03_l": "pinky_04_leaf_l",
+  "ring_01_l": "ring_02_l",
+  "ring_02_l": "ring_03_l",
+  "ring_03_l": "ring_04_leaf_l",
+  "thumb_01_l": "thumb_02_l",
+  "thumb_02_l": "thumb_03_l",
+  "thumb_03_l": "thumb_04_leaf_l",
+  "clavicle_r": "upperarm_r",
+  "upperarm_r": "lowerarm_r",
+  "lowerarm_r": "hand_r",
+  "hand_r": "middle_01_r",
+  "index_01_r": "index_02_r",
+  "index_02_r": "index_03_r",
+  "index_03_r": "index_04_leaf_r",
+  "middle_01_r": "middle_02_r",
+  "middle_02_r": "middle_03_r",
+  "middle_03_r": "middle_04_leaf_r",
+  "pinky_01_r": "pinky_02_r",
+  "pinky_02_r": "pinky_03_r",
+  "pinky_03_r": "pinky_04_leaf_r",
+  "ring_01_r": "ring_02_r",
+  "ring_02_r": "ring_03_r",
+  "ring_03_r": "ring_04_leaf_r",
+  "thumb_01_r": "thumb_02_r",
+  "thumb_02_r": "thumb_03_r",
+  "thumb_03_r": "thumb_04_leaf_r",
+  "thigh_l": "calf_l",
+  "calf_l": "foot_l",
+  "foot_l": "ball_l",
+  "thigh_r": "calf_r",
+  "calf_r": "foot_r",
+  "foot_r": "ball_r"
+ },
+ "pelvisRef": [
+  0.0,
+  0.054653,
+  1.0
+ ],
+ "clips": {
+  "A_TPose": {
+   "tag": "ref",
+   "loop": false,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "StepUp": {
+   "tag": "climb",
+   "loop": false,
+   "dur": 0.6667,
+   "move": [
+    0.0,
+    0.5,
+    2.1776
+   ],
+   "rise": 0.5
+  },
+  "ClimbUp_1m": {
+   "tag": "climb",
+   "loop": false,
+   "dur": 0.6667,
+   "move": [
+    0.0,
+    1.0,
+    1.6764
+   ],
+   "rise": 1.0
+  },
+  "ClimbUp_2m": {
+   "tag": "climb",
+   "loop": false,
+   "dur": 1.3,
+   "move": [
+    0.0,
+    2.0,
+    1.6764
+   ],
+   "rise": 2.0
+  },
+  "GetOffWall_2m": {
+   "tag": "climb",
+   "loop": false,
+   "dur": 0.6333,
+   "move": [
+    0.0,
+    -0.4473,
+    1.4559
+   ],
+   "rise": 0.1323
+  },
+  "SafetyVault": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.7333,
+   "move": [
+    0.0,
+    0.0,
+    2.9014
+   ],
+   "rise": 0.0
+  },
+  "Slide_Start": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.8333,
+   "move": [
+    0.0,
+    0.0,
+    4.0
+   ],
+   "rise": 0.0
+  },
+  "Slide_Loop": {
+   "tag": "parkour",
+   "loop": true,
+   "dur": 2.0,
+   "move": [
+    0.0,
+    0.0,
+    9.0
+   ],
+   "rise": 0.0
+  },
+  "Slide_Exit": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.5,
+   "move": [
+    0.0,
+    0.0,
+    2.0
+   ],
+   "rise": 0.0
+  },
+  "WallRun_L_Loop": {
+   "tag": "parkour",
+   "loop": true,
+   "dur": 0.7333,
+   "move": [
+    0.0,
+    0.0,
+    4.0
+   ],
+   "rise": 0.0
+  },
+  "WallRun_R_Loop": {
+   "tag": "parkour",
+   "loop": true,
+   "dur": 0.7333,
+   "move": [
+    0.0,
+    0.0,
+    4.0
+   ],
+   "rise": 0.0
+  },
+  "WallRun_Jump_L": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.7333,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "WallRun_Jump_R": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.7333,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "DoubleJump": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.9,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "KipUp": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 1.1667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "JogToFlip": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 1.2,
+   "move": [
+    0.0,
+    0.0,
+    5.0
+   ],
+   "rise": 1.2
+  },
+  "NinjaJump_Start": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 0.9667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "NinjaJump_Idle_Loop": {
+   "tag": "parkour",
+   "loop": true,
+   "dur": 2.0,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "NinjaJump_Land": {
+   "tag": "parkour",
+   "loop": false,
+   "dur": 1.2667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Walk_Fwd_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    0.0,
+    0.0,
+    1.35
+   ],
+   "rise": 0.0
+  },
+  "Walk_Bwd_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    0.0,
+    0.0,
+    -1.4
+   ],
+   "rise": 0.0
+  },
+  "Walk_L_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    0.9,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Walk_R_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    -0.8,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Walk_Fwd_L_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    1.0,
+    0.0,
+    1.0
+   ],
+   "rise": 0.0
+  },
+  "Walk_Fwd_R_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    -1.0,
+    0.0,
+    1.0
+   ],
+   "rise": 0.0
+  },
+  "Walk_Bwd_L_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    1.3,
+    0.0,
+    -1.3
+   ],
+   "rise": 0.0
+  },
+  "Walk_Bwd_R_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 1.3333,
+   "move": [
+    -1.3,
+    0.0,
+    -1.3
+   ],
+   "rise": 0.0
+  },
+  "Walk_Carry_Loop": {
+   "tag": "walk",
+   "loop": true,
+   "dur": 2.0,
+   "move": [
+    0.0,
+    0.0,
+    1.3
+   ],
+   "rise": 0.0
+  },
+  "Turn180_L": {
+   "tag": "walk",
+   "loop": false,
+   "dur": 1.6667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Turn180_R": {
+   "tag": "walk",
+   "loop": false,
+   "dur": 1.6667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Hit_Knockback": {
+   "tag": "hit",
+   "loop": false,
+   "dur": 0.8333,
+   "move": [
+    0.0,
+    0.0,
+    -3.0
+   ],
+   "rise": 0.0
+  },
+  "LiftAir_Fall_Air_Loop": {
+   "tag": "hit",
+   "loop": true,
+   "dur": 1.3,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "LiftAir_Fall_Impact": {
+   "tag": "hit",
+   "loop": false,
+   "dur": 0.6667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Melee_Hook": {
+   "tag": "melee",
+   "loop": false,
+   "dur": 0.4667,
+   "move": [
+    0.0,
+    0.0,
+    0.3547
+   ],
+   "rise": 0.0
+  },
+  "Melee_Knee": {
+   "tag": "melee",
+   "loop": false,
+   "dur": 0.8667,
+   "move": [
+    0.0,
+    0.0,
+    1.2907
+   ],
+   "rise": 0.0
+  },
+  "Melee_Uppercut": {
+   "tag": "melee",
+   "loop": false,
+   "dur": 1.0667,
+   "move": [
+    0.0,
+    0.0,
+    0.2821
+   ],
+   "rise": 0.0
+  },
+  "Melee_Combo": {
+   "tag": "melee",
+   "loop": false,
+   "dur": 2.2667,
+   "move": [
+    0.0,
+    0.0,
+    1.2579
+   ],
+   "rise": 0.0
+  },
+  "OverhandThrow": {
+   "tag": "melee",
+   "loop": false,
+   "dur": 1.3333,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Idle_FoldArms_Loop": {
+   "tag": "idle",
+   "loop": true,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Idle_Rail_Loop": {
+   "tag": "idle",
+   "loop": true,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Idle_Rail_Call": {
+   "tag": "idle",
+   "loop": false,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Idle_TalkingPhone_Loop": {
+   "tag": "idle",
+   "loop": true,
+   "dur": 2.9333,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Idle_No_Loop": {
+   "tag": "idle",
+   "loop": true,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Surprise": {
+   "tag": "idle",
+   "loop": false,
+   "dur": 2.4667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Yes": {
+   "tag": "idle",
+   "loop": false,
+   "dur": 2.5,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Consume": {
+   "tag": "idle",
+   "loop": false,
+   "dur": 1.3333,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  },
+  "Bandage_Loop": {
+   "tag": "idle",
+   "loop": true,
+   "dur": 0.6667,
+   "move": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rise": 0.0
+  }
+ }
+}

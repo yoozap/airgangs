@@ -8,10 +8,15 @@ const browser = await chromium.launch({ args: ['--use-angle=metal', '--ignore-gp
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', e.message));
 await enterGame(page, { user: 'shotbot', pass: 'shotbot123' });
-await page.waitForFunction(() => {
+// WAIT FOR THE WHOLE FLEET, however many that is this week. Hard-coding the
+// count means every one of these checks times out the next time an aeroplane
+// is added or dropped -- which is exactly what happened when the Globemaster
+// was deleted and three probes sat here for seven minutes apiece.
+const FLEET = await page.evaluate(async () => (await import('/src/planes.js')).PLANES.length);
+await page.waitForFunction((want) => {
   let n = 0; window.__game?.scene?.traverse((o) => { if (o.userData?.planeId) n++; });
-  return n >= 37;
-}, null, { timeout: 420000 });
+  return n >= want;
+}, FLEET, { timeout: 420000 });
 
 const park = await page.evaluate(() => {
   const THREE = window.__THREE;

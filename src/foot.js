@@ -5,6 +5,7 @@ import { makeCharacter, raceById, HERO_HEIGHT } from './characters.js';
 import { findHandBone, attachToHand, findArmChain, findArmChainL, poses, MUZZLE_DIP, GEAR_DEFS, biasWorn, loadWeapon, isHandBone, isRifle, findHandBoneL, RIFLE_CARRY_DIP, chestForward } from './weapons.js';
 import { patchClass } from './hotpatch.js';
 import { newGltfLoader } from './gltf.js';
+import { CONTROLS } from './planes.js';
 import { blendReloadPose } from './gunanim.js';
 import { drawGun } from './audiofx.js';
 
@@ -376,6 +377,27 @@ const _gm4 = new THREE.Matrix4();
 // module scratch for the holster solve, which runs on a draw and not per frame
 const _gv1 = new THREE.Vector3();
 const _gv2 = new THREE.Vector3();
+// the seat's own scratch: a grip point, a knee direction, the plane's rotation
+const _seatV = new THREE.Vector3();
+const _seatK = new THREE.Vector3();
+const _seatH = new THREE.Vector3();
+// A few centimetres of slack on both ends of the seat fit: the measured
+// extent is the folded pose's, and the plants and reaches move limbs a
+// little past it.
+const SEAT_MARGIN = 0.05;
+// how far a hand on a control can travel as the stick and throttle move,
+// which the once-settled seat has to leave room for
+const SEAT_TRAVEL = 0.08;
+const _seatQ = new THREE.Quaternion();
+// Where the ELBOW goes with a hand on a cockpit control. DOWN and BACK, and
+// barely outboard at all: a cockpit is a tube about 0.8 m across and the
+// elbow is the part of a reaching arm that travels furthest from the line to
+// the hand, so an outboard hint puts it through the side of the aeroplane.
+// (It did: the astronaut, which has the longest arms here at 0.92 m, flew a
+// Spitfire with its elbow and glove out in the slipstream.) Tucked back
+// toward the hip is also simply where a pilot's elbows are.
+const SEAT_HINT_R = { up: -1.0, right: 0.10, fwd: -0.55 };
+const SEAT_HINT_L = { up: -1.0, right: 0.14, fwd: -0.50 };
 const _boardRay = new THREE.Raycaster();
 const _DOWN = new THREE.Vector3(0, -1, 0);
 const _gv3 = new THREE.Vector3();
@@ -611,17 +633,28 @@ export class OnFoot {
     return this.rig.obj.position;
   }
 
-  // Enter pressed: climb out when parked, climb in when near the plane.
+  // Enter pressed: climb out when parked, climb in when near AN aeroplane.
   toggle() {
     const g = this.game;
     if (!g.started || g.crashed) return;
     if (this._boardSeq) return;              // already on the way in or out
     if (this.active) {
-      if (this.pos.distanceTo(g.plane.position) < Math.max(BOARD_DIST, g.halfSpan + 3)) {
-        if (!this._startClimb(1)) this._board();
-      } else {
+      // WHICHEVER ONE YOU ARE STANDING NEXT TO. "i need to can sit in all
+      // planes" -- the hero is no longer married to the machine its personage
+      // was created with. Every parked aeroplane in the world is in the target
+      // registry (the plane hall puts its thirty-six there, and game.parkPlane
+      // puts every machine you walk away from there), and Enter takes the
+      // nearest one within reach of its own wing.
+      const pick = this._nearestPlane();
+      if (!pick) {
         g._setHint('✈ თვითმფრინავი შორსაა — მიუახლოვდი და დააჭირე Enter');
+        return;
       }
+      if (pick.rec && !g.swapToPlane(pick.rec)) {
+        g._setHint('✈ ამ თვითმფრინავში ახლა ვერ ჩაჯდები');
+        return;
+      }
+      if (!this._startClimb(1)) this._board();
       return;
     }
     if (g.airborne || Math.abs(g.speed) > 1.5) {
@@ -633,6 +666,54 @@ export class OnFoot {
       return;
     }
     this._exitPlane();
+  }
+
+  // WALK UP TO AN AEROPLANE AND IT TELLS YOU ITS NAME. There is no plane
+  // picker any more and the hall is a shed full of machines with nothing
+  // saying you may have any of them, so the aeroplane says so itself: stand
+  // within reach of a parked one and the hint names it and the key. Changes
+  // only when the aeroplane under your nose changes, so it never flickers and
+  // never argues with the hints the rest of the on-foot code puts up.
+  _planePrompt(dt) {
+    this._promptT = (this._promptT ?? 0) + dt;
+    if (this._promptT < 0.25) return;        // four times a second is plenty
+    this._promptT = 0;
+    const g = this.game;
+    const near = this._nearestPlane();
+    const id = near?.rec?.def?.id ?? (near ? '@own' : null);
+    if (id === this._promptId) return;
+    this._promptId = id;
+    if (!near) return;
+    g._setHint?.(near.rec
+      ? `✈ ${near.rec.def.name} — Enter: ჩაჯექი`
+      : this._footHint());
+  }
+
+  // THE NEAREST AEROPLANE YOU COULD GET INTO, or null. Your own counts, and so
+  // does every parked one the target registry knows about -- which is the hall's
+  // whole fleet plus anything you have left standing somewhere. "Within reach"
+  // is measured off each machine's OWN size: you board an An-225 from further
+  // out than a Spitfire because you have to.
+  //
+  // Returns { rec, wrapper, d }; `rec` is null for the machine already yours,
+  // which is the caller's signal that no swap is needed.
+  _nearestPlane() {
+    const g = this.game;
+    const reach = (w) => Math.max(BOARD_DIST, (w.userData.halfSpan ?? 6) + 3);
+    let best = null;
+    if (g.plane) {
+      const d = this.pos.distanceTo(g.plane.position);
+      if (d < reach(g.plane)) best = { rec: null, wrapper: g.plane, d };
+    }
+    for (const rec of (g.targets?.list ?? [])) {
+      const w = rec.wrapper;
+      if (!w || w === g.plane || !w.parent || rec.dead) continue;
+      w.getWorldPosition(_seatV);
+      const d = this.pos.distanceTo(_seatV);
+      if (d >= reach(w)) continue;
+      if (!best || d < best.d) best = { rec, wrapper: w, d };
+    }
+    return best;
   }
 
   // `instant` skips the climb — the airport teleport and the R restart both
@@ -3741,16 +3822,77 @@ export class OnFoot {
     this.rig.obj.position.copy(seat);
     this.rig.play('Idle');
     this.seated = true;
-    this._seatY = seat.y;
-    this._canopyTop = g.plane.userData.cockpit.ceil;
+    this._cockpit = g.plane.userData.cockpit;
+    this._seatPan = new THREE.Vector3();   // where this body's pan ends up
+    this._ctl = { pitch: 0, roll: 0, rudder: 0, throttle: 0 };
+    this._ext = null;                 // settled on the first frame that has controls
     this.updateSeated(0);             // pose it NOW, not on the next frame
     return true;
+  }
+
+  // WHERE THIS PARTICULAR BODY'S SEAT PAN ENDS UP. The cockpit's own pan
+  // (cockpit.seat) is where a 0.92 m seated pilot fits exactly; these thirteen
+  // personages are not that, and the aeroplanes are no longer grown to make
+  // them that (src/planes.js PILOT_GROW_MAX), so each body is settled into the
+  // hull on its own measurements:
+  //
+  //   * the crown must not come out through a closed canopy, and
+  //   * NOTHING may go below the hull's underside -- which is the rule that
+  //     was missing. The old clamp only pushed down, so a body too tall for a
+  //     shallow cockpit was driven through the floor and out of the belly.
+  //
+  // When both cannot hold, the head wins and the aeroplane keeps its pilot
+  // inside it: a head a little high in a bubble canopy reads as a pilot, a
+  // pair of legs under the wing root reads as a bug.
+  _seatFor(hip) {
+    const c = this._cockpit;
+    const rig = this.rig;
+    const y0 = c.seat.y - (hip ?? 0);        // hips on the pan
+    // How tall the body IS once it is FOLDED INTO THE SEAT -- measured once,
+    // off the seated pose alone (characters.js setSeated), with the parked
+    // boots already carried to the ends of their shins. Deliberately not
+    // measured off the finished pose: the hands and feet are solved onto
+    // controls fixed in the AEROPLANE, so the body's extent then depends on
+    // where the body was put, and feeding that back in is a loop that chases
+    // its own tail (it moved an astronaut 46 cm between two frames).
+    const crown = this._ext?.top ?? rig.sitTop ?? rig.bodyH ?? 1.8;
+    const low = this._ext?.low ?? rig.sitBot ?? 0;
+    const hi0 = Number.isFinite(c.ceil) ? c.ceil - crown : Infinity;  // head under the glass
+    const lo0 = Number.isFinite(c.bot) ? c.bot - low : -Infinity;     // nothing under the belly
+    // THE MARGIN IS A LUXURY, NOT A RULE. A few centimetres of slack at each
+    // end covers the limbs that the plants and reaches move past the measured
+    // pose -- but spending it unconditionally costs 10 cm of fit, and on a
+    // cockpit that clears by 5 it is the MARGIN that pushes the head out
+    // through the hood. So it is taken only where there is room to take it.
+    const roomy2 = hi0 - SEAT_MARGIN > lo0 + SEAT_MARGIN;
+    const hi = roomy2 ? hi0 - SEAT_MARGIN : hi0;
+    const lo = roomy2 ? lo0 + SEAT_MARGIN : lo0;
+    // A COCKPIT THAT CANNOT HOLD A PILOT AT ALL. Some of these models are
+    // stylised to the point where there is less hull at the cockpit than
+    // there is personage: the Extra 330's canopy top is 0.67 m over its
+    // fuselage floor and a seated body is 1.3. One of the two rules has to
+    // break, and breaking either one all the way is the ugly answer -- a head
+    // and shoulders standing out of a painted-on hood, or a pair of legs
+    // hanging under the wing root. Split it: the body sits in the MIDDLE of
+    // what hull there is, and each end pokes out by half as much.
+    if (lo > hi) return (lo + hi) / 2;
+    return THREE.MathUtils.clamp(y0, lo, hi);
   }
 
   // Out of the cockpit: the body goes back to being a thing in the world.
   leaveSeat() {
     if (!this.seated) return;
     this.seated = false;
+    // The controls centre themselves when the hands come off them. Nothing
+    // drives them once _flyControls stops running, so a stick left hard over
+    // stays hard over in an empty cockpit.
+    const parts = this.game.plane?.userData?.controls;
+    if (parts) {
+      parts.stick?.rotation.set(0, 0, 0);
+      if (parts.pedalL) parts.pedalL.rotation.x = 0;
+      if (parts.pedalR) parts.pedalR.rotation.x = 0;
+      if (parts.throttle) parts.throttle.rotation.x = CONTROLS.throttleThrow * 0.5; // closed
+    }
     this.rig?.obj.parent?.remove(this.rig.obj);
     this.rig?.setSeated?.(0);         // hand the folded bones back
   }
@@ -3770,21 +3912,182 @@ export class OnFoot {
     // it asserting the same frame of the clip, which is what makes the base
     // _boneTwist reads identical frame to frame.
     this.rig.update(0);
-    const hip = this.rig.setSeated(1);
+    const g = this.game;
+    const c = this._cockpit;
+    const rig = this.rig;
+    const hip = rig.setSeated(1);
     // Drop the body so its HIPS are on the seat. A personage's origin is
     // between its soles, so seating it by that origin leaves it floating a
     // metre above the cockpit with its legs through the panel.
-    let y = this._seatY - (hip ?? 0);
-    // ... and then never let the crown out through the glass. Folding the legs
-    // does not shorten a body -- the hips do not move, the feet do -- so a
-    // personage built with cartoon proportions (the astronaut's hips are at
-    // 0.45 m of its 1.80, a quarter of the way up instead of half) still
-    // stands 1.35 m out of a seat its hips are sitting on. Those bodies sink
-    // until their heads are under the canopy; their legs are inside the hull
-    // where nothing can see them, which is the best this rig can do.
-    const top = this._canopyTop - (this.rig.bodyH ?? 1.8);
-    if (Number.isFinite(top) && y > top) y = top;
-    this.rig.obj.position.y = y;
+    const y = this._seatFor(hip);
+    rig.obj.position.set(c.seat.x, y, c.seat.z);
+    // THE FURNITURE GOES WITH THE PILOT. The kit is authored with its origin
+    // on the seat pan, and the pan belongs at THIS body's hip joint -- not
+    // where the cockpit measured one for a standard 0.92 m pilot. Leaving it
+    // at the measured height is how you get a pilot sunk into the hull
+    // holding a stick up by the canopy, 30 cm above his hands; and quoting it
+    // off the pelvis instead of the hip joint is how a short-legged body ends
+    // up with a rudder bar it cannot reach (characters.js sitHip).
+    const hp = rig.sitHip;
+    const pan = this._seatPan.set(
+      c.seat.x + (hp?.x ?? 0),
+      y + (hp ? hp.y : (hip ?? 0)),
+      c.seat.z + (hp?.z ?? 0),
+    );
+    const kit = g.plane.userData.cockpitKit;
+    if (kit) kit.position.copy(pan);
+    this._flyControls(dt, pan);
+
+    // SETTLE THE SEAT ON THE FINISHED POSE, once. The clamp above runs on the
+    // FOLDED estimate (characters.js sitTop/sitBot), which is measured before
+    // the hands and feet are solved onto the controls -- and the solve brings
+    // the arms DOWN out of the idle's carry onto the stick and the throttle,
+    // 34 cm off the top of a banana. Sinking the pilot by that 34 cm costs
+    // exactly the head room that decides whether you can see it through the
+    // canopy at all. So the moment the furniture is actually attached (it
+    // loads asynchronously), the real extent is measured and the seat is
+    // placed again on it.
+    //
+    // ONCE. Not every frame -- a per-frame box of a skinned body is per-vertex
+    // work -- and not iterated either: the controls are fixed in the AEROPLANE
+    // and the body hangs off its own answer, so feeding the measurement back
+    // round is a loop that chases its own tail (it moved an astronaut 46 cm
+    // between two frames before this was a single shot).
+    if (!this._ext && g.plane.userData.controls) {
+      const hipY = rig.sitHip ? rig.sitHip.y : (hip ?? 0);
+      const place = (yy) => {
+        rig.obj.position.y = yy;
+        pan.y = yy + hipY;
+        if (kit) kit.position.copy(pan);
+        this._flyControls(0, pan);
+      };
+      const b = rig._localBox();
+      this._ext = { top: b.max.y, low: b.min.y };
+      const y2 = this._seatFor(hip);
+      if (Math.abs(y2 - y) > 0.004) {
+        place(y2);
+        // AND CHECK THAT IT HELD. Moving the pilot moves the controls with
+        // it, the hands and feet follow them, and the body's extent is not
+        // quite what it was when it was measured -- so the new seat is only
+        // kept if the head really did stay under the glass and the feet above
+        // the belly. When it does not hold, the conservative seat (the folded
+        // estimate, which can only ever be too cautious) goes back. Two
+        // passes, never a loop: this is the measurement that moved an
+        // astronaut 46 cm a frame when it was allowed to iterate.
+        const c2 = rig._localBox();
+        const crownOk = !Number.isFinite(c.ceil) || y2 + c2.max.y <= c.ceil + 0.01;
+        const bellyOk = !Number.isFinite(c.bot) || y2 + c2.min.y >= c.bot - 0.01;
+        if (crownOk && bellyOk) {
+          // ...with room for the CONTROLS TO MOVE. The settled extent is
+          // measured at one position of the stick and the throttle, and on a
+          // body whose highest point is a hand rather than a head (the
+          // banana's is) the box grows and shrinks as the levers travel. The
+          // slack covers that travel, so a seat settled at idle does not put
+          // a knuckle through the canopy at full power.
+          this._ext = { top: Math.max(this._ext.top, c2.max.y) + SEAT_TRAVEL,
+            low: Math.min(this._ext.low, c2.min.y) - SEAT_TRAVEL };
+        } else {
+          this._ext = { top: rig.sitTop ?? c2.max.y, low: rig.sitBot ?? c2.min.y };
+          place(y);
+        }
+      }
+    }
+  }
+
+  // ---- flying it --------------------------------------------------------
+  // "all personages must sit in plane like real, with all real animations".
+  // Sitting still in a chair is not flying: a pilot HOLDS the stick and it
+  // moves where the aeroplane is being asked to go, the feet are on the
+  // rudder bar and it goes in and out with the yaw, the left hand is on the
+  // throttle and rides the engine, and the head looks where the camera looks.
+  // All four are solved every frame onto the real furniture -- the same
+  // two-bone reach the holster draw and the rifle hold are built from -- so
+  // this works on a banana, an elephant and a Mixamo man alike.
+  _flyControls(dt, pan) {
+    const g = this.game;
+    const rig = this.rig;
+    const parts = g.plane.userData.controls;
+    const stickIn = g.airborne || Math.abs(g.speed) > 0.2 ? g._readStick?.() : null;
+    const want = {
+      pitch: stickIn?.pitch ?? 0,
+      roll: stickIn?.roll ?? 0,
+      rudder: stickIn?.rudder ?? 0,
+      throttle: g.powerFrac?.() ?? 0,
+    };
+    // A hand does not snap a stick across the cockpit: the controls chase the
+    // input, and the hands chase the controls. (Hard-cutting them also makes
+    // the two-bone solve flicker between elbow solutions.)
+    const ctl = this._ctl;
+    const k = dt > 0 ? Math.min(1, dt * 7) : 1;
+    for (const key of ['pitch', 'roll', 'rudder', 'throttle']) {
+      ctl[key] += (want[key] - ctl[key]) * k;
+    }
+    if (parts) {
+      // the stick leans BACK for nose-up (pull) and INTO the turn
+      if (parts.stick) parts.stick.rotation.set(ctl.pitch * CONTROLS.stickPitch,
+        0, ctl.roll * CONTROLS.stickRoll);
+      // left pedal forward on left rudder, right pedal forward on right
+      if (parts.pedalL) parts.pedalL.rotation.x = ctl.rudder * CONTROLS.pedalThrow;
+      if (parts.pedalR) parts.pedalR.rotation.x = -ctl.rudder * CONTROLS.pedalThrow;
+      // the lever is back at idle and forward at full power
+      if (parts.throttle) parts.throttle.rotation.x = (0.5 - ctl.throttle) * CONTROLS.throttleThrow;
+    }
+
+    // Where the hands and feet have to BE, in the world: the grip empties
+    // inside the moving parts, read straight off their own matrices, so a
+    // hand on the stick travels with the stick instead of hovering where the
+    // stick used to be.
+    const grip = (part) => (part?.userData?.grip
+      ? part.userData.grip.getWorldPosition(_seatV)
+      : null);
+    const legs = rig._legRig?.();
+    if (legs) {
+      g.plane.getWorldQuaternion(_seatQ);
+      for (const side of ['L', 'R']) {
+        const L = legs[side];
+        const target = grip(side === 'L' ? parts?.pedalL : parts?.pedalR);
+        if (!target || !L?.thigh) continue;
+        // A LEG THAT CANNOT REACH THE PEDAL MUST NOT BE SENT AT IT. The solve
+        // straightens the leg and stops short, which on the elephant (0.49 m
+        // of leg against a 0.70 m footwell) is a hind leg pointed rigidly at
+        // the rudder bar. Short legs keep the folded pose instead, and the
+        // plant fades in over the last few centimetres of reach.
+        L.thigh.updateWorldMatrix(true, false);
+        const d = _seatH.setFromMatrixPosition(L.thigh.matrixWorld).distanceTo(target);
+        // Full plant while the pedal is inside the leg; faded out over the
+        // first 10% beyond it, so a leg that nearly makes it still reaches
+        // and one that never could (the elephant's, at 0.49 m) stays folded.
+        const len = L.l1 + L.l2;
+        const w = THREE.MathUtils.clamp((len * 1.10 - d) / (len * 0.11), 0, 1);
+        if (!(w > 0.02)) continue;
+        // THE KNEE GOES UP AND A LITTLE OUTBOARD. That is how a leg folds
+        // into a footwell; pointed anywhere else the two-bone solve puts the
+        // knee through the instrument panel or through the seat pan.
+        _seatK.set(side === 'L' ? -0.38 : 0.38, 1, -0.12)
+          .applyQuaternion(_seatQ).normalize();
+        rig.plantFoot(side, target, _seatK, null, w);
+      }
+      rig.settleFeet?.();
+    }
+    // ...and the hands: the right on the stick, the left on the throttle.
+    const root = rig.obj;
+    const chainR = rig._armChain !== undefined ? rig._armChain : (rig._armChain = findArmChain(root));
+    const chainL = rig._armChainL !== undefined ? rig._armChainL : (rig._armChainL = findArmChainL(root));
+    for (const [side, chain, part, hint] of [
+      ['R', chainR, parts?.stick, SEAT_HINT_R],
+      ['L', chainL, parts?.throttle, SEAT_HINT_L],
+    ]) {
+      const hand = rig._handPoint?.(side) ?? rig._rollRig?.()?.[side]?.hand;
+      if (!chain || !hand || hand === chain.fore) continue;
+      const target = grip(part);
+      if (!target) continue;
+      // No reach gate on an ARM, unlike a leg: the solve straightens the arm
+      // and stops short, and an arm stretched toward the stick is what a
+      // short-armed pilot's arm looks like. A straightened LEG is a stilt.
+      poses.applyReachPose(rig, root, hand, target, null, hint, chain);
+    }
+    // the head looks where the player is looking
+    rig.lookSeated?.(g.look?.yaw ?? 0, -(g.look?.pitch ?? 0));
   }
 
 
@@ -5079,6 +5382,7 @@ export class OnFoot {
     }
 
     this._planeMeshT += dt;
+    this._planePrompt(dt);
 
     // ---- jump: edge-triggered, with coyote time and an input buffer ------
     const jumpPressed = m.jump && !this._jumpWas;
@@ -5514,6 +5818,19 @@ export class OnFoot {
     // pose slides like a statue on a turntable. The run cycle at a crawl reads
     // as the shuffle of steps a turn is actually made of.
     const turningInPlace = pace <= 0.4 && m.turn !== 0 && !armed && this.grounded && !this._roll && !this._cover;
+    // WHICH WAY THE LEGS ARE ACTUALLY TRAVELLING, as an angle off the facing.
+    // Strafing, the sign of a backpedal is already inside _moveYaw (S aims it
+    // back at the camera), which is why this does NOT repeat the 180° that the
+    // reversed run cycle needs below.
+    const travel = this._wrapA((this._strafing
+      ? this._moveYaw
+      : this.yaw + (this.speed < 0 ? Math.PI : 0)) - this.yaw);
+    // The walk set (characters.js WALK_SET): a real sidestep instead of a body
+    // turned to face the way it is going, and a real walk on the bodies that
+    // have only ever hopped. Cover keeps its own shuffle -- that pose is built
+    // bone by bone and a clip underneath it is not an improvement.
+    const walk = this.grounded && !this._roll && !this._slide && !this._cover && !this._air
+      ? rig.walkClip?.(travel, pace) : null;
     if (this._roll || this._slide) {
       // Both of these are written on top of whatever is playing, and a run cycle
       // flailing its legs inside a ball -- or along the pavement -- is noise.
@@ -5521,6 +5838,9 @@ export class OnFoot {
     } else if (!this.grounded && this._air) {
       // NOTHING PEDALS ITS LEGS IN MID-AIR. The air pose owns them.
       rig.play('Idle');
+    } else if (pace > 0.4 && walk) {
+      rig.play(walk);
+      rig.setTimeScale(walk, rig.walkRate(walk, pace));
     } else if (pace > 0.4) {
       rig.play('Run');
       // The clip's floor is 0.6 of its own tempo -- below that a run cycle stops
@@ -5559,12 +5879,15 @@ export class OnFoot {
     }
     // ...less with a rifle: a rifleman strafes with the torso on the target
     // and the legs doing the sidestep, and the chest's turn toward the aim
-    // has less to make up
-    rig.setStrafe(sa, dt, sb);
+    // has less to make up.
+    // NONE of it while a walk cycle is running: the clip steps sideways on its
+    // own, and turning the body as well would take it past where it is going.
+    rig.setStrafe(sa, dt, walk ? 0 : sb);
     // the rigless bodies hop instead of stepping, so a turn in place gets a
     // slow hop rather than nothing at all -- and a roll gets none: the hop
     // would bounce the ball off the ground it is rolling along
-    rig.locomote(dt, this._roll || this._slide || (this._air && !this.grounded) ? 0
+    // (and none of the hop either, when a real cycle is carrying the legs)
+    rig.locomote(dt, this._roll || this._slide || (this._air && !this.grounded) || walk ? 0
       : turningInPlace ? 1.1 : this.speed, this.runSpeed);
     // With a weapon out, the right arm stops following the clip and holds the
     // GTA carry instead. This has to come AFTER rig.update() -- the mixer

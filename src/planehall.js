@@ -8,18 +8,20 @@ import { PLANES, loadPlane, makeGameplayPlane, isTankPlane } from './planes.js';
 // this new warehouse. tank planes in 1 side and not tank in other side".
 //
 // SIZE. It is the warehouse's own shed (src/shed.js) stretched, not the 48 x
-// 139 m one: the 37 aeroplanes measure 33 000 m² of floor between them and an
-// An-225 alone is 88.4 m across — wider than the warehouse is long is not
-// true, but it is wider than the warehouse's 48 m span and taller than its
-// bay. The hall is x12 across and x9.5 along (192 x 437 m) with the roof only
-// x6.5 (32 m), which is a wide shallow-arch hangar rather than a 55 m
-// cathedral. Both bays end up 99 x 19.8 m, so even the An-225 can taxi in.
+// 139 m one: the 36 aeroplanes measure 33 000 m² of floor between them and an
+// An-225 alone is 88.4 m across — wider than the warehouse's whole 48 m span
+// and taller than its bay. The hall is x16 across and x9.3 along (256 x 430
+// m) with the roof x7.5 (37 m), a wide shallow-arch hangar rather than a
+// cathedral. Both bays end up 132 x 22.9 m, so anything in the game can taxi
+// in through either one.
 //
-// The size is NOT a guess: the heavies pack into 5 ranks 282 m deep and the
-// fighters into 3 ranks 72 m deep at this width, measured from the airframes
-// the game actually builds (tools/_probe_planehall.mjs prints both).
+// The width is NOT a guess: it is the 50 m taxi lane plus two 93 m strips —
+// 93 because that is what an An-225 needs to stand in one. The heavies then
+// pack into 5 ranks 262 m deep and the fighters into 3 ranks 62 m deep,
+// measured from the airframes the game actually builds
+// (tools/_probe_planehall.mjs prints the real numbers every run).
 //
-// WHICH SIDE. The shed's local +X, 220 m across the grass. That is the side
+// WHICH SIDE. The shed's local +X, 280 m across the grass. That is the side
 // you have on your LEFT standing in front of the warehouse's near bay — the
 // one the 🛬 teleport parks you at, looking in — and it is also the only side
 // there is room on: -X is the 13R/31L runway, 25 m from a hall this size.
@@ -32,18 +34,23 @@ import { PLANES, loadPlane, makeGameplayPlane, isTankPlane } from './planes.js';
 // 16 TANK machines (bombers, transports, airliners) fill the far half, the
 // 21 DPS machines (fighters, racers, strikers) the near half, and they face
 // each other across a cross-aisle in the middle.
-const OFF_X = 220;   // m along the shed's local +X — across the grass
+const OFF_X = 280;   // m along the shed's local +X — across the grass
 const OFF_Z = -60;   // m along its length — onto the flatter ground
-const SCALE = { x: 12, y: 6.5, z: 9.5 };
+const SCALE = { x: 16, y: 7.5, z: 9.3 };
 const APRON = 15;    // m of hardstanding beyond the walls
-const RAMP = 60;     // m — the slab stands up to 7 m proud here, so a long one
+const RAMP = 80;     // m — the slab stands up to 9 m proud here, so a long one
 
 // Floor plan, in hall-local metres (x across the span, z along the length).
 const WALL = 10;     // keep this far off the side walls
 const END = 18;      // ...and off the gable ends, clear of the bay
 const GAP_X = 6;     // between wingtips
 const GAP_Z = 10;    // between rows
-const AISLE = 16;    // the cross-aisle down the middle, where the two sides meet
+const AISLE = 16;    // the cross-aisle where the two groups meet
+// THE TAXI LANE. "i need space in middle to go with plane then" -- 50 m of
+// clear floor straight down the centreline, bay to bay, lined up with both
+// 132 m doorways. The aeroplanes are parked in the strips either side of it,
+// and nothing is ever placed on it.
+const LANE = 50;     // m wide
 const WHEEL = 1.7;   // m — plane origin above the floor (game.js WHEEL_HEIGHT)
 const FLOOR = new THREE.MeshLambertMaterial({ color: 0x9b9d99 }); // hangar grey
 
@@ -53,7 +60,7 @@ const FLOOR = new THREE.MeshLambertMaterial({ color: 0x9b9d99 }); // hangar grey
 const FILL_DIST = 900; // m
 const SETTLE_MS = 2500;
 // ...and how close before they are DRAWN. three has no occlusion culling, so
-// a hall in the frustum draws all 37 machines through its own walls from two
+// a hall in the frustum draws all 36 machines through its own walls from two
 // kilometres away -- 1 087 meshes nobody can see. Beyond this the fleet is
 // simply switched off; the hall is 440 m long, so this still covers standing
 // at either bay looking in.
@@ -164,7 +171,10 @@ class PlaneHall {
       if (this.citymap.disposed) return;
       await frame();
       try {
-        const wrapper = makeGameplayPlane(await loadPlane(def.id), def);
+        // SCENERY, NOT A COCKPIT YOU FLY. Nobody sits in a hall aeroplane,
+        // so it gets the furniture without the four hinged controls -- which
+        // are four more objects each, thirty-six times over.
+        const wrapper = makeGameplayPlane(await loadPlane(def.id), def, { flyable: false });
         wrapper.userData.planeId = def.id;
         wrapper.updateMatrixWorld(true);
         const b = new THREE.Box3().setFromObject(wrapper, true);
@@ -181,29 +191,37 @@ class PlaneHall {
     const halfL = d.length / 2 - END;
     const tanks = built.filter((p) => isTankPlane(p.def));
     const rest = built.filter((p) => !isTankPlane(p.def));
+    const widest = built.reduce((a, p) => (p.span > a.span ? p : a), built[0]);
+    if (widest && widest.span > halfW - LANE / 2) {
+      console.warn(`plane hall: ${widest.def.id} is ${widest.span.toFixed(0)} m across and the `
+        + `strips beside the lane are ${(halfW - LANE / 2).toFixed(0)} — widen the hall`);
+    }
 
-    // far half (-Z) nose toward the middle, near half (+Z) the same: the two
-    // sides face each other down the cross-aisle
+    // Each group fills the strips either side of the taxi lane, stacked from
+    // its own end of the hall toward the middle. The lane itself stays empty
+    // from bay to bay -- that is the whole point of the layout.
+    const strip = halfW - LANE / 2;       // floor available each side of it
     const put = (list, fromZ, dir, yaw) => {
-      const rows = pack(list, halfW * 2);
+      const ranks = pack(list, strip);
       let z = fromZ;
-      for (const row of rows) {
-        const depth = Math.max(...row.map((p) => p.len));
+      for (const rank of ranks) {
+        const depth = Math.max(...rank.map((e) => e.p.len));
         z += dir * depth / 2;
-        const wide = row.reduce((a, p) => a + p.span, 0) + GAP_X * (row.length - 1);
-        let x = -wide / 2;
-        for (const p of row) {
-          x += p.span / 2;
-          p.wrapper.position.set(x, WHEEL, z);
+        for (const { p, side, at } of rank) {
+          const sgn = side === 0 ? -1 : 1;  // left strip / right strip
+          p.wrapper.position.set(sgn * (LANE / 2 + at + p.span / 2), WHEEL, z);
           p.wrapper.rotation.y = yaw;
           p.wrapper.matrixAutoUpdate = false;  // parked for good
           p.wrapper.updateMatrix();
           // Inside a roofed hall the sun casts nothing: a shadow map pass over
-          // 37 aeroplanes would be paid for a shadow no one can see.
+          // 36 aeroplanes would be paid for a shadow no one can see.
           p.wrapper.traverse((o) => { if (o.isMesh) o.castShadow = false; });
           fleet.add(p.wrapper);
-          this._solidify(p.wrapper);
-          x += p.span / 2 + GAP_X;
+          // The collider is also what a click and a bullet hit, so the
+          // machine is registered as a TARGET on it: click it and its card
+          // comes up beside the player's own (src/target.js).
+          const col = this._solidify(p.wrapper);
+          this.citymap.targets?.register(p.wrapper, p.def, col);
         }
         z += dir * (depth / 2 + GAP_Z);
       }
@@ -231,10 +249,11 @@ class PlaneHall {
   // wrapper already carries the box shell the hero climbs on when it is HIS
   // machine (planes.js buildPlaneShell) -- bake that into one world-space
   // collider per aircraft, out of the scene graph: nothing extra to draw, and
-  // boxes rather than the full airframe so 37 of them cost nothing to probe.
+  // boxes rather than the full airframe so 36 of them cost nothing to probe.
+  // Returns that collider: it is also the thing clicks and bullets land on.
   _solidify(wrapper) {
     const shell = wrapper.userData.shell;
-    if (!shell) return;
+    if (!shell) return null;
     wrapper.updateMatrixWorld(true);
     const geo = shell.geometry.clone();
     geo.applyMatrix4(shell.matrixWorld);
@@ -246,26 +265,34 @@ class PlaneHall {
     const cm = this.citymap;
     if (cm._addCollidable) cm._addCollidable(col);
     else cm.collidables.push(col);
+    return col;
   }
 }
 
-// Shelf packing: deepest row first, each row filled across the hall until the
-// next aeroplane would not fit. Rough, but it is what a museum floor looks
-// like — ranks of machines, the big ones at the back.
-function pack(list, width) {
-  const rows = [];
-  let row = [];
-  let used = 0;
+// Shelf packing, LANE-AWARE: each rank is two sub-rows, one in the strip
+// either side of the taxi lane, and a rank closes when the next aeroplane
+// fits in neither. Deepest first, so the big machines stand at the back of
+// their half the way a museum floor is laid out.
+function pack(list, strip) {
+  const ranks = [];
+  let rank = [];
+  let used = [0, 0];     // metres taken in the left and right strips
   for (const p of [...list].sort((a, b) => b.len - a.len)) {
-    const need = p.span + (row.length ? GAP_X : 0);
-    if (row.length && used + need > width) {
-      rows.push(row);
-      row = [];
-      used = 0;
+    let side = -1;
+    for (const t of [0, 1]) {
+      if (used[t] + p.span + (used[t] ? GAP_X : 0) <= strip) { side = t; break; }
     }
-    row.push(p);
-    used += row.length > 1 ? need : p.span;
+    if (side < 0) {       // neither strip has room: start a new rank
+      ranks.push(rank);
+      rank = [];
+      used = [0, 0];
+      side = 0;
+    }
+    // where it stands, measured out from the lane edge
+    const at = used[side] + (used[side] ? GAP_X : 0);
+    used[side] = at + p.span;
+    rank.push({ p, side, at });
   }
-  if (row.length) rows.push(row);
-  return rows;
+  if (rank.length) ranks.push(rank);
+  return ranks.filter((r) => r.length);
 }

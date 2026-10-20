@@ -81,22 +81,36 @@ const placed = await page.evaluate(() => {
   let hall = null;
   window.__game.scene.traverse((o) => { if (o.name === 'planehall') hall = o; });
   const d = hall.userData.shedShell;
-  const rows = [];
   const fleet = hall.children.find((c) => c.name === 'planehall_fleet') ?? hall;
+  // MEASURE IN THE HALL'S OWN FRAME. Box3.setFromObject reports world space,
+  // and this hall is turned 136 degrees -- the world AABB of an 80 m Tu-144
+  // is 83 m square, so mapping its corners back into hall space says it
+  // straddles a lane it is nowhere near. Stand the hall up square for the
+  // measurement instead, then put it back.
+  const keep = { p: hall.position.clone(), r: hall.rotation.y };
+  hall.position.set(0, 0, 0);
+  hall.rotation.y = 0;
+  hall.updateMatrixWorld(true);
+  const rows = [];
+  let intrude = null;
   for (const c of fleet.children) {
     if (!c.userData?.planeId) continue;
     const b = new THREE.Box3().setFromObject(c, true);
     const s = b.getSize(new THREE.Vector3());
-    const loc = c.position;
-    rows.push({ id: c.userData.planeId, role: c.userData.role ?? '', x: +loc.x.toFixed(1), z: +loc.z.toFixed(1),
-      span: +s.x.toFixed(1), len: +s.z.toFixed(1) });
+    rows.push({ id: c.userData.planeId, x: +c.position.x.toFixed(1), z: +c.position.z.toFixed(1),
+      span: +s.x.toFixed(1), len: +s.z.toFixed(1), minx: +b.min.x.toFixed(1), maxx: +b.max.x.toFixed(1) });
+    const clear = b.min.x < 0 && b.max.x > 0 ? 0 : Math.min(Math.abs(b.min.x), Math.abs(b.max.x));
+    if (!intrude || clear < intrude.clear) intrude = { id: c.userData.planeId, clear: +clear.toFixed(1) };
   }
-  // inside the walls?
+  hall.position.copy(keep.p);
+  hall.rotation.y = keep.r;
+  hall.updateMatrixWorld(true);
   const halfW = d.width / 2, halfL = d.length / 2;
-  const out = rows.filter((r) => Math.abs(r.x) + 0 > halfW || Math.abs(r.z) > halfL);
-  return { n: rows.length, rows, outside: out, d };
+  const out = rows.filter((r) => Math.abs(r.x) > halfW || Math.abs(r.z) > halfL);
+  return { n: rows.length, rows, outside: out, d, intrude };
 });
-console.log(`parked ${placed.n} planes; outside the walls: ${placed.outside.length}`);
+console.log(`parked ${placed.n} planes; outside the walls: ${placed.outside.length}; `
+  + `closest wingtip to the centreline ${placed.intrude?.clear} m (${placed.intrude?.id})`);
 console.log(placed.rows.map((r) => `${r.id}@(${r.x},${r.z})`).join(' '));
 
 // camera poses in HALL-LOCAL metres (x across the span, z along the length,
@@ -127,12 +141,13 @@ const col = await page.evaluate(() => {
 console.log(`colliders: ${col.n} baked, worst offset from its aeroplane ${col.worst} m (${col.worstId})`);
 
 const shots = [
-  ['aerial',      { cam: [0, 620, 330], at: [0, 0, 0] }],
-  ['outside',     { cam: [40, 55, 350], at: [0, 16, 120] }],
-  ['inside_dps',  { cam: [0, 14, 215], at: [0, 10, 60] }],
-  ['inside_tank', { cam: [0, 16, -40], at: [0, 12, -200] }],
-  ['aisle',       { cam: [0, 12, 60], at: [0, 10, -120] }],
-  ['both_sheds',  { cam: [-430, 230, 180], at: [0, 0, 0] }],
+  ['aerial',      { cam: [0, 640, 320], at: [0, 0, 0] }],
+  ['outside',     { cam: [0, 45, 330], at: [0, 16, 120] }],
+  ['lane_near',   { cam: [0, 10, 170], at: [0, 10, -120] }],   // down the lane
+  ['lane_far',    { cam: [0, 12, -170], at: [0, 10, 100] }],   // and back up it
+  ['inside_dps',  { cam: [55, 14, 170], at: [0, 10, 60] }],
+  ['inside_tank', { cam: [60, 16, -40], at: [-20, 12, -150] }],
+  ['both_sheds',  { cam: [-480, 250, 180], at: [0, 0, 0] }],
 ];
 const toWorld = (h, [lx, ly, lz]) => {
   const ux = Math.sin(h.yaw), uz = Math.cos(h.yaw);

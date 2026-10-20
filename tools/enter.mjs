@@ -1,6 +1,6 @@
 // Shared Playwright entry for the AIR GANGS shell:
-// login/register -> character screen (create hero if fresh) -> enter world ->
-// menu -> play -> hangar -> fly. Resolves when world.ready.
+// login/register -> character screen (create hero if fresh) -> enter world.
+// Resolves when world.ready.
 export async function enterGame(page, { user = 'shotbot', pass = 'shotbot123' } = {}) {
   // NO HOT RELOADS. Vite's client reloads the page whenever any source file
   // changes, and with an editor (or another session) touching src/ while a
@@ -51,10 +51,9 @@ export async function enterGame(page, { user = 'shotbot', pass = 'shotbot123' } 
     await page.click('#btn-char-create'); // create -> roster mode
     await page.waitForTimeout(400);
   }
-  await page.click('#btn-char-create'); // "enter world with this hero" -> menu
-  await page.waitForSelector('#screen-menu.active', { timeout: 15000 });
-  await page.click('#btn-play');
-  await page.waitForSelector('#btn-map', { timeout: 15000 });
-  await page.click('#btn-map');
+  // "▶ ამ გმირით შესვლა" goes STRAIGHT into the city now -- the start menu
+  // and the map page are gone (WoW's flow: login -> personages -> world).
+  await page.click('#btn-char-create');
+  await page.waitForSelector('#screen-game.active', { timeout: 15000 });
   await page.waitForFunction(() => window.__game?.world?.ready, null, { timeout: 420000 });
 }

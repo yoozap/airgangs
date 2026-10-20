@@ -13,10 +13,31 @@ import { tagPropellers, finishPropellers } from './propeller.js';
 // OBJ path. `props` is how many the real aircraft has (default 1): the detector
 // is told, so a four-engine Hercules is not satisfied by finding one.
 //
-// Physical data drives the realistic flight model (aero.js):
-//   mass (kg) · tw (static thrust/weight) · gBreak (load factor that rips the
-//   wings off) · clMax (max lift coefficient — sets the true stall speed) ·
-//   prop (thrust falls off with airspeed like a propeller, not a jet).
+// Physical data drives the realistic flight model (aero.js) and the collision
+// solver (src/planephys.js):
+//   empty/mtow (kg, REAL published figures) · tw (static thrust/weight) ·
+//   gBreak (load factor that rips the wings off) · clMax (max lift coefficient
+//   — sets the true stall speed) · prop (thrust falls off with airspeed like a
+//   propeller, not a jet).
+//
+// THE WEIGHT IS REAL. Every machine that exists carries the two numbers its
+// manufacturer publishes -- empty weight and maximum take-off weight -- and
+// the mass the game flies and crashes with is the midpoint of the two: half
+// tanks, half load, which is the weight a flight sim calls "operating". That
+// one rule is why the table agrees with the published loaded weights it is
+// not given (Spitfire IX 3 427 against a real 3 400, F-104G 9 760 against
+// 9 840, P-51D 4 478 against 4 585) instead of mixing empty weights and
+// MTOWs the way it used to. Six machines have no published figures -- three
+// are fictions, one is a 1945 paper project, one is classified -- and those
+// keep an explicit `mass`, labelled as the estimate it is.
+//
+// REAL REFERENCE DATA, one line per machine: span/len (m), vmax (km/h, and
+// the same figure the Georgian tagline quotes -- one number, one source),
+// ceil (service ceiling, m), climb (initial rate of climb, m/s), crew, year
+// (first flight). Published figures for the thirty of these that exist; the
+// six fictions carry only the speed the game gives them. The combat stats the
+// target card shows are computed from this and from the weights above:
+// planeStamina / planeTopSpeed / planeCrashDmg, below.
 //
 // Hangar metadata: code/cls/desc for the info panel, stats are 0-100 bars
 // [სიჩქარე, მანევრი, ჯავშანი, ცეცხლის ძალა].
@@ -29,16 +50,31 @@ export const planeRole = (p) =>
   ((typeof p === 'string' ? planeById(p) : p)?.role ?? 'DPS');
 export const isTankPlane = (p) => planeRole(p) === 'TANK';
 
+// STAMINA -- the hull pool, for anything that is not the player's own machine.
+// "planes must have stamina, speed, damage when crash": this is the first of
+// those three, and the other two are planeTopSpeed and planeCrashDmg below.
+//
+// The bar the player flies with is 1000 hp (MAX_HEALTH in src/game.js) and
+// that is the yardstick: a wartime fighter is worth about that much. What
+// makes a machine hard to kill is its armour (stats[2], 0..100) and its sheer
+// size, so the pool is the armour stat laid on top of a mass term -- a 2.5 t
+// racer comes out near 820, a Spitfire near 990 and a 462 t An-225 near 5200.
+export const planeStamina = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  return Math.round(300 + (def?.stats?.[2] ?? 40) * 8 + Math.sqrt(def?.mass ?? 3000) * 6);
+};
+
 export const PLANES = [
   {
     id: 'spitfire',
     name: 'Spitfire',
-    tagline: 'ლეგენდარული გამანადგურებელი · 590 კმ/სთ',
+    tagline: 'ლეგენდარული გამანადგურებელი · 650 კმ/სთ',
     file: '/models/spitfire.obj',
     thumb: '/textures/planes/spitfire.png',
     scale: 0.34, // 33-unit OBJ → ~11 m wingspan
     maxSpeed: 190,
-    mass: 3000, tw: 2.8, gBreak: 11, clMax: 1.6, prop: true,
+    empty: 2545, mtow: 4309, tw: 2.8, gBreak: 11, clMax: 1.6, prop: true,
+    span: 11.23, len: 9.47, vmax: 650, ceil: 13100, climb: 21.3, crew: 1, year: 1942,
     role: 'DPS',
     code: 'MK-IX', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [58, 88, 42, 55],
     desc: 'ლეგენდა, რომელიც ნეონის ეპოქასაც გადაურჩა. მოქნილი და მომტევებელი — ძველი თბილისის ვიწრო ქუჩებში მანევრირებისთვის იდეალურია.',
@@ -51,7 +87,8 @@ export const PLANES = [
     thumb: '/textures/planes/kawasaki.png',
     scale: 1,
     maxSpeed: 185,
-    mass: 2500, tw: 2.6, gBreak: 9, clMax: 1.5, prop: true,
+    mass: 2500, tw: 2.6, gBreak: 9, clMax: 1.5, prop: true, // fictional racer — mass estimated
+    vmax: 580, crew: 1,
     role: 'DPS',
     code: 'KW-R', cls: 'მზვერავი', tag: 'SCOUT', stats: [55, 92, 28, 38],
     desc: 'მსუბუქი სარბოლო აპარატი. თითქმის უჯავშნოა, მაგრამ მტკვრის ხიდების ქვეშ გაძრომისას მას ვერავინ დაეწევა.',
@@ -64,7 +101,8 @@ export const PLANES = [
     thumb: '/textures/planes/p100.png',
     scale: 1,
     maxSpeed: 220,
-    mass: 5200, tw: 3.0, gBreak: 10, clMax: 1.5, prop: true,
+    mass: 5200, tw: 3.0, gBreak: 10, clMax: 1.5, prop: true, // fictional type — mass estimated
+    vmax: 700, crew: 1,
     role: 'DPS',
     code: 'P-100', cls: 'მოიერიშე', tag: 'STRIKER', stats: [66, 72, 58, 74],
     desc: 'შემტევი გამანადგურებელი ორმაგი ქვემეხით. დაბალანსებული ბრძოლისთვის ნებისმიერ სიმაღლეზე — ნარიყალადან ტელეანძამდე.',
@@ -78,7 +116,8 @@ export const PLANES = [
     scale: 1,
     maxSpeed: 420,
     // The widow-maker: razor wing, lands at ~280 km/h — treat it with respect.
-    mass: 9300, tw: 3.6, gBreak: 8.5, clMax: 1.25,
+    empty: 6350, mtow: 13170, tw: 3.6, gBreak: 8.5, clMax: 1.25,
+    span: 6.68, len: 16.69, vmax: 2137, ceil: 15000, climb: 244, crew: 1, year: 1954,
     role: 'DPS',
     code: 'F-104', cls: 'ჩამჭრელი', tag: 'INTERCEPT', stats: [98, 40, 45, 68],
     desc: '«ქვრივების მჭედელი». სამართებელივით ბასრი ფრთა და ზებგერითი სისწრაფე — ერთი შეცდომა და კედელი შენია.',
@@ -86,12 +125,20 @@ export const PLANES = [
   {
     id: 'a7',
     name: 'A-7 Corsair II',
-    tagline: 'მოიერიშე თვითმფრინავი · 1112 კმ/სთ',
+    tagline: 'მოიერიშე თვითმფრინავი · 1123 კმ/სთ',
     file: '/models/planes/a7.glb',
     thumb: '/textures/planes/a7.png',
-    scale: 1,
+        // REAL SIZE. The model is a uniform 12% over an A-7E's 11.80 m span and
+    // 14.06 m length (tools/_probe_realsize.mjs), so it is scaled, not left
+    // as a Corsair the size of a Phantom.
+    scale: 0.892,
     maxSpeed: 260,
-    mass: 11000, tw: 3.0, gBreak: 9.5, clMax: 1.7,
+    // The canopy IS modelled, but it is called `Canopy_open_close_1` and is
+    // 13 m across, so every filter throws it out and the hull line put the
+    // pilot on the spine behind it. Read off the ejection seat in the model.
+    cockpit: { z: -4.46 },
+    empty: 8676, mtow: 19050, tw: 3.0, gBreak: 9.5, clMax: 1.7,
+    span: 11.8, len: 14.06, vmax: 1123, ceil: 12800, climb: 38, crew: 1, year: 1965,
     role: 'DPS',
     code: 'A-7', cls: 'მოიერიშე', tag: 'STRIKER', stats: [74, 58, 72, 86],
     desc: 'მიწასთან მუშაობის ოსტატი. სქელი ჯავშანი და მძიმე დანადგარი — ბანდების საყვარელი იარაღი სახურავების დასაშლელად.',
@@ -99,12 +146,13 @@ export const PLANES = [
   {
     id: 'b58',
     name: 'B-58 Hustler',
-    tagline: 'ზებგერითი ბომბდამშენი · 2228 კმ/სთ',
+    tagline: 'ზებგერითი ბომბდამშენი · 2120 კმ/სთ',
     file: '/models/planes/b58.glb',
     thumb: '/textures/planes/b58.png',
     scale: 1,
     maxSpeed: 400,
-    mass: 55000, tw: 3.2, gBreak: 4.5, clMax: 1.3,
+    empty: 25201, mtow: 80240, tw: 3.2, gBreak: 4.5, clMax: 1.3,
+    span: 17.32, len: 29.49, vmax: 2120, ceil: 19300, climb: 88, crew: 3, year: 1956,
     role: 'TANK',
     code: 'B-58', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [95, 26, 60, 92],
     desc: 'ზებგერითი დელტა-ბომბდამშენი. ფრთხილად მოუხვიე — მაგრამ როცა გაჩერდება მიზანზე, მთელი უბანი ინგრევა.',
@@ -117,46 +165,28 @@ export const PLANES = [
     thumb: '/textures/planes/rq180.png',
     scale: 1,
     maxSpeed: 260,
-    mass: 14000, tw: 2.8, gBreak: 6, clMax: 1.4,
+    mass: 14000, tw: 2.8, gBreak: 6, clMax: 1.4, // classified — mass estimated
+    vmax: 900,
     role: 'TANK',
     code: 'RQ-180', cls: 'პროტოტიპი', tag: 'STEALTH', stats: [80, 62, 34, 48],
     desc: 'ექსპერიმენტული სტელს-ფრთა. რადარები მას ვერ ხედავენ — მოწინააღმდეგე მხოლოდ აფეთქებას გაიგებს.',
   },
-  {
-    id: 'globemaster',
-    name: 'C-17 Globemaster III',
-    tagline: 'მძიმე სატრანსპორტო · 830 კმ/სთ',
-    file: '/models/planes/globemaster.glb',
-    thumb: '/textures/planes/globemaster.png',
-    scale: 1,
-    maxSpeed: 230,
-    mass: 140000, tw: 2.2, gBreak: 3.8, clMax: 2.3,
-    role: 'TANK',
-    code: 'C-17', cls: 'მძიმე', tag: 'HEAVY', stats: [62, 18, 96, 30],
-    desc: 'მფრინავი ციხესიმაგრე. ნელია და უზარმაზარი, მაგრამ მისი კორპუსი ტყვიების სეტყვას ისე იტანს, როგორც წვიმას.',
-  },
   // ---- tools/build_planes.py wave: fighters & trainers (DPS) ----
-  {
-    id: 'a10', name: 'A-10 Thunderbolt II', tagline: 'მოიერიშე ჯავშანთმფრენი · 706 კმ/სთ',
-    file: '/models/planes/a10.glb', thumb: '/textures/planes/a10.png', scale: 1, maxSpeed: 210,
-    mass: 11300, tw: 2.6, gBreak: 9, clMax: 1.9,
-    role: 'DPS',
-    code: 'A-10', cls: 'მოიერიშე', tag: 'STRIKER', stats: [55, 60, 90, 98],
-    desc: 'მფრინავი ქვემეხი ტიტანის აბაზანაში. ნელია, მაგრამ რასაც მისი GAU-8 შეეხება, აღარ დგება.',
-  },
   {
     id: 'aerobatic', name: 'Extra 330', tagline: 'აკრობატიული · 407 კმ/სთ',
     file: '/models/planes/aerobatic.glb', thumb: '/textures/planes/aerobatic.png', scale: 1, maxSpeed: 170,
-    mass: 950, tw: 3.4, gBreak: 12, clMax: 1.8, prop: true,
+    empty: 670, mtow: 950, tw: 3.4, gBreak: 12, clMax: 1.8, prop: true,
+    span: 7.5, len: 6.95, vmax: 407, ceil: 4900, climb: 16, crew: 1, year: 1995,
     role: 'DPS',
     code: 'EX-330', cls: 'აკრობატი', tag: 'ACRO', stats: [40, 100, 10, 8],
     desc: 'საჰაერო ცირკის ვარსკვლავი. ±10G და უსასრულო ტრიალი — ვიწრო ეზოებში მას ვერავინ დაიჭერს.',
   },
   {
-    id: 'cessna310', name: 'Cessna 310', tagline: 'მსუბუქი ორძრავა · 380 კმ/სთ',
+    id: 'cessna310', name: 'Cessna 310', tagline: 'მსუბუქი ორძრავა · 381 კმ/სთ',
     file: '/models/planes/cessna310.glb', thumb: '/textures/planes/cessna310.png', scale: 1, maxSpeed: 160,
     yaw: -Math.PI / 2, // orientation fix — GLB stored nose-west (tools/probe_props.mjs)
-    mass: 2500, tw: 1.8, gBreak: 6, clMax: 1.6, prop: true, props: 2,
+    empty: 1633, mtow: 2495, tw: 1.8, gBreak: 6, clMax: 1.6, prop: true, props: 2,
+    span: 11.25, len: 9.74, vmax: 381, ceil: 5760, climb: 8.2, crew: 1, year: 1953,
     // Blades welded into the hull: measured with tools/_probe_hub.mjs.
     propHubs: [[1.94, 1.50, 3.06], [-1.94, 1.50, 3.06]], propRadius: 0.78, propDepth: 0.34,
     role: 'DPS',
@@ -166,7 +196,8 @@ export const PLANES = [
   {
     id: 't28', name: 'T-28 Trojan', tagline: 'სასწავლო-საბრძოლო · 552 კმ/სთ',
     file: '/models/planes/t28.glb', thumb: '/textures/planes/t28.png', scale: 1, maxSpeed: 185,
-    mass: 3856, tw: 2.4, gBreak: 9, clMax: 1.7, prop: true,
+    empty: 2914, mtow: 3856, tw: 2.4, gBreak: 9, clMax: 1.7, prop: true,
+    span: 12.22, len: 10.06, vmax: 552, ceil: 10820, climb: 19.1, crew: 2, year: 1949,
     role: 'DPS',
     code: 'T-28', cls: 'სასწავლო', tag: 'TRAINER', stats: [48, 70, 35, 40],
     desc: 'სკოლის მერხი, რომელიც ვიეტნამში ომში წავიდა. პატიოსანი, გამძლე და მოთმინებით სავსე — დამწყები გმირის საუკეთესო მეგობარი.',
@@ -175,7 +206,12 @@ export const PLANES = [
     id: 'f4f', name: 'F4F Wildcat', tagline: 'გემბანის მებრძოლი · 533 კმ/სთ',
     file: '/models/planes/f4f.glb', thumb: '/textures/planes/f4f.png', scale: 1, maxSpeed: 180,
     yaw: -Math.PI / 2, // orientation fix — GLB stored nose-west (tools/probe_props.mjs)
-    mass: 3200, tw: 2.3, gBreak: 9.5, clMax: 1.8, prop: true,
+    // `Puerta_cabina` is the canopy SLID BACK on its rails, 1.7 m behind the
+    // hole it came off, so the pilot was seated on the turtledeck. The open
+    // well is here (tools/_probe_canopyzoom.mjs).
+    cockpit: { z: -1.8 },
+    empty: 2612, mtow: 3607, tw: 2.3, gBreak: 9.5, clMax: 1.8, prop: true,
+    span: 11.58, len: 8.76, vmax: 533, ceil: 10400, climb: 10.7, crew: 1, year: 1937,
     role: 'DPS',
     code: 'F4F', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [45, 68, 48, 50],
     desc: 'წყნარი ოკეანის ველური კატა. მოკლე ფრთები, ჯიუტი ხასიათი — და ბრძოლას არასდროს გაურბის.',
@@ -183,8 +219,11 @@ export const PLANES = [
   {
     id: 'p47', name: 'P-47 Thunderbolt', tagline: 'მძიმე მებრძოლი · 697 კმ/სთ',
     file: '/models/planes/p47.glb', thumb: '/textures/planes/p47.png', scale: 1, maxSpeed: 205,
-    yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
-    mass: 6600, tw: 2.5, gBreak: 10, clMax: 1.6, prop: true,
+    // No orientation fix: tools/build_p47.py rebuilds this one from the source
+    // on its own geometry — levelled, nose +Y in Blender (-Z in glTF) and
+    // standing on its wheels. The old file was stored banked and tail-first.
+    empty: 4536, mtow: 7938, tw: 2.5, gBreak: 10, clMax: 1.6, prop: true,
+    span: 12.42, len: 11.02, vmax: 697, ceil: 12800, climb: 16.2, crew: 1, year: 1941,
     role: 'DPS',
     code: 'P-47', cls: 'მებრძოლი', tag: 'FIGHTER', stats: [60, 62, 70, 72],
     desc: '«ქილა» — რვა ტყვიამფრქვევი და ჯავშანი, რომელსაც პიკირებაში ვერავინ დაეწევა. ძირს დაცემაც კი ეშინია მისი.',
@@ -192,7 +231,8 @@ export const PLANES = [
   {
     id: 'p51', name: 'P-51 Mustang', tagline: 'სადაზვერვო-მებრძოლი · 703 კმ/სთ',
     file: '/models/planes/p51.glb', thumb: '/textures/planes/p51.png', scale: 1, maxSpeed: 210,
-    mass: 5500, tw: 2.6, gBreak: 10, clMax: 1.65, prop: true,
+    empty: 3465, mtow: 5490, tw: 2.6, gBreak: 10, clMax: 1.65, prop: true,
+    span: 11.28, len: 9.83, vmax: 703, ceil: 12800, climb: 16.3, crew: 1, year: 1940,
     // The model is a Mustang with a spinner and no blades at all, so it gets
     // a real one: 3.40 m Hamilton Standard, four blades, rooted on the
     // spinner the model does have (tools/_probe_hub.mjs).
@@ -205,7 +245,8 @@ export const PLANES = [
     id: 'hsp75', name: 'Henschel Hs P.75', tagline: 'ქანარდიანი პროტოტიპი · 780 კმ/სთ',
     file: '/models/planes/hsp75.glb', thumb: '/textures/planes/hsp75.png', scale: 1, maxSpeed: 220,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
-    mass: 5200, tw: 2.7, gBreak: 8.5, clMax: 1.5, prop: true,
+    mass: 5200, tw: 2.7, gBreak: 8.5, clMax: 1.5, prop: true, // paper project — mass estimated
+    span: 18.0, len: 11.0, vmax: 780, crew: 1,
     role: 'DPS',
     code: 'P.75', cls: 'პროტოტიპი', tag: 'PROTO', stats: [58, 66, 40, 45],
     desc: 'ქაღალდიდან გამოქცეული ნახაზი: ფრთა უკან, საჭე წინ, ხრახნი კუდში. არავინ იცის როგორ დაფრინავს — მაგრამ დაფრინავს.',
@@ -213,8 +254,13 @@ export const PLANES = [
   {
     id: 'neonfly', name: 'El NeonFly', tagline: 'სარბოლო ჯეტი · 800 კმ/სთ',
     file: '/models/planes/neonfly.glb', thumb: '/textures/planes/neonfly.png', scale: 1, maxSpeed: 240,
-    roll: Math.PI / 2, // orientation fix — GLB stored banked on its wing
-    mass: 3100, tw: 3.2, gBreak: 11, clMax: 1.6,
+    // ORIENTATION FIX. The GLB is stored banked on its wing, and the first
+    // correction turned it the wrong way: it flew INVERTED -- undercarriage
+    // in the air, canopy underneath, fin hanging down, "NEONFLY" upside down
+    // on the fuselage. A quarter turn the other way stands it on its wheels.
+    roll: -Math.PI / 2,
+    mass: 3100, tw: 3.2, gBreak: 11, clMax: 1.6, // fictional type — mass estimated
+    vmax: 800, crew: 1,
     role: 'DPS',
     code: 'NEON', cls: 'სარბოლო', tag: 'RACER', stats: [72, 95, 20, 15],
     desc: 'შეჯიბრის ჯეტი ნეონის ქალაქისთვის. მსუბუქი, ავხორცი და თავხედი — ჰაერშივე იცვლის მიმართულებას, როგორც ფიქრს.',
@@ -223,20 +269,23 @@ export const PLANES = [
     id: 'javelin', name: 'Gloster Javelin', tagline: 'ღამის ჩამჭრელი · 1140 კმ/სთ',
     file: '/models/planes/javelin.glb', thumb: '/textures/planes/javelin.png', scale: 1, maxSpeed: 265,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
-    mass: 17500, tw: 2.9, gBreak: 7.5, clMax: 1.45,
+    empty: 11580, mtow: 19580, tw: 2.9, gBreak: 7.5, clMax: 1.45,
+    span: 15.85, len: 17.15, vmax: 1140, ceil: 15900, climb: 51, crew: 2, year: 1951,
     role: 'DPS',
     code: 'FAW-9', cls: 'ჩამჭრელი', tag: 'INTERCEPT', stats: [70, 55, 60, 62],
     desc: 'ბრიტანული დელტა ღამის ცისთვის. ორი ძრავა, ორი კაცი და ერთი მიზანი — რომ ღამით ბომბდამშენი არ გაგეპაროს.',
   },
   {
     id: 'mig21', name: 'MiG-21 Fishbed', tagline: 'ზებგერითი გამანადგურებელი · 2175 კმ/სთ',
-    file: '/models/planes/mig21.glb', thumb: '/textures/planes/mig21.png', scale: 1, maxSpeed: 415,
+    file: '/models/planes/mig21.glb', thumb: '/textures/planes/mig21.png',     // 6% over a MiG-21's 7.15 m span and 14.70 m length.
+    scale: 0.935, maxSpeed: 415,
     // The three-jets-in-one-scene file (see `strip` in tools/build_planes.py)
     // leaves a centreline profile full of holes, so the measurement found a
     // 9 cm "cockpit" behind the canopy and stood the pilot on the spine.
     // Read off tools/_probe_cockpit.mjs: the canopy is at z -3.9, top 1.13.
-    cockpit: { z: -3.9, closed: true },
-    mass: 8800, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    cockpit: { z: -3.65, closed: true },
+    empty: 5846, mtow: 10400, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    span: 7.15, len: 14.7, vmax: 2175, ceil: 17800, climb: 225, crew: 1, year: 1955,
     role: 'DPS',
     code: 'МиГ-21', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [92, 60, 40, 58],
     desc: 'მფრინავი კალაშნიკოვი — მარტივი, იაფი და ულმობელი. ნახევარი მსოფლიო ამით სწავლობდა ზებგერით ფრენას.',
@@ -244,16 +293,19 @@ export const PLANES = [
   {
     id: 'mig21nk', name: 'MiG-21PFM', tagline: 'ზებგერითი გამანადგურებელი · 2175 კმ/სთ',
     file: '/models/planes/mig21nk.glb', thumb: '/textures/planes/mig21nk.png', scale: 1, maxSpeed: 410,
-    mass: 8800, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    empty: 5350, mtow: 9080, tw: 3.4, gBreak: 8.5, clMax: 1.3,
+    span: 7.15, len: 14.1, vmax: 2175, ceil: 18000, climb: 120, crew: 1, year: 1964,
     role: 'DPS',
     code: 'ПФМ-415', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [90, 58, 42, 56],
     desc: 'ჩრდილოეთის ნაცრისფერი ძმა, ბორტნომერი 415. იგივე რაკეტა ფრთებით — ოღონდ სხვისი დროშით და მკაცრი ხასიათით.',
   },
   {
     id: 'tornado', name: 'Panavia Tornado', tagline: 'ცვალებადი ფრთა · 2400 კმ/სთ',
-    file: '/models/planes/tornado.glb', thumb: '/textures/planes/tornado.png', scale: 1, maxSpeed: 400,
+    file: '/models/planes/tornado.glb', thumb: '/textures/planes/tornado.png',     // 9% over a Tornado's 13.91 m span (wings forward) and 16.72 m length.
+    scale: 0.919, maxSpeed: 400,
     yaw: -0.658, // orientation fix — GLB sits 37.7deg off the fuselage axis (tools/probe_props.mjs)
-    mass: 20000, tw: 3.1, gBreak: 7.5, clMax: 1.7,
+    empty: 13890, mtow: 28000, tw: 3.1, gBreak: 7.5, clMax: 1.7,
+    span: 13.91, len: 16.72, vmax: 2400, ceil: 15240, climb: 77, crew: 2, year: 1974,
     role: 'DPS',
     code: 'GR-1', cls: 'მოიერიშე', tag: 'STRIKER', stats: [88, 64, 62, 80],
     desc: 'ევროპული ქარიშხალი საზეიმო შეფერილობით. ფრთებს კეცავს და მიწასთან აკრული მიქრის — რადარი ვერც ამჩნევს.',
@@ -261,7 +313,8 @@ export const PLANES = [
   {
     id: 'su33', name: 'Su-33 Flanker-D', tagline: 'გემბანის გამანადგურებელი · 2300 კმ/სთ',
     file: '/models/planes/su33.glb', thumb: '/textures/planes/su33.png', scale: 1, maxSpeed: 420,
-    mass: 24000, tw: 3.5, gBreak: 9, clMax: 1.9,
+    empty: 18400, mtow: 33000, tw: 3.5, gBreak: 9, clMax: 1.9,
+    span: 14.7, len: 21.19, vmax: 2300, ceil: 17000, climb: 246, crew: 1, year: 1987,
     role: 'DPS',
     code: 'Су-33', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [94, 86, 58, 78],
     desc: 'ზღვის ფლანკერი ქანარდებით. მძიმეა, მაგრამ კობრასავით იხრება — ჰაერში მასთან ჭიდაობა ცუდი იდეაა.',
@@ -269,7 +322,8 @@ export const PLANES = [
   {
     id: 'f15', name: 'F-15C Eagle', tagline: 'უზენაესობის მებრძოლი · 2655 კმ/სთ',
     file: '/models/planes/f15.glb', thumb: '/textures/planes/f15.png', scale: 1, maxSpeed: 440,
-    mass: 20200, tw: 3.6, gBreak: 9, clMax: 1.6,
+    empty: 12700, mtow: 30845, tw: 3.6, gBreak: 9, clMax: 1.6,
+    span: 13.05, len: 19.43, vmax: 2655, ceil: 20000, climb: 254, crew: 1, year: 1972,
     role: 'DPS',
     code: 'F-15C', cls: 'გამანადგურებელი', tag: 'FIGHTER', stats: [97, 80, 60, 84],
     desc: '104:0 — ეს მისი ანგარიშია საჰაერო ბრძოლებში. არწივი, რომელიც ჯერ არავის ჩამოუგდია.',
@@ -277,7 +331,8 @@ export const PLANES = [
   {
     id: 'f117', name: 'F-117 Nighthawk', tagline: 'სტელს-მოიერიშე · 993 კმ/სთ',
     file: '/models/planes/f117.glb', thumb: '/textures/planes/f117.png', scale: 1, maxSpeed: 250,
-    mass: 23800, tw: 2.4, gBreak: 6, clMax: 1.1,
+    empty: 13380, mtow: 23814, tw: 2.4, gBreak: 6, clMax: 1.1,
+    span: 13.2, len: 20.09, vmax: 993, ceil: 13700, crew: 1, year: 1981,
     role: 'DPS',
     code: 'F-117', cls: 'სტელსი', tag: 'STEALTH', stats: [70, 35, 45, 66],
     desc: 'ღამის შავი დანა. რადარისთვის უჩინარია, თვალისთვის — კოშმარი. ფრთხილად: ეს დანა ორივე მხარეს ჭრის.',
@@ -286,11 +341,16 @@ export const PLANES = [
   {
     id: 'lancaster', name: 'Avro Lancaster', tagline: 'მძიმე ბომბდამშენი · 454 კმ/სთ',
     file: '/models/planes/lancaster.glb', thumb: '/textures/planes/lancaster.png', scale: 1, maxSpeed: 175,
-    mass: 29000, tw: 2.0, gBreak: 5, clMax: 1.9, prop: true, props: 4,
+    empty: 16738, mtow: 31751, tw: 2.0, gBreak: 5, clMax: 1.9, prop: true, props: 4,
+    span: 31.09, len: 21.18, vmax: 454, ceil: 6500, climb: 4.7, crew: 7, year: 1941,
     // Four Merlins, blades welded into one continuous surface — measured
     // station by station with tools/_probe_hub.mjs.
     propHubs: [[3.88, 4.16, 7.44], [-3.88, 4.16, 7.44],
                [8.09, 4.01, 6.91], [-8.09, 4.01, 6.91]],
+    // One mesh glazes the WHOLE aeroplane -- nose blister, cockpit, mid-upper
+    // turret and tail turret, 21 m of it -- so its centre is the bomb bay and
+    // the pilot was flown sitting on the roof over it. The greenhouse is here.
+    cockpit: { z: -8.4 },
     propRadius: 2.30, propDepth: 0.95,
     role: 'TANK',
     code: 'LANC', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [40, 25, 70, 85],
@@ -300,16 +360,25 @@ export const PLANES = [
     id: 'h6k', name: 'Xian H-6K', tagline: 'სარაკეტო ბომბდამშენი · 1050 კმ/სთ',
     file: '/models/planes/h6k.glb', thumb: '/textures/planes/h6k.png', scale: 1, maxSpeed: 250,
     yaw: Math.PI, // orientation fix — GLB stored tail-first (tools/probe_props.mjs)
-    mass: 79000, tw: 2.5, gBreak: 4.5, clMax: 1.5,
+    empty: 38530, mtow: 79000, tw: 2.5, gBreak: 4.5, clMax: 1.5,
+    span: 34.19, len: 34.8, vmax: 1050, ceil: 12800, climb: 15, crew: 4, year: 2007,
     role: 'TANK',
     code: 'H-6K', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [72, 22, 68, 90],
     desc: 'ძველი Ту-16-ის აღმოსავლური რეინკარნაცია. ექვსი ფრთისქვეშა რაკეტა — და უბანი აღარ არის უბანი.',
   },
   {
     id: 'tu144', name: 'Tu-144', tagline: 'ზებგერითი ლაინერი · 2500 კმ/სთ',
-    file: '/models/planes/tu144.glb', thumb: '/textures/planes/tu144.png', scale: 1, maxSpeed: 430,
+    file: '/models/planes/tu144.glb', thumb: '/textures/planes/tu144.png',     // THE MODEL IS A THIRD TOO BIG: 37.1 m across against a Tu-144's real
+    // 28.80 m, and 80 m long against 65.7. Scaled down to the real aircraft
+    // -- "big planes like boing must be real size".
+    scale: 0.776, maxSpeed: 430,
     yaw: -0.702, // orientation fix — GLB sits 40.2deg off the fuselage axis (tools/probe_props.mjs)
-    mass: 180000, tw: 3.0, gBreak: 4, clMax: 1.4,
+    // The model's -Z end is the PITOT PROBE, and the hull-line search ran out
+    // along it: the pilot rode the spike. The flight deck is at the base of
+    // the drooping nose (tools/_probe_canopyzoom.mjs, off the windows).
+    cockpit: { z: -21.7 },
+    empty: 85000, mtow: 180000, tw: 3.0, gBreak: 4, clMax: 1.4,
+    span: 28.8, len: 65.7, vmax: 2500, ceil: 18000, crew: 3, year: 1968,
     role: 'TANK',
     code: 'Ту-144', cls: 'ზებგერითი', tag: 'SUPERSONIC', stats: [99, 15, 55, 20],
     desc: '«კონკორდსკი» — სამგზავრო თვითმფრინავი, რომელიც ტყვიაზე სწრაფად დაფრინავს. მოხვევა? ჯერ ბათუმამდე გაფრინდი, მერე მოუხვიე.',
@@ -317,7 +386,8 @@ export const PLANES = [
   {
     id: 'xb35', name: 'Northrop XB-35', tagline: 'მფრინავი ფრთა · 630 კმ/სთ',
     file: '/models/planes/xb35.glb', thumb: '/textures/planes/xb35.png', scale: 1, maxSpeed: 200,
-    mass: 82000, tw: 2.2, gBreak: 4.5, clMax: 1.8, prop: true, props: 4,
+    empty: 40590, mtow: 94347, tw: 2.2, gBreak: 4.5, clMax: 1.8, prop: true, props: 4,
+    span: 52.43, len: 16.18, vmax: 630, ceil: 12100, climb: 3.6, crew: 9, year: 1946,
     role: 'TANK',
     code: 'XB-35', cls: 'პროტოტიპი', tag: 'PROTO', stats: [55, 30, 75, 82],
     desc: 'ფუსელაჟი? კუდი? ზედმეტი დეტალებია. მხოლოდ ფრთა, ოთხი მბრუნავი ხრახნი და 52 მეტრი ჩრდილი ქალაქზე.',
@@ -326,7 +396,8 @@ export const PLANES = [
     id: 'carpet', name: 'Carpet Bomber', tagline: 'ხალიჩა-ბომბდამშენი · 480 კმ/სთ',
     file: '/models/planes/carpet.glb', thumb: '/textures/planes/carpet.png', scale: 1, maxSpeed: 190,
     cockpit: { z: -11.5, closed: true }, // the measurement found the fin, not the nose
-    mass: 30000, tw: 2.1, gBreak: 4.8, clMax: 1.8, prop: true, props: 4,
+    mass: 30000, tw: 2.1, gBreak: 4.8, clMax: 1.8, prop: true, props: 4, // fictional type — mass estimated
+    vmax: 480, crew: 4,
     role: 'TANK',
     code: 'LCB', cls: 'ბომბდამშენი', tag: 'BOMBER', stats: [45, 28, 65, 88],
     desc: 'სახელი თავად ამბობს: სადაც ეს ჩაივლის, იქ ბალახიც ხელახლა ითესება. ფრთხილად შენს უბანთან.',
@@ -334,7 +405,8 @@ export const PLANES = [
   {
     id: 'b737', name: 'Boeing 737-300', tagline: 'ავიალაინერი · 880 კმ/სთ',
     file: '/models/planes/b737.glb', thumb: '/textures/planes/b737.png', scale: 1, maxSpeed: 235,
-    mass: 56000, tw: 2.3, gBreak: 4, clMax: 2.0,
+    empty: 32820, mtow: 56472, tw: 2.3, gBreak: 4, clMax: 2.0,
+    span: 28.88, len: 33.4, vmax: 880, ceil: 11300, climb: 12.7, crew: 2, year: 1984,
     role: 'TANK',
     code: 'B-737', cls: 'ავიალაინერი', tag: 'LINER', stats: [66, 30, 62, 10],
     desc: 'სამოქალაქო კლასიკა. 148 სავარძელი, უფასო წვენი და გმირი შტურვალთან — რას იზამ, ომია.',
@@ -342,7 +414,8 @@ export const PLANES = [
   {
     id: 'c130', name: 'C-130J Hercules', tagline: 'ტაქტიკური სატრანსპორტო · 670 კმ/სთ',
     file: '/models/planes/c130.glb', thumb: '/textures/planes/c130.png', scale: 1, maxSpeed: 205,
-    mass: 70000, tw: 2.2, gBreak: 4.2, clMax: 2.1, prop: true, props: 4,
+    empty: 34274, mtow: 70307, tw: 2.2, gBreak: 4.2, clMax: 2.1, prop: true, props: 4,
+    span: 40.41, len: 29.79, vmax: 670, ceil: 8615, climb: 10.9, crew: 3, year: 1996,
     propHubs: [[5.11, 5.99, 6.09], [-5.11, 5.99, 6.09],
                [10.31, 6.11, 6.00], [-10.31, 6.11, 6.00]],
     propRadius: 2.20, propDepth: 0.80,
@@ -353,18 +426,27 @@ export const PLANES = [
   {
     id: 'yc130', name: 'YC-130 Prototype', tagline: 'ჰერკულესის წინაპარი · 640 კმ/სთ',
     file: '/models/planes/yc130.glb', thumb: '/textures/planes/yc130.png', scale: 1, maxSpeed: 200,
-    mass: 62000, tw: 2.2, gBreak: 4.2, clMax: 2.1, prop: true, props: 4,
+    empty: 27000, mtow: 56336, tw: 2.2, gBreak: 4.2, clMax: 2.1, prop: true, props: 4,
+    span: 40.41, len: 29.79, vmax: 640, ceil: 7000, climb: 9, crew: 4, year: 1954,
     propHubs: [[5.19, 4.27, 6.73], [-5.19, 4.27, 6.73],
                [10.35, 4.57, 6.73], [-10.35, 4.57, 6.73]],
+    // `Glass_Glass_0` is every window in the aeroplane in one 16 m mesh, so
+    // its centre is the cargo hold. The flight deck is where the model's own
+    // `Interior` sits, up at the nose -- the same station the C-130 measures.
+    cockpit: { z: -12.9 },
     propRadius: 2.08, propDepth: 0.88,
     role: 'TANK',
     code: 'YC-130', cls: 'პროტოტიპი', tag: 'PROTO', stats: [50, 36, 74, 22],
     desc: 'პირველი ჰერკულესი — ჯერ კიდევ ქარხნული სუნით. ისტორია ფრთებზე: 1954 წლის 23 აგვისტო, პირველი აფრენა.',
   },
   {
-    id: 'cargobro', name: 'Cargo Bro', tagline: 'სადესანტო ტრანსპორტი · 700 კმ/სთ',
-    file: '/models/planes/cargobro.glb', thumb: '/textures/planes/cargobro.png', scale: 1, maxSpeed: 210,
-    mass: 65000, tw: 2.3, gBreak: 4.5, clMax: 2.0, prop: true, props: 0,
+    id: 'cargobro', name: 'Cargo Bro', tagline: 'სადესანტო ტრანსპორტი · 830 კმ/სთ',
+    file: '/models/planes/cargobro.glb', thumb: '/textures/planes/cargobro.png',     // THE MODEL IS A QUARTER TOO SMALL: 39.4 m across against a C-17's real
+    // 51.75 m span and 53.04 m length. This is the one genuinely undersized
+    // heavy in the game -- scaled up to the aeroplane it is a model of.
+    scale: 1.3125, maxSpeed: 210,
+    empty: 128100, mtow: 265352, tw: 2.3, gBreak: 4.5, clMax: 2.0, props: 0, // four turbofans, not props
+    span: 51.75, len: 53.04, vmax: 830, ceil: 13700, crew: 3, year: 1991,
     role: 'TANK',
     code: 'CARGO', cls: 'სატრანსპორტო', tag: 'TRANSPORT', stats: [55, 32, 85, 30],
     desc: 'სადესანტო ძმაკაცი. უკანა რამპა იღება, ასი მებრძოლი გადმოდის — შენ კი უბრალოდ წრეებს ხაზავ ქალაქზე.',
@@ -372,7 +454,14 @@ export const PLANES = [
   {
     id: 'il76', name: 'Ilyushin Il-76', tagline: 'მძიმე სატრანსპორტო · 900 კმ/სთ',
     file: '/models/planes/il76.glb', thumb: '/textures/planes/il76.png', scale: 1, maxSpeed: 235,
-    mass: 140000, tw: 2.3, gBreak: 4, clMax: 2.2,
+    // THIS MODEL IS STORED TAIL-FIRST. Nothing had caught it because an
+    // Il-76 reads much the same from either end at a distance -- but the
+    // aeroplane was flying backwards, and the cockpit search, which looks
+    // down the -Z half, measured the FIN and sat the pilot on top of the
+    // T-tail 11.5 m up (tools/_probe_hullaxis.mjs).
+    yaw: Math.PI,
+    empty: 92500, mtow: 190000, tw: 2.3, gBreak: 4, clMax: 2.2,
+    span: 50.5, len: 46.59, vmax: 900, ceil: 13000, climb: 14, crew: 5, year: 1971,
     role: 'TANK',
     code: 'Ил-76', cls: 'სატრანსპორტო', tag: 'TRANSPORT', stats: [64, 24, 88, 28],
     desc: 'საბჭოთა სამუშაო ცხენი სრული ინტერიერით. კაბინაში შუშის ცხვირია — ჩამოჯექი და უყურე, როგორ მიცურავს ქალაქი.',
@@ -380,15 +469,21 @@ export const PLANES = [
   {
     id: 'b767', name: 'Boeing 767', tagline: 'შორეული ლაინერი · 913 კმ/სთ',
     file: '/models/planes/b767.glb', thumb: '/textures/planes/b767.png', scale: 1, maxSpeed: 240,
-    mass: 142000, tw: 2.3, gBreak: 3.8, clMax: 2.1,
+    // Nothing named in the file, and an airliner is at full fuselage height
+    // for forty metres, so the hull line stopped over the wing and the pilot
+    // sat on the cabin roof. The flight deck windows are at -24.4.
+    cockpit: { z: -24.4 },
+    empty: 80130, mtow: 142880, tw: 2.3, gBreak: 3.8, clMax: 2.1,
+    span: 47.57, len: 48.51, vmax: 913, ceil: 13100, climb: 15, crew: 2, year: 1981,
     role: 'TANK',
     code: 'B-767', cls: 'ავიალაინერი', tag: 'LINER', stats: [68, 22, 70, 5],
     desc: 'ორმილიანი ტრანსატლანტიკური დარბაისელი. დინჯად მოხვევს, დინჯად დაჯდება — და მთელი უბანი ჩრდილში ეხვევა.',
   },
   {
-    id: 'awacs', name: 'Air Defense Sentinel', tagline: 'სადარაჯო თვითმფრინავი · 850 კმ/სთ',
+    id: 'awacs', name: 'Air Defense Sentinel', tagline: 'სადარაჯო თვითმფრინავი · 853 კმ/სთ',
     file: '/models/planes/awacs.glb', thumb: '/textures/planes/awacs.png', scale: 1, maxSpeed: 230,
-    mass: 125000, tw: 2.3, gBreak: 4, clMax: 2.0,
+    empty: 73480, mtow: 147400, tw: 2.3, gBreak: 4, clMax: 2.0,
+    span: 44.42, len: 46.61, vmax: 853, ceil: 12500, crew: 17, year: 1975,
     role: 'TANK',
     code: 'AWACS', cls: 'სადარაჯო', tag: 'RADAR', stats: [60, 26, 78, 35],
     desc: 'ცის დიდი ძმა. ყველას ხედავს, ყველას ისმენს — შენს უბანში ბეღურაც ვერ აფრინდება მისი ნებართვის გარეშე.',
@@ -396,7 +491,11 @@ export const PLANES = [
   {
     id: 'an225', name: 'Antonov An-225 Mriya', tagline: 'მსოფლიოში უდიდესი · 850 კმ/სთ',
     file: '/models/planes/an225.glb', thumb: '/textures/planes/an225.png', scale: 1, maxSpeed: 235,
-    mass: 285000, tw: 2.1, gBreak: 3.2, clMax: 2.3,
+    // As the 767, twenty metres further forward: the flight deck is directly
+    // behind the radome, not half way down the cargo deck.
+    cockpit: { z: -32.5 },
+    empty: 285000, mtow: 640000, tw: 2.1, gBreak: 3.2, clMax: 2.3,
+    span: 88.4, len: 84.0, vmax: 850, ceil: 11000, crew: 6, year: 1988,
     role: 'TANK',
     code: 'Ан-225', cls: 'გიგანტი', tag: 'GIANT', stats: [62, 8, 100, 15],
     desc: '«მრია» — ოცნება. ექვსი ძრავა, 32 ბორბალი, 88 მეტრი ფრთა. როცა ეს დაჯდება, აეროპორტი ორ დღეს ივსება ხალხით.',
@@ -404,6 +503,97 @@ export const PLANES = [
 ];
 
 export const planeById = (id) => PLANES.find((p) => p.id === id) ?? PLANES[0];
+
+// Operating mass, from the two real numbers above. Done here rather than by
+// hand in 36 places so the table stays auditable: every mass in the game is
+// either a published pair or an explicit, labelled estimate.
+for (const p of PLANES) {
+  if (p.mass === undefined) p.mass = Math.round(p.empty + 0.5 * (p.mtow - p.empty));
+}
+
+// WHAT A COLLISION DOES TO THIS AIRFRAME, GTA V's fCollisionDamageMult by
+// another name: how much of the crush energy a hit actually turns into damage.
+// A titanium bathtub around the pilot (A-10, armour 90) soaks it; a fabric
+// aerobatic toy (Extra 330, armour 10) folds. One number, read off the armour
+// stat the hangar card already shows, so nothing can disagree with the UI:
+// armour 0 -> 1.6x, armour 50 -> 1.05x, armour 100 -> 0.5x. A def may override
+// it with `colMult`.
+export const planeColMult = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  if (def?.colMult !== undefined) return def.colMult;
+  return 1.6 - 0.011 * (def?.stats?.[2] ?? 40);
+};
+
+// FUEL ABOARD, kg -- what burns when the machine goes in, and therefore how
+// big the fire is and how long it takes to reach the tanks (src/planephys.js).
+// It falls straight out of the weight rule above: the game flies at empty plus
+// half the useful load, and half of what is loaded is fuel, so a quarter of
+// the useful load is in the tanks. A Spitfire carries 441 kg of petrol by that
+// reckoning and an An-225 88 tonnes of kerosene, which is the right order for
+// both. The fictions, with no published pair, get a flat eighth of their mass.
+export const planeFuel = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  if (def?.fuel !== undefined) return def.fuel;
+  if (def?.empty && def?.mtow) return Math.round(0.25 * (def.mtow - def.empty));
+  return Math.round((def?.mass ?? 3000) * 0.12);
+};
+
+// THE REAL SPEC SHEET, one line, for the target card's tooltip: everything in
+// the reference block that the card has no room to print. Only what the def
+// actually carries -- the six fictions skip most of it rather than inventing
+// a service ceiling for an aeroplane that was never built.
+export const planeSpecSheet = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  if (!def) return '';
+  const bits = [def.name];
+  if (def.cls) bits.push(def.cls);
+  if (def.span && def.len) bits.push(`ფრთები ${def.span} მ · სიგრძე ${def.len} მ`);
+  if (def.empty && def.mtow) {
+    bits.push(`ცარიელი ${(def.empty / 1000).toFixed(1)} ტ · მაქს. ${(def.mtow / 1000).toFixed(1)} ტ`);
+  }
+  if (def.ceil) bits.push(`ჭერი ${def.ceil} მ`);
+  if (def.climb) bits.push(`აღმასვლა ${def.climb} მ/წმ`);
+  if (def.crew) bits.push(`ეკიპაჟი ${def.crew}`);
+  if (def.year) bits.push(`${def.year} წ.`);
+  return bits.join(' · ');
+};
+
+// Operating mass in kg, for anything outside the flight model.
+export const planeMass = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  return def?.mass ?? 3000;
+};
+
+// SPEED -- the real thing, in km/h, which is what the card and the tagline
+// both quote. (The flight model's own ceiling is `maxSpeed`, in m/s, and it is
+// deliberately arcade: the user wants hot thrust and realistic BREAKING.)
+export const planeTopSpeed = (p) => {
+  const def = typeof p === 'string' ? planeById(p) : p;
+  return def?.vmax ?? Math.round((def?.maxSpeed ?? 190) * 3.6);
+};
+
+// CRASH DAMAGE -- what this machine does to another one by hitting it.
+//
+// It is not a hand-written number: it is the collision solver's own
+// arithmetic (src/planephys.js) run against a fixed reference -- a 3 400 kg
+// Spitfire met head-on at 100 m/s closing -- so the stat on the card is
+// exactly what the physics will do. Two airframes share a crush of E = ½·μ·v²
+// joules (μ = m1·m2/(m1+m2)); the one being hit eats E/m2 of it per kilogram
+// of its own structure, 2.2 J/kg to the hull point.
+//
+// That the figure saturates is the physics, not a fudge: against something
+// light there is only so much energy a collision CAN put into it, which is
+// why an An-225 scores twice a Spitfire rather than a hundred times it -- but
+// the An-225 walks away and the Spitfire does not, and that part is the mass
+// ratio in the solver.
+const REF_MASS = 3400;      // kg — a loaded Spitfire
+const REF_COL = 1.138;      // its own collision multiplier (armour 42)
+export const planeCrashDmg = (p) => {
+  const m1 = planeMass(p);
+  const mu = (m1 * REF_MASS) / (m1 + REF_MASS);
+  const E = 0.5 * mu * 100 * 100 * (1 - 0.05 * 0.05);
+  return Math.max(0, Math.round(((E / REF_MASS - 8) / 2.2) * REF_COL));
+};
 
 // The Spitfire OBJ references a missing .mtl, so materials are assigned by name.
 // Part names are Turkish: gövde = fuselage, cam = canopy glass, pervane = propeller,
@@ -662,8 +852,26 @@ export const PILOT_WIDE = 0.52;     // across the shoulders
 // what tools/build_cockpit.py drew the tub at, for the fit-down above
 const TUB_HALF_W = 0.30;
 const TUB_SILL = 0.46;
-const PILOT_GROW_MAX = 2.2;      // a bad measurement must not make a 200 m toy
+// THE AEROPLANE IS NOT GROWN TO FIT THE PILOT ANY MORE. It used to be: a
+// cockpit too shallow for 0.92 m of seated personage scaled the whole airframe
+// until it was, and five machines came out monstrous for it -- the Spitfire at
+// 15.9 m span against a real 11.23, the Extra 330 at 14.7 against 8.0, the
+// Wildcat at 14.8 against 11.6. Every one of those models is accurate to a few
+// centimetres BEFORE the growth, so the growth was never fixing the aeroplane;
+// it was fixing a cockpit measurement, by making the aeroplane wrong.
+//
+// What actually fits a pilot into a shallow cockpit is sitting it LOWER: the
+// head stays against the glass where it can be seen and the hips go down into
+// the hull, where there is nothing to see and nothing to hit. foot.js does
+// exactly that, per body (updateSeated), and the furniture goes down with it
+// so the hands stay on the stick. So the growth is capped at 1 -- a def can
+// still ask for one explicitly with `cockpit: { grow }`, and nothing does.
+const PILOT_GROW_MAX = 1;
 const PILOT_ROOM_MIN = 0.3;      // below this the measurement is broken, not tight
+// Where a crew sits in a cockpit deep enough to stand up in: a transport's
+// flight deck floor is a little over half way up the fuselage, which is what
+// puts the windscreen at a seated pilot's eye level.
+const FLIGHTDECK_RATIO = 0.50;
 
 // Names and materials that mean "this is the greenhouse" / "this is the well
 // the pilot sits in". Both lists are needed: some models give the glass
@@ -682,18 +890,91 @@ function boxOf(o, box = new THREE.Box3()) {
   return box.setFromObject(o, true);
 }
 
+// WHERE THE FUSELAGE ACTUALLY IS, across the aeroplane. Almost every model in
+// this fleet is built about x = 0, and the one that is not broke the whole
+// measurement: the 767's hull sits 1.7 m off to one side, so the centreline
+// band sampled thin air down the length of it, the profile came back empty at
+// the nose and the station fell through to a fallback in the middle of the
+// cabin -- which is why its pilot rode the roof over the wing and why an
+// explicit `cockpit: { z }` for the flight deck was being ignored.
+//
+// Read off the NOSE, where an aeroplane is nothing but fuselage: the midpoint
+// of the x the forward tenth of the model occupies. Wings, engines and gear
+// are all behind it, so none of them can drag the answer sideways.
+// IS THIS MESH PART OF THE AIRFRAME'S SKIN? Propellers are not: a 2.4 m disc
+// of blades standing on the nose is the tallest thing on the front of a
+// single-engine aeroplane, and the station search, which looks for the first
+// place the hull rises to its full forward height, walked straight into the
+// Kawasaki's and seated its pilot on the spinner. Nor is the collision shell,
+// nor the cockpit lining this is being measured to build.
+function isSkin(o) {
+  if (!o.isMesh || !o.geometry?.attributes?.position) return false;
+  if (o.name === 'plane_shell') return false;
+  for (let p = o; p; p = p.parent) {
+    if (p.userData.interior || p.userData.isPropeller) return false;
+  }
+  return true;
+}
+
+// The lowest the hull gets anywhere a seated pilot reaches: from a little
+// behind the seat back to a little past the rudder pedals.
+function bellyUnder(prof, wide, station, len) {
+  const span = prof.zMax - prof.zMin;
+  const at = (z) => Math.floor(((z - prof.zMin) / span) * prof.bins);
+  const a = Math.max(0, at(station - Math.min(1.0, len * 0.08)));
+  const b = Math.min(prof.bins - 1, at(station + Math.min(0.45, len * 0.04)));
+  let bot = Infinity;
+  for (let i = a; i <= b; i++) {
+    if (prof.bot[i] < bot) bot = prof.bot[i];
+    if (wide.bot[i] < bot) bot = wide.bot[i];
+  }
+  return Number.isFinite(bot) ? bot : -Infinity;
+}
+
+function fuselageAxis(root, air, size) {
+  const v = new THREE.Vector3();
+  // The forward THIRD, and only what is already near the middle: the front of
+  // an aeroplane is fuselage, and a quarter-span window keeps a wing root, an
+  // outrigger or a tip tank from voting. (On the P-47 a tenth-length window
+  // held so little but exhaust ducting that the median came out a metre off
+  // the centreline of a fuselage that is on it.)
+  const zCut = air.min.z + size.z * 0.33;
+  const xWin = size.x * 0.25;
+  const xs = [];
+  root.traverse((o) => {
+    if (!isSkin(o)) return;
+    const pos = o.geometry.attributes.position;
+    const stride = Math.max(1, Math.floor(pos.count / 8000));
+    for (let i = 0; i < pos.count; i += stride) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (v.z <= zCut && Math.abs(v.x) <= xWin) xs.push(v.x);
+    }
+  });
+  if (xs.length < 24) return 0;
+  // THE MEDIAN, not the midpoint of the range. The range is set by whatever
+  // sticks out furthest -- a blade tip, a pitot, a nose-gear door -- and on
+  // the 767 the midpoint came out 5 m off the fuselage it was meant to find.
+  // Half the vertices of a forward fuselage are on the forward fuselage.
+  xs.sort((a, b) => a - b);
+  const mid = xs[xs.length >> 1];
+  // ...and an aeroplane is built about x = 0 unless it is plainly not. A few
+  // centimetres is noise and moving the band by it helps nothing; this exists
+  // for the one model whose hull is a metre and a half off to one side.
+  return Math.abs(mid) > Math.max(0.6, size.x * 0.02) ? mid : 0;
+}
+
 // The hull's top and bottom along its length, on the centreline only -- wings,
 // tailplanes and the undercarriage are off to the side and must not count.
 // Sampled from the vertices, because a mesh bounding box says nothing about
 // where the fuselage is at a given station.
-function hullProfile(root, band, zMin, zMax, bins = 48, opaqueOnly = false) {
+function hullProfile(root, band, zMin, zMax, bins = 48, opaqueOnly = false, axisX = 0) {
   const top = new Float64Array(bins).fill(-Infinity);
   const bot = new Float64Array(bins).fill(Infinity);
   const wid = new Float64Array(bins); // half-width, for the climb-aboard spot
   const v = new THREE.Vector3();
   const span = Math.max(1e-6, zMax - zMin);
   root.traverse((o) => {
-    if (!o.isMesh || !o.geometry?.attributes?.position || o.userData.interior) return;
+    if (!isSkin(o)) return;
     if (opaqueOnly) {
       const mats = (Array.isArray(o.material) ? o.material : [o.material]).filter(Boolean);
       if (mats.some((m) => m.transparent && m.opacity < 0.95)) return;
@@ -703,15 +984,15 @@ function hullProfile(root, band, zMin, zMax, bins = 48, opaqueOnly = false) {
     const stride = Math.max(1, Math.floor(pos.count / 20000));
     for (let i = 0; i < pos.count; i += stride) {
       v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-      if (Math.abs(v.x) > band || v.z < zMin || v.z > zMax) continue;
+      const ax = Math.abs(v.x - axisX);
+      if (ax > band || v.z < zMin || v.z > zMax) continue;
       const b = Math.min(bins - 1, Math.floor(((v.z - zMin) / span) * bins));
       if (v.y > top[b]) top[b] = v.y;
       if (v.y < bot[b]) bot[b] = v.y;
-      const ax = Math.abs(v.x);
       if (ax > wid[b]) wid[b] = ax;
     }
   });
-  return { top, bot, wid, zMin, zMax, bins };
+  return { top, bot, wid, zMin, zMax, bins, axisX, band };
 }
 
 // Everything the pilot needs to know about an airframe: where the seat is, how
@@ -733,6 +1014,7 @@ export function findCockpit(root, override = null) {
   const len = size.z;
   const vol = Math.max(1e-6, size.x * size.y * size.z);
   const band = Math.max(0.3, size.x * 0.06);
+  const axisX = fuselageAxis(root, air, size);
   // the pilot station is never in the propeller and never in the tail
   const zMin = air.min.z + len * 0.05;
   const zMax = air.min.z + len * 0.78;
@@ -758,7 +1040,7 @@ export function findCockpit(root, override = null) {
     b.getCenter(c);
     if (s.x > size.x * 0.4) return;                 // a wing-wide "canopy" is the skin
     if (s.x * s.y * s.z > vol * 0.06) return;       // ... and so is a plane-sized one
-    if (Math.abs(c.x) > size.x * 0.25) return;      // the pilot sits near the middle
+    if (Math.abs(c.x - axisX) > size.x * 0.25) return; // the pilot sits near the middle
     if (c.z < zMin || c.z > zMax) return;           // not in the prop, not in the fin
     const v = s.x * s.y * s.z;
     // GLASS and WELL are not the same thing and must not be mixed up. Glass is
@@ -770,18 +1052,32 @@ export function findCockpit(root, override = null) {
     if ((named || isWell) && !see && (!well || v > well.v)) well = { v, box: b.clone(), name: o.name };
   });
 
-  const prof = hullProfile(root, band, zMin, zMax);
+  const prof = hullProfile(root, band, zMin, zMax, 48, false, axisX);
+  // A SECOND, FATTER PROFILE for the stations the thin one misses. The narrow
+  // band is what keeps wings and tailplanes out of the answer, and most of
+  // the time it is right -- but a slender nose, a propeller disc with a hole
+  // in the middle or a gap between two parts leaves bins with nothing in them
+  // at all, and the old code answered that by MOVING THE STATION somewhere
+  // else entirely. Moving the station is never the right repair: it is how a
+  // pilot ends up in a cargo hold. Widening the ruler is.
+  const wide = hullProfile(root, band * 2.6, zMin, zMax, 48, false, axisX);
   const hullAt = (z) => {
     const i = Math.min(prof.bins - 1, Math.max(0,
       Math.floor(((z - prof.zMin) / (prof.zMax - prof.zMin)) * prof.bins)));
     // neighbours too: a single bin can fall in a gap between parts
-    let top = -Infinity; let bot = Infinity; let wid = 0;
-    for (let k = Math.max(0, i - 1); k <= Math.min(prof.bins - 1, i + 1); k++) {
-      if (prof.top[k] > top) top = prof.top[k];
-      if (prof.bot[k] < bot) bot = prof.bot[k];
-      if (prof.wid[k] > wid) wid = prof.wid[k];
-    }
-    return { top, bot, wid };
+    const read = (p, reach) => {
+      let top = -Infinity; let bot = Infinity; let wid = 0;
+      for (let k = Math.max(0, i - reach); k <= Math.min(p.bins - 1, i + reach); k++) {
+        if (p.top[k] > top) top = p.top[k];
+        if (p.bot[k] < bot) bot = p.bot[k];
+        if (p.wid[k] > wid) wid = p.wid[k];
+      }
+      return { top, bot, wid };
+    };
+    let h = read(prof, 1);
+    if (!Number.isFinite(h.top)) h = read(wide, 1);     // fatter ruler
+    if (!Number.isFinite(h.top)) h = read(wide, 3);     // and a longer reach
+    return h;
   };
 
   // Station: the canopy's, or — with nothing named — the first place behind the
@@ -810,6 +1106,30 @@ export function findCockpit(root, override = null) {
   // afterwards would leave every one of them describing somewhere else.
   if (Number.isFinite(override?.z)) station = override.z;
   let hull = hullAt(station);
+  // ...and when a def names the station by hand, it is the answer: a bad
+  // reading there means this fallback has to find the hull SOMEWHERE NEAR,
+  // not pick a different part of the aeroplane.
+  if (Number.isFinite(override?.z) && (!Number.isFinite(hull.top) || !Number.isFinite(hull.bot))) {
+    const b = new THREE.Box3();
+    const v = new THREE.Vector3();
+    let top = -Infinity; let bot = Infinity; let wid = 0.25;
+    root.traverse((o) => {
+      if (!o.isMesh || !o.geometry?.attributes?.position || o.userData.interior) return;
+      if (o.name === 'plane_shell') return;
+      b.setFromObject(o, true);
+      if (b.min.z > station + len * 0.06 || b.max.z < station - len * 0.06) return;
+      const pos = o.geometry.attributes.position;
+      const stride = Math.max(1, Math.floor(pos.count / 20000));
+      for (let i = 0; i < pos.count; i += stride) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        if (Math.abs(v.z - station) > len * 0.03 || Math.abs(v.x - axisX) > band * 3) continue;
+        if (v.y > top) top = v.y;
+        if (v.y < bot) bot = v.y;
+        wid = Math.max(wid, Math.abs(v.x - axisX));
+      }
+    });
+    if (Number.isFinite(top) && Number.isFinite(bot)) hull = { top, bot, wid };
+  }
   if (!Number.isFinite(hull.top) || !Number.isFinite(hull.bot)) {
     // the station landed in a gap between parts — take the deepest bin the
     // forward fuselage has instead of giving up and leaving the pilot nowhere
@@ -832,11 +1152,21 @@ export function findCockpit(root, override = null) {
   // for a 14 m aerobatic plane: its canopy is painted on, the deck line IS
   // the top of the cockpit, and nothing was ever going to fit under it.
   const deck = hull.top;
-  // `closed: true` in a def forces the closed-canopy rule on a model whose
-  // glass is opaque — several of these jets paint the canopy on, and without
-  // it their pilot is treated as sitting in the open and rides with its head
-  // through the hood.
-  const closed = override?.closed ?? (!!glass && glass.box.max.y > deck - 0.02);
+  // ...BUT "OPEN" IS THE WRONG DEFAULT, and it was the single worst thing in
+  // this measurement. Half these files name no glass at all, and treating
+  // that silence as an open cockpit sits the pilot's hips 0.58 m under the
+  // crown of the fuselage with everything above the shoulders out in the
+  // air — which on a 737, a C-130, a P-47 or an A-7 is a personage riding
+  // the SPINE of the aeroplane in the slipstream. Eighteen of the thirty-six
+  // looked like that (tools/_probe_seatfit.mjs, tools/shot_cockpit.mjs).
+  //
+  // Every aircraft in this game is an enclosed one. So a cockpit is CLOSED
+  // unless the model actually shows an open well — the pilot goes down
+  // inside the hull, and the worst a wrong guess can do is hide a body that
+  // nobody could have seen through an opaque fuselage anyway. `closed: false`
+  // in a def is how a genuinely open cockpit says so.
+  const openWell = !!well && !glass && well.box.max.y < deck - 0.12;
+  const closed = override?.closed ?? !openWell;
   // forced closed with no glass in the file: the deck line IS the hood
   const top = closed && glass ? glass.box.max.y : deck;
   // The floor: a seat or a modelled well if the file has one, else the hull
@@ -880,9 +1210,12 @@ export function findCockpit(root, override = null) {
   const widthGrow = hull.wid < band * 0.95
     ? Math.min(1.25, Math.max(1, PILOT_WIDE / Math.max(0.2, across)))
     : 1;
-  const grow = sane
-    ? Math.min(PILOT_GROW_MAX, Math.max(1, need / room, widthGrow))
+  // What the airframe WOULD have to grow by to hold a pilot at full height.
+  // Reported, and no longer applied -- see PILOT_GROW_MAX above.
+  const wantGrow = sane
+    ? Math.min(2.2, Math.max(1, need / room, widthGrow))
     : 1;
+  const grow = Math.min(PILOT_GROW_MAX, Number.isFinite(override?.grow) ? override.grow : wantGrow);
 
   // THE PILOT HANGS FROM THE CANOPY, not from the floor. Where a cockpit has
   // more room than a pilot needs, sitting it on the measured floor drops it
@@ -891,11 +1224,31 @@ export function findCockpit(root, override = null) {
   // What anyone actually looks at is the head against the glass, so that is
   // what is held fixed: the seat hangs exactly a pilot's height below the
   // canopy, and never deeper than the floor.
-  const seatY = Math.max(floor, top - need);
+  //
+  // ...EXCEPT IN A ROOM, which is what a transport's flight deck is. Hang a
+  // pilot from the ceiling of a 4.4 m-deep nose and it rides with its scalp
+  // in the roof lining; an airliner crew sits on a floor a little over half
+  // way up the fuselage, with the windows at eye level. So once the cockpit
+  // is a good deal deeper than a pilot is tall, the seat is placed up the
+  // hull instead of down from its top.
+  const roomy = room > need * 1.5;
+  const seatY = roomy
+    ? hull.bot + (top - hull.bot) * FLIGHTDECK_RATIO
+    : Math.max(floor, top - need);
 
   const out = {
-    seat: new THREE.Vector3(0, seatY, station),
-    top, floor, room, grow, sane, closed, deck,
+    seat: new THREE.Vector3(axisX, seatY, station),
+    top, floor, room, grow, wantGrow, sane, closed, deck, roomy,
+    // THE HULL'S UNDERSIDE. Not the cockpit floor -- the skin, and not at
+    // the station alone either: a seated pilot occupies about a metre of
+    // fuselage, the shins and the rudder bar reaching well forward of the
+    // hips, so the floor that matters is the SHALLOWEST point of the belly
+    // anywhere under the body. (Reading one station let the Extra 330 clamp
+    // its pilot 31 cm higher than its own belly needed, and the head came
+    // out through the hood for it.) Nothing of the pilot or the furniture
+    // goes below this: it is the line between 'his legs are hidden inside
+    // the fuselage' and 'his legs are hanging under the wing root'.
+    bot: bellyUnder(prof, wide, station, len),
     halfW: Math.max(0.25, hull.wid), // how far out the hull stands at the cockpit
     // how long the opening is, for the liner that caps it
     wellLen: Math.max(0.9, (well ?? glass)
@@ -909,10 +1262,7 @@ export function findCockpit(root, override = null) {
   };
   if (override) {
     if (Number.isFinite(override.y)) out.seat.y = override.y;
-    if (Number.isFinite(override.room)) {
-      out.room = override.room;
-      out.grow = Math.min(PILOT_GROW_MAX, Math.max(1, PILOT_SIT / override.room));
-    }
+    if (Number.isFinite(override.room)) out.room = override.room;
     if (Number.isFinite(override.grow)) out.grow = override.grow;
     out.from += ' +override';
   }
@@ -947,12 +1297,38 @@ export function loadCockpitKit() {
   return _kitPromise;
 }
 
-function fitCockpitKit(wrapper) {
+// WHERE THE CONTROLS ARE, measured off tools/build_cockpit.py's own numbers.
+// That file is authored in Blender's frame (+Y forward, +Z up) and exports
+// with export_yup, which maps (x, y, z) -> (x, z, -y); these are the result,
+// in metres from the SEAT PAN, in the game's frame. They are what the pilot's
+// hands and feet are solved onto every frame -- src/foot.js updateSeated.
+export const CONTROLS = {
+  stick: new THREE.Vector3(0, 0.335, -0.327),      // stick_grip, right hand
+  throttle: new THREE.Vector3(-0.30, 0.205, -0.215), // thr_knob, left hand
+  pedalR: new THREE.Vector3(0.135, -0.058, -0.608),  // pedal_pad_1
+  pedalL: new THREE.Vector3(-0.135, -0.058, -0.608),
+  // how far the hinged parts travel at full deflection
+  stickPitch: 0.26, stickRoll: 0.30, pedalThrow: 0.34, throttleThrow: 0.42,
+};
+
+// `flyable` false leaves the four HINGED CONTROLS off: the furniture goes in
+// as before, but the stick, the throttle and the two rudder pedals do not.
+// They exist so a pilot can work them, and only one aeroplane in the game has
+// a pilot in it. Every other one is scenery -- and the plane hall parks
+// thirty-six of them in a shed, where four extra objects apiece (eight, after
+// the exporter splits each by material) cost 666 draw calls, two fifths of
+// that frame. Measured: tools/_probe_hallkit.mjs.
+function fitCockpitKit(wrapper, flyable = true) {
   const c = wrapper.userData.cockpit;
   if (!c) return;
   loadCockpitKit().then((kit) => {
     if (!kit || wrapper.userData.cockpitKit) return;
     const o = kit.clone(true);
+    if (!flyable) {
+      for (const n of ['cockpit_stick', 'cockpit_throttle', 'cockpit_pedal_1', 'cockpit_pedal_-1']) {
+        o.getObjectByName(n)?.removeFromParent();
+      }
+    }
     o.position.copy(c.seat);
     o.rotation.set(0, 0, 0); // authored nose-forward, same frame as the wrapper
     // THE TUB NARROWS TO THE AEROPLANE, and never the other way. The furniture
@@ -972,8 +1348,56 @@ function fitCockpitKit(wrapper) {
       tub.scale.y = Math.min(1, Math.max(0.35, (c.deck - c.seat.y) / TUB_SILL));
     }
     wrapper.add(o);
+    o.userData.flyable = flyable;
     wrapper.userData.cockpitKit = o;
+    // THE HINGED CONTROLS, by name, with their origins already on their own
+    // pivots (tools/build_cockpit.py PIVOTS). foot.js turns these every frame
+    // off what the player is holding, and the pilot's hands and feet ride
+    // them -- so the stick the hand is on is the stick the aeroplane flies.
+    //
+    // Each one carries an empty on the spot a hand or a foot actually takes
+    // hold of: the grip of the stick, the throttle knob, the rubber pad on
+    // the pedal. An empty parented INSIDE the moving part is the honest way
+    // to ask "where is the grip now" -- it answers through the part's own
+    // matrix, so it stays right however deep in the file the part sits and
+    // however far the control has been pushed.
+    o.updateMatrixWorld(true);
+    const marked = (name, offset) => {
+      const part = o.getObjectByName(name);
+      if (!part) return null;
+      const grip = new THREE.Object3D();
+      grip.name = `${name}_grip`;
+      // the offset is quoted from the SEAT PAN, which is the kit root
+      part.updateMatrixWorld(true);
+      grip.position.copy(part.worldToLocal(o.localToWorld(offset.clone())));
+      part.add(grip);
+      part.userData.grip = grip;
+      return part;
+    };
+    wrapper.userData.controls = {
+      stick: marked('cockpit_stick', CONTROLS.stick),
+      throttle: marked('cockpit_throttle', CONTROLS.throttle),
+      pedalR: marked('cockpit_pedal_1', CONTROLS.pedalR),
+      pedalL: marked('cockpit_pedal_-1', CONTROLS.pedalL),
+    };
   });
+}
+
+// TAKING OVER A PARKED AEROPLANE. The hall's thirty-six are built as scenery
+// -- furniture without the four hinged controls, because four extra objects
+// apiece cost 666 draw calls across the fleet (tools/_probe_hallkit.mjs). The
+// moment the hero climbs into one it stops being scenery, so it is given the
+// controls then; whichever machine it is swapping out of gets them taken away
+// again. Cheap both ways: the kit is cloned from one cached glTF.
+export function setPlaneFlyable(wrapper, flyable) {
+  const kit = wrapper.userData.cockpitKit;
+  if (kit && !!kit.userData.flyable === !!flyable) return;
+  if (kit) {
+    kit.removeFromParent();
+    wrapper.userData.cockpitKit = null;
+    wrapper.userData.controls = null;
+  }
+  fitCockpitKit(wrapper, flyable);
 }
 
 // ---- the airframe you can stand on ------------------------------------------
@@ -1101,7 +1525,7 @@ export function setHoodOpen(plane, t) {
 
 // Wraps the raw model in a group scaled/centered for gameplay: nose -Z, the
 // belly at -WHEEL_HEIGHT so wheels touch the street while rolling.
-export function makeGameplayPlane(model, def = planeById('spitfire')) {
+export function makeGameplayPlane(model, def = planeById('spitfire'), opts = {}) {
   const group = new THREE.Group();
   // precise=true walks the vertices: for the models that carry an orientation
   // fix, a plain AABB gets inflated by the rotation and the plane reports a
@@ -1123,7 +1547,7 @@ export function makeGameplayPlane(model, def = planeById('spitfire')) {
   if (cockpit && cockpit.grow > 1.001) {
     group.scale.multiplyScalar(cockpit.grow);
     cockpit.seat.multiplyScalar(cockpit.grow); // measured before the growth
-    for (const k of ['top', 'floor', 'room', 'deck', 'ceil', 'halfW', 'wellLen']) {
+    for (const k of ['top', 'floor', 'room', 'deck', 'ceil', 'halfW', 'wellLen', 'bot']) {
       cockpit[k] *= cockpit.grow;
     }
     wrapper.updateMatrixWorld(true);
@@ -1140,13 +1564,13 @@ export function makeGameplayPlane(model, def = planeById('spitfire')) {
   group.position.y -= drop;
   // the seat AND the canopy over it, both in the finished plane's own frame
   if (cockpit) {
-    for (const k of ['top', 'floor', 'deck', 'ceil']) cockpit[k] -= drop;
+    for (const k of ['top', 'floor', 'deck', 'ceil', 'bot']) cockpit[k] -= drop;
     cockpit.seat.y -= drop;
   }
   wrapper.userData.cockpit = cockpit; // where the pilot sits, in wrapper space
   wrapper.userData.hood = cockpit?.hood ? hingeHood(wrapper, cockpit.hood) : null;
   wrapper.userData.shell = buildPlaneShell(wrapper); // the boxes you climb on
-  fitCockpitKit(wrapper);                           // seat, stick, panel, pedals
+  fitCockpitKit(wrapper, opts.flyable !== false);    // seat, stick, panel, pedals
   wrapper.userData.halfSpan = (wbox.max.x - wbox.min.x) / 2;
   wrapper.userData.size = Math.max(wbox.max.x - wbox.min.x, wbox.max.z - wbox.min.z);
   // THE AIRFRAME'S OWN HEIGHT, measured here and nowhere else. `wbox` is taken
@@ -1155,6 +1579,12 @@ export function makeGameplayPlane(model, def = planeById('spitfire')) {
   // instead reads all of those as well -- a Spitfire comes back 276 m across,
   // which is how the hangar fit test refused every aircraft in the game.
   wrapper.userData.height = wbox.max.y - wbox.min.y;
+  // ...and how far the NOSE is in front of the origin. game.js sweeps its
+  // contact ray from the origin and adds this, so "touch" means the nose
+  // meeting the wall. It has to be measured per airframe: these run from an
+  // 8.5 m racer to an 84 m An-225, and a guessed fraction of the size left a
+  // big machine's nose 40 m inside a building before the game noticed.
+  wrapper.userData.noseLen = Math.max(1, -wbox.min.z);
 
   // Measure each propeller's spin axis off the finished aeroplane and give it
   // a blur disc. Has to happen HERE, not at load: the axis is wanted in the

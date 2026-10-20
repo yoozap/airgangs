@@ -14,7 +14,20 @@ const RATE = 12; // rounds per second
 const RANGE = 1100; // m
 const BULLET_SPEED = 850; // m/s
 const DAMAGE = 14; // hp per round (buildings carry 280–3200 hp)
-const SPREAD = 0.006; // rad
+// ...and AGAINST AN AEROPLANE, which is the one thing a 12.7 mm belt gun was
+// actually built to shoot at. A building absorbs a heavy round into 30 cm of
+// masonry; an airframe does not, so the belly gun is the real anti-aircraft
+// weapon in the game -- about 21 rounds, a second and a half of fire, to
+// empty a Spitfire's 987 hull points. Still an order below ramming one
+// (1 462 points, a one-shot kill: planes.js planeCrashDmg), which is the
+// order the two have to stay in.
+const PLANE_DAMAGE = 48;
+// The gun's cone. 6 mrad put a burst a metre and a half apart at 250 m, which
+// is wider than a heavy machine gun really shoots (2-4 mrad) and, more to the
+// point, wider than anything can be cut with: rounds that land half a metre
+// apart have unbroken metal between them (src/planedamage.js). 3 mrad is both
+// the honest figure and the one that lets a strafing burst walk a line.
+const SPREAD = 0.003; // rad
 const MAX_TRACERS = 48;
 const CART = CARTRIDGES['12.7x108']; // the round in the belt
 
@@ -556,7 +569,15 @@ export class MachineGun {
   _impact(tr) {
     if (!tr.hit) return; // flew out to max range
     const g = this.game;
-    const res = g.world.damageHit?.(tr.hit, DAMAGE);
+    // AN AEROPLANE'S COLLIDER IS A CRATE. The gun hits the box shell the hall
+    // bakes for each machine, which is a foot proud of the skin in places --
+    // re-cast onto the real airframe so a 12.7 mm round marks an aeroplane
+    // where it actually struck it (src/planedamage.js). `null` = the crate
+    // lied and the round went through a gap in it, so nothing happened.
+    const real = g.planeDamage?.refine(tr.hit, tr.dir);
+    if (real === null) return;
+    if (real) tr.hit = real;
+    const res = g.world.damageHit?.(tr.hit, tr.hit.planeRec ? PLANE_DAMAGE : DAMAGE);
     const n = this._hitNormal(tr.hit) ?? tr.dir.clone().negate();
     const vol = g.sound.volume ?? 0.7;
     // how far the sound has to travel back to the cockpit — audiofx turns

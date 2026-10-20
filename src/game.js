@@ -16,7 +16,7 @@ import { MachineGun } from './guns.js';
 import { RocketLauncher } from './rockets.js';
 import { SkillBar, WeaponSlots } from './skillbar.js';
 import { Pickups } from './pickups.js';
-import { setHoodOpen } from './planes.js';
+import { setHoodOpen, setPlaneFlyable, planeColMult } from './planes.js';
 import { spinPropellers } from './propeller.js';
 import { updateWind } from './wind.js';
 import { Pistol } from './shooting.js';
@@ -48,6 +48,10 @@ import { PlaneBreakup } from './breakup.js';
 import { MapBoundary } from './boundary.js';
 import { Zones } from './zones.js';
 import { CombatHUD } from './hud.js';
+import { Targets } from './target.js';
+import { PlanePhysics } from './planephys.js';
+import { PlaneDamage } from './planedamage.js';
+import { MetalDents } from './dents.js';
 import { OnFoot } from './foot.js';
 import { Cinema } from './cinema.js';
 
@@ -97,10 +101,18 @@ export class Game {
     this.speed = 0; // scalar: ground-roll speed, or |vel| in the air (HUD, FX)
     this.vel = new THREE.Vector3(); // world-space velocity — the real state
     this.rates = new THREE.Vector3(); // body rotation rates (pitch, yaw, roll)
+    // A COLLISION KNOCK, kept apart from `rates` on purpose. aero.js lerps
+    // the body rates onto whatever the stick is asking for inside 0.11 s, so
+    // an impulse written there would be gone before it could be seen; this
+    // one is added on top and bleeds off over about a second, which is what
+    // makes clipping another aeroplane throw the nose off line the way GTA
+    // throws a car (src/planephys.js _knockPilot).
+    this._ramSpin = new THREE.Vector3();
     // Structural integrity per part: 1 intact, 0.65 damaged, 0 torn off.
     this.struct = { wingL: 1, wingR: 1, tail: 1, gear: 1 };
     this._gOverT = 0; // seconds spent past breaking G
     this._flutterT = 0; // seconds spent past VNE
+    this.maxHealth = MAX_HEALTH;  // the target frame reads it (src/target.js)
     this.health = MAX_HEALTH;
     this.wingDmg = { left: false, right: false };
     this._smokeTimer = 0;
@@ -109,7 +121,7 @@ export class Game {
     // Distance from the plane's origin (center) to the nose tip — the swept
     // wall check counts contact from here, so "touch" means the nose visually
     // meeting the facade, not an invisible wall meters ahead.
-    this.noseLen = Math.max(3, (plane.userData.size ?? 11) * 0.35);
+    this.noseLen = this._noseLenOf(plane);
     this._prevPos = new THREE.Vector3();
     this.groundY = null;
     this.airborne = false;
@@ -194,6 +206,24 @@ export class Game {
     this.guns = new MachineGun(this);
     this.rockets = new RocketLauncher(this);
     this.combatHud = new CombatHUD(this);
+    // WoW-style targeting: click an aeroplane (or Tab) and its card comes up
+    // beside our own hull card -- picture, name, hull bar (src/target.js).
+    // The city hands plane hits straight over, so the bar moves when you shoot.
+    this.targets = new Targets(this);
+    this.world.targets = this.targets;
+    // SHOOTING AN AEROPLANE. A round that lands on a machine is re-cast onto
+    // the real airframe, so it marks aluminium, perspex or rubber where it
+    // actually struck -- and the holes ride the aeroplane (src/planedamage.js).
+    this.planeDamage = new PlaneDamage(this);
+    // AEROPLANE AGAINST AEROPLANE. Everything in the target registry has a
+    // real mass now, and flying into one of them is an impulse between two
+    // bodies rather than a bump against a wall (src/planephys.js).
+    this.planephys = new PlanePhysics(this);
+    // ...and what the contact LOOKS like afterwards: the panel that was
+    // struck caves in, for real, in the aeroplane's own geometry
+    // (src/dents.js). Every crash in this file hands it the crush energy the
+    // physics already worked out.
+    this.dents = new MetalDents(this);
     this.aero = new FlightModel(plane, def ?? { maxSpeed: this.maxSpeed, tw: 0.38 });
     this.breakup = new PlaneBreakup(this);
     // WoW-style personage: Enter climbs out of a parked plane and runs on foot.
@@ -505,10 +535,19 @@ export class Game {
       if (e.code === 'KeyM') this.mapui.toggle();
       if (e.code === 'KeyH' && !e.repeat) this.goAirport();   // 🛬 same as the HUD button
       if (e.code === 'Escape') {
-        // Esc peels UI layers: settings → map → open settings
+        // Esc peels UI layers: settings → map → target → open settings
         if (this.settings.visible) this.settings.close();
         else if (this.mapui.bigVisible) this.mapui.toggle();
+        else if (this.targets?.rec) this.targets.clear();
         else this.settings.open();
+      }
+      // TAB — target the nearest machine in front of you, and again for the
+      // next one out, WoW's key. The browser would move focus, hence the
+      // preventDefault.
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        if (!e.repeat) this.targets?.cycle();
+        return;
       }
       if (e.code === 'KeyT') {
         this.hq = !this.hq;
@@ -584,6 +623,9 @@ export class Game {
       }
       if (armed && e.button === 0) {
         this._lockPointer(); // a click is a gesture: grab the mouse back
+        // ...and whatever is under the crosshair is now the target, so the
+        // card is up before the first round lands on it
+        this.targets?.pickAt(e);
         // BEHIND COVER the trigger is the blind fire: the arm goes round the
         // corner (or up over the wall) and shoots unsighted for as long as the
         // button is down (foot.js coverBlind). Leaning out, it is a shot.
@@ -598,6 +640,11 @@ export class Game {
         return;
       }
       if (e.button !== 0) return;
+      // WOW TARGETING: a left click on an aeroplane makes it the target and
+      // brings its card up beside our own (src/target.js). It does not SWALLOW
+      // the click -- the same press still orbits the camera, so a click on the
+      // sky behaves exactly as it always did.
+      this.targets?.pickAt(e);
       this.look.dragging = true;
       canvas.setPointerCapture(e.pointerId);
     };
@@ -686,6 +733,7 @@ export class Game {
     this.speed = 0;
     this.vel.set(0, 0, 0);
     this.rates.set(0, 0, 0);
+    this._ramSpin.set(0, 0, 0);
     this.breakup.restore(); // wings/tail back on, wreckage cleaned up
     this.struct.wingL = this.struct.wingR = this.struct.tail = this.struct.gear = 1;
     this._gOverT = 0;
@@ -694,6 +742,7 @@ export class Game {
     this._wingHitCooldown = 0;
     this._hitCooldown = 0;
     this._repairWings();
+    this.dents?.repair(this.plane);   // and the bent metal is beaten out
     this._updateHealthBar();
     const sp = this.world?.spawn ?? { x: 0, z: 0, yaw: SPAWN_YAW };
     const y = this.groundY !== null ? this.groundY + WHEEL_HEIGHT : 1200;
@@ -708,6 +757,117 @@ export class Game {
     // no reason why.
     if (!this.seatEmpty()) this.igniteEngine();
     if (this.started) this.saveState(true, 'plane reset'); // crash restart / fresh hero
+  }
+
+  // ---- taking a different aeroplane ----------------------------------------
+  //
+  // "i need to can sit in all planes". Until now the hero flew the one machine
+  // its personage was created with: the plane picker was deleted with the old
+  // menus, and the thirty-six in the plane hall were scenery with collision
+  // boxes. Now ANY of them is yours the moment you walk up and press Enter --
+  // the hall is the showroom, and the one you leave behind stands where you
+  // left it, solid, targetable, and waiting to be climbed back into.
+  //
+  // `rec` is a Targets registry record ({ wrapper, def, collider }). Returns
+  // false when the swap cannot happen, so the caller can keep flying the one
+  // it has rather than end up with none.
+  swapToPlane(rec) {
+    if (!rec?.wrapper || !rec.def || rec.wrapper === this.plane) return false;
+    if (this.airborne || Math.abs(this.speed) > 1.5) return false;
+    // ...and not one that is tumbling through the air or burning on its back
+    // after somebody rammed it (src/planephys.js).
+    if (rec.loose || rec.dead) return false;
+    const next = rec.wrapper;
+    const prev = this.plane;
+    const prevDef = this.def;
+
+    // OUT OF THE HALL AND INTO THE WORLD, keeping the place it stands in.
+    // The hall parks its aeroplanes inside a scaled, rotated group with their
+    // matrices frozen; the game expects its own machine at the scene root,
+    // live. So the world transform is taken apart and put back on.
+    next.updateMatrixWorld(true);
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    next.matrixWorld.decompose(pos, quat, scl);
+    next.removeFromParent();
+    next.matrixAutoUpdate = true;
+    next.position.copy(pos);
+    next.quaternion.copy(quat);
+    next.scale.copy(scl);
+    next.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // the hall turned these off
+    this.scene.add(next);
+    // it is nobody's target any more -- it is the thing doing the targeting
+    this.targets?.unregister?.(rec);
+    if (rec.collider) this.world?._removeCollidable?.(rec.collider);
+    setPlaneFlyable(next, true);     // it needs a stick now
+
+    // THE ONE BEING LEFT BEHIND stays exactly where it is, as a parked
+    // aeroplane like any other: solid to walk into, clickable, and enterable
+    // again. Anything else would mean abandoning a machine into thin air.
+    this.plane = next;
+    this.def = rec.def;
+    this.maxSpeed = rec.def.maxSpeed ?? this.maxSpeed;
+    this.halfSpan = next.userData.halfSpan ?? this.halfSpan;
+    // THE NOSE MOVED. This is how far ahead of the origin the swept contact
+    // ray reaches, and it was measured once for the machine the session began
+    // in: flying a 84 m An-225 with a Spitfire's 3.9 m of nose meant contact
+    // happened when the aeroplane's CENTRE arrived, forty metres after the
+    // nose had already gone through the wall.
+    this.noseLen = this._noseLenOf(next);
+    this.aero = new FlightModel(next, rec.def);
+    this.breakup.restore();
+    this.breakup = new PlaneBreakup(this);
+    this.struct.wingL = this.struct.wingR = this.struct.tail = this.struct.gear = 1;
+    this.health = MAX_HEALTH;
+    this._updateHealthBar();
+    this.sound.setPlane(rec.def);
+    if (prev) {
+      setPlaneFlyable(prev, false);
+      this.parkPlane(prev, prevDef);
+    }
+    this._setHint(`✈ ${rec.def.name} — ${this._takeoffHint()}`);
+    this.saveState?.(true, 'took a different aeroplane');
+    return true;
+  }
+
+  // THE MACHINE THE HERO IS STANDING NEXT TO -- his own, the one he climbed
+  // out of two seconds ago. It is deliberately NOT in the world's collidables:
+  // that set is what the aeroplane's own ground probe reads, and a machine
+  // that can find its own shell under its wheels sits on itself ("my plane
+  // back not works ... i am on road", src/foot.js _planeTargets). The cost of
+  // keeping it out was that rounds fired at it went straight through the body
+  // of the aeroplane and hit the hangar behind -- "bulet ... flew straight
+  // through body of plane" -- because as far as the gun was concerned there
+  // was nothing there. So it is handed to the gun separately, the same way
+  // foot.js is handed it for walking on, and only while the hero is out of it.
+  ownPlaneTargets() {
+    if (!this.foot?.active) return null;
+    const shell = this.plane?.userData?.shell;
+    return shell ? [shell] : null;
+  }
+
+  // Leave an aeroplane standing where it is: a baked box collider off its own
+  // shell so you can walk into it and shoot it, and a place in the target
+  // registry so its card comes up when you click it. The same two things the
+  // plane hall does to every machine it parks (src/planehall.js _solidify).
+  parkPlane(wrapper, def) {
+    if (!wrapper || !def) return null;
+    const shell = wrapper.userData.shell;
+    let col = null;
+    if (shell) {
+      wrapper.updateMatrixWorld(true);
+      const geo = shell.geometry.clone();
+      geo.applyMatrix4(shell.matrixWorld);
+      geo.computeBoundsTree?.();
+      col = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
+      col.name = `parked_${def.id}`;
+      col.matrixAutoUpdate = false;
+      col.visible = false;
+      if (this.world?._addCollidable) this.world._addCollidable(col);
+      else this.world?.collidables?.push(col);
+    }
+    return this.targets?.register(wrapper, def, col) ?? null;
   }
 
   // PARK THE AEROPLANE INSIDE THE WAREHOUSE.
@@ -1144,6 +1304,12 @@ export class Game {
     if (d < len - 0.01) this.camera.position.copy(subject).addScaledVector(dir, d);
   }
 
+  // How far the nose sticks out in front of the origin. planes.js measures it
+  // off the airframe itself; the fallback is for anything built without it.
+  _noseLenOf(plane) {
+    return Math.max(3, plane?.userData?.noseLen ?? (plane?.userData?.size ?? 11) * 0.35);
+  }
+
   _wheelH() {
     return this.struct.gear ? WHEEL_HEIGHT : 1.15; // collapsed gear: on the belly
   }
@@ -1325,6 +1491,7 @@ export class Game {
       this.aero.update(dt, s, this.plane, this.vel, this.rates, this.struct,
         this.lastGroundDistance, this.powerFrac());
       this.speed = this.vel.length();
+      this._applyRamSpin(dt);
 
       // The airframe is a structure with limits: over-G rips wings off,
       // past-VNE flutter shakes the tail apart.
@@ -1421,6 +1588,12 @@ export class Game {
       const canRotate = this.speed > this.aero.vr * 0.92;
       if (s.pitch > 0 && canRotate) {
         this.plane.rotateX(s.pitch * 0.55 * dt);
+      }
+
+      // A shove on the ground is a yaw: the wheels hold the rest of it.
+      if (this._ramSpin.lengthSq() > 1e-6) {
+        this.plane.rotateY(this._ramSpin.y * dt);
+        this._ramSpin.multiplyScalar(Math.exp(-dt / 0.35));
       }
 
       this._prevPos.copy(this.plane.position);
@@ -1591,7 +1764,14 @@ export class Game {
     // and the plane bounces off its own compressed structure. A LEVEL drop
     // is forgiven most of it: heavy thud, maybe folded gear, but you sit.
     if (sink > 6.2) {
-      this._applyDamage(level ? Math.min((sink - 5) * 18, 330) : (sink - 4) * 75);
+      this._crashDamage(level ? Math.min((sink - 5) * 18, 330) : (sink - 4) * 75);
+      // THE BELLY. An oleo strut swallows about 4 m/s of arrival and the
+      // structure takes whatever is left -- on the belly, with the gear
+      // already folded, almost all of it goes into the skin.
+      this._dentHull(
+        new THREE.Vector3(this.plane.position.x, gY, this.plane.position.z),
+        new THREE.Vector3(0, 1, 0), Math.max(0, sink - (this.struct.gear ? 4 : 1.2))
+      );
       if (this.crashed) return;
       if (this.struct.gear && sink > (level ? 9 : 7)) this._collapseGear();
       this._shakeAmp = Math.min(1.5, this._shakeAmp + sink * 0.12);
@@ -1601,7 +1781,7 @@ export class Game {
       }
       this._setHint('💥 მძიმე დაჯდომა!');
     } else if (sink > 3.4) {
-      this._applyDamage((sink - 3) * 50);
+      this._crashDamage((sink - 3) * 50);
       if (this.crashed) return;
       this._setHint('💥 მძიმე დაჯდომა!');
     }
@@ -1620,6 +1800,18 @@ export class Game {
     this.rates.set(0, 0, 0);
     this.vel.set(0, 0, 0);
     this._land(gY);
+  }
+
+  // THE COLLISION KNOCK. Added on top of whatever the stick is doing and
+  // bled off over about a second: being hit must cost you the line you were
+  // flying, and must not be something a twitch on the stick erases. Scaled by
+  // what is left of the airframe -- a plane with a wing gone cannot resist it.
+  _applyRamSpin(dt) {
+    if (this._ramSpin.lengthSq() < 1e-6) return;
+    this.plane.rotateX(this._ramSpin.x * dt);
+    this.plane.rotateY(this._ramSpin.y * dt);
+    this.plane.rotateZ(this._ramSpin.z * dt);
+    this._ramSpin.multiplyScalar(Math.exp(-dt / 0.9));
   }
 
   _collapseGear() {
@@ -1727,6 +1919,16 @@ export class Game {
     if (!hits.length) return false;
 
     const hit = hits[0];
+    // ANOTHER AEROPLANE, not a wall. Two airframes with real masses meeting
+    // at a real closing speed: src/planephys.js resolves it as an impulse and
+    // owns everything that follows -- our velocity, our spin, our position,
+    // and the machine we hit, which is now a loose body on its way somewhere.
+    //
+    // This HAS to come before the tests below. A parked machine's wing, spine
+    // and tailplane are all upward-facing surfaces, and "upward-facing means
+    // relief, not a wall" would have flown us straight through them.
+    const pRec = this.targets?.recOf?.(hit.object);
+    if (pRec && !pRec.own) return this.planephys.ram(pRec, hit, dir, sp);
     let n = hit.face
       ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
       : null;
@@ -1742,7 +1944,9 @@ export class Game {
       if (this.vel.y > 0) this.vel.y = 0;
       if (this._hitCooldown <= 0 && sp > 12) {
         this._hitCooldown = 0.4;
-        this._applyDamage(sp * 0.7, n);
+        this._crashDamage(sp * 0.7, n);
+        // the vault presses the spine of the aeroplane in as it goes under
+        this._dentHull(hit.point, n, sp, -dir.dot(n));
         this.fx.spawnEmber(hit.point.x, hit.point.y, hit.point.z);
         this.guns.dust.burst(hit.point, 4, 0.8);
         if (this.crashed) return true;
@@ -1757,6 +1961,9 @@ export class Game {
     // burning wreck carries its momentum out the far side, already dead.
     if (this.airborne && headOn > 0.7 && sp > 34) {
       this._buildingSmash(hit, headOn, sp);
+      // The nose folds before the wreck comes out the far side -- the crash
+      // cinematic flies round the machine, and it has to be the crushed one.
+      if (n) this._dentHull(hit.point, n, sp, headOn);
       // Total demolition: a full airframe at speed levels the building.
       if (hit.object) this.world.damageHit?.(hit, Math.round(sp * 20));
       this._explode(null); // no wall bounce — the wreck flies on through
@@ -1766,8 +1973,9 @@ export class Game {
     if (this._hitCooldown <= 0) {
       this._hitCooldown = 0.4;
       this._buildingSmash(hit, headOn, sp);
+      if (n) this._dentHull(hit.point, n, sp, headOn);
       // A shallow 100 m/s graze ≈ 200 HP; anything steeper escalates fast.
-      this._applyDamage(sp * (1.2 + 5.5 * headOn), n);
+      this._crashDamage(sp * (1.2 + 5.5 * headOn), n);
       if (this.crashed) return true;
       this._setHint('💥 შენობას შეეხე — კორპუსი დაზიანდა!');
     } else {
@@ -1847,6 +2055,10 @@ export class Game {
       // distance). This anticipation ray only decides what rising TERRAIN
       // ahead means: touch down on it, or crater into it.
       const hit = ahead[0];
+      // An aeroplane ahead is never ground to put the wheels on, however
+      // flat the bit of it we are pointing at: the swept contact above does
+      // it properly, with both masses (src/planephys.js).
+      if (hit.object?.userData?.planeRec) return;
       const n = hit.face
         ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
         : null;
@@ -1873,11 +2085,24 @@ export class Game {
         const hits = this.raycaster.intersectObjects(near, true);
         this.raycaster.far = Infinity;
         if (!hits.length) continue;
+        // A wingtip into another aeroplane: the same two-mass impulse, told
+        // which wing arrived, so the tip takes the tearing instead of the hull.
+        const wRec = this.targets?.recOf?.(hits[0].object);
+        if (wRec && !wRec.own) {
+          const wd = backing ? forward.clone().negate() : forward;
+          if (this.planephys.ram(wRec, hits[0], wd, Math.abs(this.speed), side)) {
+            this._wingHitCooldown = 0.8;
+            if (this.crashed) return;
+            break;
+          }
+        }
         const wn = hits[0].face
           ? hits[0].face.normal.clone().transformDirection(hits[0].object.matrixWorld)
           : null;
         if (wn !== null && wn.y > 0.45) continue; // relief sloping up, not a wall
         this._buildingSmash(hits[0], 0.6, Math.abs(this.speed));
+        // the leading edge takes it, in the metal as well as in the hull
+        this._dentHull(hits[0].point, wn ?? dir.clone().negate(), this.speed, 0.6);
         if (Math.abs(this.speed) > 55) this._shearWing(side, 'ფრთა კედელს მოხვდა და მოწყდა');
         else this._damageWing(side, 200 + Math.abs(this.speed) * 2.5);
         if (this.crashed) return;
@@ -1916,7 +2141,21 @@ export class Game {
           under && under.point.y >= surfY - 0.01
             ? under
             : { point: new THREE.Vector3(tip.x, surfY, tip.z) };
+        // ...and if what the tip is dragging along is another aeroplane, it is
+        // a collision between two machines, not a scrape along a roof.
+        const dRec = under && under.point.y >= surfY - 0.01
+          ? this.targets?.recOf?.(under.object) : null;
+        if (dRec && !dRec.own) {
+          const dd = this.vel.lengthSq() > 1 ? this.vel.clone().normalize() : forward;
+          if (this.planephys.ram(dRec, under, dd, Math.abs(this.speed), side)) {
+            this._wingHitCooldown = 0.8;
+            if (this.crashed) return;
+            break;
+          }
+        }
         this._buildingSmash(hitLike, 0.35, Math.abs(this.speed));
+        // dragged along a surface: the tip is pushed UP into the wing
+        this._dentHull(hitLike.point, new THREE.Vector3(0, 1, 0), this.speed, 0.35);
         if (Math.abs(this.speed) > 50) {
           this._shearWing(side, 'ფრთამ სახურავს გაჰკრა');
         } else {
@@ -1968,6 +2207,36 @@ export class Game {
     if (this.ui.healthNum) this.ui.healthNum.textContent = Math.round(this.health);
   }
 
+  // CRASH DAMAGE, the airframe's own. Hitting something is the one kind of
+  // damage that depends on what you are flying: a titanium bathtub with an
+  // A-10 around it takes 0.61 of it, a fabric aerobatic toy takes 1.49 (the
+  // collision multiplier the target card shows, planes.js planeColMult --
+  // GTA's fCollisionDamageMult). Gunfire and over-G go through _applyDamage
+  // directly: a bullet does not care how thick the skin is on landing.
+  _crashDamage(dmg, hitNormal = null) {
+    this._applyDamage(dmg * planeColMult(this.def), hitNormal);
+  }
+
+  // OUR OWN METAL, BENT. Hull points are a number on a bar; this is the part
+  // you look at. Every contact in this file ends here with the two things
+  // src/dents.js needs: where the surfaces met, and which way the panel is
+  // being pushed -- always INTO the skin, which for a wall is along its own
+  // normal, because the normal has already been turned round to face us.
+  //
+  // The crush energy is the kinetic energy carried into the contact along
+  // that normal. Nothing comes back out of a crumple, and a wall does not
+  // crumple with you, so the airframe keeps all of it -- which is why
+  // arriving at a building hurts the metal more than meeting another
+  // aeroplane at the same speed (src/planephys.js splits that one).
+  _dentHull(point, into, speed, headOn = 1) {
+    if (!point || !this.dents) return;
+    const v = Math.abs(speed) * THREE.MathUtils.clamp(headOn, 0, 1);
+    if (v < 4) return;
+    const m = this.aero?.mass ?? 2500;
+    this.dents.crush(this.plane, point, into, 0.5 * m * v * v,
+      { mult: planeColMult(this.def) });
+  }
+
   _applyDamage(dmg, hitNormal = null) {
     this.health = Math.max(0, this.health - dmg);
     this._updateHealthBar();
@@ -2007,7 +2276,7 @@ export class Game {
   // A wingtip sheared off on a wall: bend and char the wing, start the smoke,
   // and from now on the plane flies lopsided (see _flightUpdate).
   _damageWing(side, dmg) {
-    this._applyDamage(dmg);
+    this._crashDamage(dmg);
     if (this.crashed || this.wingDmg[side]) return;
     this.wingDmg[side] = true;
     // A bent wing carries less lift and drags — the plane pulls toward it.
@@ -2168,11 +2437,17 @@ export class Game {
         }
       }
       this.smoke.update(fdt);
+      // AEROPLANES SOMEBODY KNOCKED LOOSE. They tumble, burn and come down on
+      // their own clock -- whether the player is flying, on foot, or sitting
+      // in a wreck of their own watching the one they just rammed go in.
+      this.planephys.update(fdt);
       this.breakup.update(fdt); // torn-off parts keep falling during the cinematic
       this.guns.update(fdt);
       this.rockets.update(fdt);
       this.bullets.update(fdt);   // rounds still flying
       this.impacts.update(fdt);   // dust, sparks, brass on the pavement
+      this.planeDamage.update(fdt); // holes riding shot-up airframes, their smoke
+      this.dents.update();          // bent metal, a panel a frame
       this.paper.update(fdt);     // the score card fades out after the last shot
       // the lane controls belong to the firing point the PERSONAGE is standing
       // at, so they are driven by its position and not by the camera's
@@ -2348,6 +2623,7 @@ export class Game {
     this._keepCameraOutside();
     this.camera.updateMatrixWorld();
     this.combatHud.update(dt);
+    this.targets.update(dt);   // the target card: hull, range, selection ring
     this.world.update(this.camera.position, dt);
     // Props that react to the PERSONAGE rather than to the camera (the range's
     // lane gates). The camera trails 6 m behind, so it cannot drive these.
@@ -2450,6 +2726,7 @@ export class Game {
     canvas.removeEventListener('pointercancel', this._onPointerUp);
     this.crash?.dispose();
     this.crash = null;
+    this.planephys.dispose();
     this.container.classList.remove('wasted');
     this.cinema.dispose();
     this.foot.dispose();
@@ -2465,9 +2742,11 @@ export class Game {
     for (const ga of Object.values(this.gunAnims)) ga.dispose();
     this.bullets.dispose();
     this.impacts.dispose();
+    this.planeDamage.dispose();
     this.paper.dispose();
     this.lanes.dispose();
     this.combatHud.dispose();
+    this.targets.dispose();
     this.boundary.dispose();
     this.fx.dispose();
     this.blast.dispose();

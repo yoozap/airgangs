@@ -296,7 +296,12 @@ export class Pistol {
     const near = g.world.collidablesNear
       ? g.world.collidablesNear(g.camera.position.x, g.camera.position.z)
       : g.world.collidables;
-    const targets = g.world.shootables?.length ? near.concat(g.world.shootables) : near;
+    let targets = g.world.shootables?.length ? near.concat(g.world.shootables) : near;
+    // ...and the aeroplane the hero is standing beside, which is not in that
+    // set on purpose (game.ownPlaneTargets explains why). Without it a round
+    // fired at your own machine from five paces went straight through it.
+    const own = g.ownPlaneTargets?.();
+    if (own) targets = targets.concat(own);
 
     // WHERE THE CROSSHAIR IS. The ray goes out of the camera through the
     // cursor, so the shot lands on whatever the crosshair is covering; then it

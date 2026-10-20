@@ -38,7 +38,17 @@ OUT = os.path.join(ROOT, "public", "models", "cockpit.glb")
 SEAT_W = 0.46
 SEAT_D = 0.44
 PANEL_Y = 0.74   # how far forward of the hips the instrument panel stands
-PEDAL_Y = 0.96
+# THE RUDDER BAR HAS TO BE INSIDE A LEG. It was drawn at 0.96 m ahead of the
+# seat pan, and the seat pan is where the game puts the HIP JOINT -- so every
+# personage in the game was asked for a 0.95-1.15 m reach out of a leg between
+# 0.51 and 0.87 m long (tools/_probe_seatfit.mjs: thirteen bodies, thirteen
+# OUT OF REACH). Nobody's feet were anywhere near the pedals; they hung in
+# the footwell with the legs straight out. A real pilot sits with the knees
+# bent, and this is what that measures on a 1.8 m body -- chosen so that the
+# SHORT-legged personages reach as well: at 0.70 the astronaut (0.63 m of leg)
+# and the skeleton (0.67) still could not, and a leg that cannot reach is a
+# leg left folded in the footwell (src/foot.js gates the plant on it).
+PEDAL_Y = 0.62
 # The tub is deliberately SHALLOW and TIGHT. These cockpit wells are not
 # deep: on the aerobatic the measured floor is level with the seat pan, so
 # anything hung below the hips comes straight out through the belly — the
@@ -320,6 +330,18 @@ def build_pedals():
     box("rudder_bar", (0.34, 0.035, 0.035), (0, PEDAL_Y - 0.30, -0.140), "ck_steel")
 
 
+# Where each moving control turns, in this file's frame (+Y forward, +Z up,
+# origin on the seat pan). The game writes these as rotations every frame, so
+# each one has to be its OWN object with its origin ON ITS HINGE -- a merged
+# kit can only sit there like furniture in a museum.
+PIVOTS = {
+    "cockpit_stick": (0, 0.10, 0.10),          # the boot, where the shaft enters the floor
+    "cockpit_throttle": (-0.30, 0.30, 0.01),   # the quadrant's own pivot
+    "cockpit_pedal_1": (0.135, PEDAL_Y - 0.30, -0.140),   # the pedal pivot tube
+    "cockpit_pedal_-1": (-0.135, PEDAL_Y - 0.30, -0.140),
+}
+
+
 def build():
     clean()
     build_tub()
@@ -330,14 +352,21 @@ def build():
     build_quadrant()
     build_pedals()
 
-    # TWO objects, not one. The furniture is authored at pilot size and goes
+    # SIX objects, not one. The furniture is authored at pilot size and goes
     # in at scale 1 everywhere; the TUB is the only part whose width has to
     # answer to the aeroplane around it, so planes.js narrows it to the hull
     # it is going into (never widens it — that is how things end up sticking
     # out of a fuselage).
-    def join(prefix, name):
+    #
+    # ...and the STICK, the THROTTLE and the two PEDALS come out as their own
+    # objects, hinged, because the pilot now actually flies with them: the
+    # stick follows the pitch and roll you are holding, the pedals go in and
+    # out with the rudder, the throttle lever rides the engine, and the hands
+    # and feet are solved onto them every frame (src/foot.js updateSeated).
+    # A merged kit cannot do any of that.
+    def join(names, out_name, origin=None):
         sel = [o for o in bpy.data.objects
-               if o.type == "MESH" and o.name.startswith(prefix)]
+               if o.type == "MESH" and any(o.name.startswith(n) for n in names)]
         if not sel:
             return None
         bpy.ops.object.select_all(action="DESELECT")
@@ -345,11 +374,29 @@ def build():
             o.select_set(True)
         bpy.context.view_layer.objects.active = sel[0]
         bpy.ops.object.join()
-        bpy.context.object.name = name
-        return bpy.context.object
+        o = bpy.context.object
+        o.name = out_name
+        if origin is not None:
+            # put the object's ORIGIN on its hinge, so a rotation in the game
+            # turns it about the right axis instead of swinging it across the
+            # cockpit
+            cur = bpy.context.scene.cursor.location.copy()
+            bpy.context.scene.cursor.location = origin
+            bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
+            bpy.context.scene.cursor.location = cur
+        return o
 
-    tub = join("tub_", "cockpit_tub")
-    rest = [o for o in bpy.data.objects if o.type == "MESH" and o is not tub]
+    parts = [
+        join(["tub_"], "cockpit_tub"),
+        join(["stick_"], "cockpit_stick", PIVOTS["cockpit_stick"]),
+        join(["thr_", "mix_"], "cockpit_throttle", PIVOTS["cockpit_throttle"]),
+        join(["pedal_1", "pedal_pad_1", "pedal_arm_1", "pedal_pivot_1"],
+             "cockpit_pedal_1", PIVOTS["cockpit_pedal_1"]),
+        join(["pedal_-1", "pedal_pad_-1", "pedal_arm_-1", "pedal_pivot_-1"],
+             "cockpit_pedal_-1", PIVOTS["cockpit_pedal_-1"]),
+    ]
+    parts = [p for p in parts if p]
+    rest = [o for o in bpy.data.objects if o.type == "MESH" and o not in parts]
     bpy.ops.object.select_all(action="DESELECT")
     for o in rest:
         o.select_set(True)
@@ -361,11 +408,9 @@ def build():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", export_yup=True,
                               export_apply=True)
-    tris = sum(len(p.vertices) - 2 for p in root.data.polygons)
-    if tub:
-        tris += sum(len(p.vertices) - 2 for p in tub.data.polygons)
-    print(f"COCKPIT built -> {OUT}  {tris} tris, {len(bpy.data.materials)} materials"
-          f"{', tub split out' if tub else ''}")
+    tris = sum(len(p.vertices) - 2 for o in [root, *parts] for p in o.data.polygons)
+    print(f"COCKPIT built -> {OUT}  {tris} tris, {len(bpy.data.materials)} materials, "
+          f"parts: {', '.join(o.name for o in [root, *parts])}")
 
 
 build()

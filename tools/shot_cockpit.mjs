@@ -52,6 +52,15 @@ for (const id of ids) {
       g.halfSpan = next.userData.halfSpan;
       g.foot.seated = false;
     }
+    // WAIT FOR THE FURNITURE. fitCockpitKit attaches the seat, stick, panel
+    // and pedals from a promise, so a freshly swapped aeroplane has none of
+    // them for a microtask or two -- and a pilot seated before they arrive is
+    // a pilot whose hands were never solved onto anything, which measures a
+    // different (taller) body. The real game always has them: the aeroplane
+    // is built long before anyone climbs in.
+    for (let i = 0; i < 60 && !g.plane.userData.controls; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     // parked and level: a banked aeroplane makes every vertical reading a lie
     g.airborne = false; g.speed = 0; g.vel.set(0, 0, 0);
     g.plane.quaternion.identity();
@@ -65,13 +74,22 @@ for (const id of ids) {
     // Head against canopy, both in WORLD y with the aircraft sitting level —
     // c.top is in the plane's pre-belly-drop frame, so it is converted the
     // same way the seat was.
-    const head = new THREE.Box3().setFromObject(g.foot.rig.obj, true);
+    // THE BODY'S OWN BOX, not setFromObject(..., true). `precise` walks the
+    // GEOMETRY's vertices, and on these skinned bodies those are the undeformed
+    // FBX-scale ones -- so this printed a crown half a metre out and called a
+    // correctly seated astronaut "0.06 m through the hood". CharacterRig
+    // measures itself properly (it deforms the skin first).
+    const lb = g.foot.rig._localBox();
+    const head = new THREE.Box3(
+      lb.min.clone().add(g.foot.rig.obj.position),
+      lb.max.clone().add(g.foot.rig.obj.position)).applyMatrix4(g.plane.matrixWorld);
     const planeY = g.plane.position.y;
     const canopyY = planeY + (c ? c.top : 0);
     return {
       id, grow: +(c?.grow ?? 1).toFixed(2), room: +(c?.room ?? 0).toFixed(2),
       seat: c ? [+c.seat.y.toFixed(2), +c.seat.z.toFixed(2)] : null,
       hips: +(g.foot.rig.sit ?? 0).toFixed(2),
+      sitTop: +(g.foot.rig.sitTop ?? 0).toFixed(3), sitBot: +(g.foot.rig.sitBot ?? 0).toFixed(3),
       legs: !!g.foot.rig._crouchRig(),
       body: g.foot.rig.id ?? '?',
       canopyTop: +(canopyY - planeY).toFixed(2),
@@ -83,7 +101,7 @@ for (const id of ids) {
   }, id);
   console.log(`${info.id.padEnd(11)} x${info.grow} span ${info.span} m  seat y${info.seat?.[0]} z${info.seat?.[1]}`
     + `  hips+${info.hips}${info.legs ? '' : ' (legs will not fold)'}`
-    + `  canopy ${info.canopyTop}  head ${info.crown}  clearance ${info.clear} m   ${info.from}`);
+    + `  canopy ${info.canopyTop}  head ${info.crown}  clearance ${info.clear} m  [sitTop ${info.sitTop} sitBot ${info.sitBot}]  ${info.from}`);
 
   // THE AEROPLANE AND THE PILOT, AND NOTHING ELSE. A cockpit seen past a HUD,
   // a city and a wing is a cockpit you cannot judge: everything but the plane

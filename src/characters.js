@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { patchClass } from './hotpatch.js';
 import { newGltfLoader } from './gltf.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+import { movesFor, loadMoves } from './anims.js';
 
 // WoW-style races = the hero's CLASS. The race decides the role, the run
 // speed on foot and — like a weight class — which planes the hero may fly:
@@ -13,9 +14,10 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 // between: ხილ-ბოსტნეული and სათამაშოები. ("in left side u wil have 2 race,
 // vege-fruits and toys", "not devi and artsivi")
 //
-// A race still carries the ROLE (DPS/TANK), the stats, the machines it may
-// fly — and now `bodies`, the personages that belong to it, which is what the
-// create screen's ◄ ► walks. The ids changed with the names; main.js migrates
+// A race carries its Georgian role name, the stats, the machines it may fly
+// — and `bodies`, the personages that belong to it. The English DPS/TANK tag
+// is gone from the screen ("remove tank dps strings man"); TANK and DPS now
+// live where they decide something, on the PLANES (see planes.js planeRole). The ids changed with the names; main.js migrates
 // the old `artsivi`/`devi` heroes, and the plane lists stayed with them so a
 // saved hero keeps the machine it was flying.
 export const RACES = [
@@ -23,8 +25,7 @@ export const RACES = [
     id: 'veggie',
     name: 'ხილ-ბოსტნეული',
     latin: 'VEGE-FRUIT',
-    role: 'DPS',
-    roleKa: '⚔ მებრძოლი — DPS',
+    roleKa: '⚔ მებრძოლი',
     icon: '🍌',
     runSpeed: 7.2, // m/s — the fastest on foot
     stats: [88, 46, 22, 84],
@@ -32,7 +33,7 @@ export const RACES = [
     planes: [
       'spitfire', 'kawasaki', 'aerobatic', 'cessna310', 't28', 'f4f', 'p47',
       'p51', 'hsp75', 'neonfly', 'p100', 'javelin', 'mig21', 'mig21nk',
-      'tornado', 'f104', 'su33', 'f15', 'f117', 'a7', 'a10',
+      'tornado', 'f104', 'su33', 'f15', 'f117', 'a7',
     ],
     bodies: ['banana', 'eggplant', 'toad'],
     defModel: 'banana',
@@ -42,16 +43,14 @@ export const RACES = [
     id: 'toys',
     name: 'სათამაშოები',
     latin: 'TOYS',
-    role: 'TANK',
-    roleKa: '🛡 ფარი — TANK',
+    roleKa: '🛡 ფარი',
     icon: '🧸',
     runSpeed: 5.6,
     stats: [58, 96, 34, 42],
     // every BIG machine — bombers, transports, airliners, heavy wings
     planes: [
       'lancaster', 'h6k', 'b58', 'tu144', 'rq180', 'xb35', 'carpet', 'b737',
-      'c130', 'yc130', 'cargobro', 'il76', 'b767', 'awacs', 'globemaster',
-      'an225',
+      'c130', 'yc130', 'cargobro', 'il76', 'b767', 'awacs', 'an225',
     ],
     // ONLY the elephant. The toy box used to offer ten bodies; the roster is
     // down to the one the user wants to see on the create screen ("in toys
@@ -103,6 +102,24 @@ export const PERSONAGES = [
   // only ships an Idle clip — CharacterRig gives it a procedural run
   { id: 'elephant', name: 'სპილო', icon: '🐘' },
 ];
+
+// The eight walk cycles IN COMPASS ORDER, turning the body's own way: ahead,
+// ahead-left, left, back-left, back, back-right, right, ahead-right. walkClip()
+// indexes this straight off an angle, so the order is load-bearing.
+export const WALK_SET = [
+  'Walk_Fwd_Loop', 'Walk_Fwd_L_Loop', 'Walk_L_Loop', 'Walk_Bwd_L_Loop',
+  'Walk_Bwd_Loop', 'Walk_Bwd_R_Loop', 'Walk_R_Loop', 'Walk_Fwd_R_Loop',
+];
+// How fast each cycle itself travels, measured off the pack's own root motion
+// (tools/build_anims.py prints it) and read back out of moves.json at load.
+// They are NOT all the same: the sidesteps cover 0.9 m where the forward walk
+// covers 1.35, which is why one constant would make the sideways ones skate.
+export const WALK_CLIP_SPEED = 1.01;
+// A cycle may be hurried this far and no further. Past it a walk stops being a
+// walk -- the legs scurry -- so the run cycle takes back over. It puts the
+// stroll (1.15 m/s), the crouched creep (1.5) and the Ctrl walk (1.9) on real
+// steps, and leaves running where it was.
+export const WALK_MAX_RATE = 2.6;
 
 export const personageById = (id) =>
   PERSONAGES.find((p) => p.id === id) ?? PERSONAGES[0];
@@ -179,6 +196,7 @@ const KNEE_FOLD = 1.7; // rad of shin fold at a full crouch — a deep GTA duck
 const TUCK_FOLD = 2.3; // rad — the roll's tuck: knees to the chest, far past a duck
 const SLIDE_FOLD = 1.6; // rad — the slide's trailing knee, folded under the hip
 const SIT_FOLD = 1.5;   // rad — hips and knees at a right angle, on a cockpit seat
+const SIT_RECLINE = 0.21; // of SIT_FOLD the back lies away from the vertical
 const AIR_FOLD = 1.5;   // rad — the scale the jump's air pose is written in
 // THE JUMP, as three keys the body passes through: the PUSH off one leg, the
 // STRETCH at the top, and the GATHER that brings the legs down to meet the
@@ -1194,16 +1212,21 @@ export class CharacterRig {
   // Null for the bodies with no legs to fold (the snakes, the quadrupeds) —
   // they ride as they are, which is no worse than anything else available.
   setSeated(t) {
-    const legs = this._crouchRig();
+    // THE CROUCH'S RIG IS TOO STRICT FOR A SEAT. It refuses a body whose boots
+    // are parked on the root rather than hung off the shins -- the astronaut,
+    // the skeleton, the elephant -- because a crouch needs the boots to come
+    // with the knees. Sitting does not: the climb's rig knows how to carry a
+    // parked boot to the end of its shin afterwards (settleFeet), and that is
+    // the same trick a seat needs. Refusing those three meant they flew with
+    // their legs straight down through the floor, measured 1.80 m tall in a
+    // cockpit 0.7 m deep, and got buried for it.
+    const legs = this._crouchRig() ?? this._legRig();
     this.act.scale.set(1, 1, 1);
     this.act.rotation.x = 0;
     this.act.position.y = 0;      // the crouch drop has no business in a seat
-    // A body whose legs will not fold (the astronaut and the robot park their
-    // boots on the root, the snakes have no legs at all) still has to be put
-    // on the seat at the right HEIGHT, or it floats above the aircraft with
-    // its feet where its hips belong. It rides with its legs straight, inside
-    // the hull where nothing can see them.
-    if (!legs) return (this.sit ??= this._hipHeight());
+    // Nothing left to fold: the snakes, the quadrupeds. They ride as they
+    // are, which is no worse than anything else available.
+    if (!legs?.L?.thigh || !legs?.R?.calf) return (this.sit ??= this._hipHeight());
     // the fold direction is a property of the body; the crouch already knows
     // how to find it out, and its calibration needs a standing ankle first
     this._ankleY0 ??= this._ankleY();
@@ -1214,11 +1237,98 @@ export class CharacterRig {
     // measured once, at the full pose, like the roll's ball and the crouch's
     // drop — measuring it every frame tracks the idle clip's own breathing
     if (this.sit === undefined) {
+      // FROM A CLEAN SKELETON. _poseSeated writes through _boneTwist, which is
+      // an offset from WHEREVER THE BONE IS, so measuring on top of a pose the
+      // last aeroplane's pedals and stick left behind measures that aeroplane
+      // too -- and the same body then came out 12 cm taller or shorter
+      // depending on what it had been sitting in a moment earlier. The hsp75
+      // cleared its canopy or did not, run to run, on nothing but history.
+      // ...AND AT A FIXED FRAME OF THE CLIP. The idle breathes, and the pose
+      // is written on top of whatever frame the mixer happens to be showing,
+      // so measuring "the seated body" at an arbitrary moment measures the
+      // breath as well: the same personage came out 12 cm taller or shorter
+      // between two runs, and the hsp75's canopy cleared its head or did not
+      // on nothing but that. Measure at t = 0, then give the clock back.
+      const clipT = this.current?.time ?? 0;
+      this.mixer.setTime(0);
+      this._releaseBones();
+      this.obj.updateMatrixWorld(true);
       this._poseSeated(1, legs, arms);
       this.sit = this._overSoles(legs.hips ?? legs.spine ?? legs.L.thigh ?? legs.R.thigh);
+      // ...and how tall the body actually IS once it is folded into the seat.
+      // foot.js used to keep the head out of the canopy with `bodyH`, which is
+      // the STANDING height: on a body that folds well that is a good 40 cm
+      // more than it needs, so the clamp drove the pilot a further 40 cm into
+      // the aeroplane and the legs came out through the belly (the Extra 330
+      // flew with a banana hanging under its wing root). These are the real
+      // numbers, both measured off the seated pose, in the rig's own frame.
+      this.settleFeet();           // parked boots to the ends of their shins first
+      // WHERE THE HIP JOINT IS, in the rig's own frame. Not the pelvis bone:
+      // the stick, the throttle and the rudder bar are ergonomic distances
+      // from the point the THIGHS turn about, and on a body whose pelvis sits
+      // well behind its thigh joints (the astronaut's does) seating it by the
+      // pelvis put the rudder bar 0.78 m from a 0.63 m leg. Measured as the
+      // midpoint of the two thigh joints, so the furniture lands where this
+      // body's legs and arms can actually work it.
+      this.sitHip = new THREE.Vector3();
+      let n = 0;
+      for (const side of ['L', 'R']) {
+        const t = legs[side]?.thigh;
+        if (!t) continue;
+        t.updateWorldMatrix(true, false);
+        this.sitHip.add(_v1.setFromMatrixPosition(t.matrixWorld));
+        n++;
+      }
+      if (n) {
+        this.sitHip.divideScalar(n).applyMatrix4(_m1.copy(this.obj.matrixWorld).invert());
+        this.sitHip.x = 0;           // a cockpit is symmetrical; a body may not be
+      } else {
+        this.sitHip.set(0, this.sit, 0);
+      }
+      const b = this._localBox();
+      this.sitTop = b.max.y;       // crown, above the body's origin
+      this.sitBot = b.min.y;       // the lowest of it — folded feet, usually
+      this.sitHalfW = Math.max(Math.abs(b.max.x), Math.abs(b.min.x));
+      this.mixer.setTime(clipT);
       this._poseSeated(t, legs, arms);
     }
     return this.sit;
+  }
+
+  // The body's own bounding box, IN ITS OWN FRAME. measureBox() works in world
+  // space, which is no use for a body parented to a banking aeroplane: the box
+  // comes back axis-aligned to the world and a 60-degree turn makes a seated
+  // pilot a metre taller. Every mesh is taken back through the rig root
+  // instead, so the answer is the same whatever the aircraft is doing.
+  _localBox() {
+    this.obj.updateMatrixWorld(true);
+    const inv = _m1.copy(this.obj.matrixWorld).invert();
+    const box = new THREE.Box3();
+    const b = new THREE.Box3();
+    this.obj.traverse((o) => {
+      if (o.isSkinnedMesh) { o.skeleton.update(); o.computeBoundingBox(); b.copy(o.boundingBox); }
+      else if (o.isMesh) { o.geometry.computeBoundingBox(); b.copy(o.geometry.boundingBox); }
+      else return;
+      box.union(b.applyMatrix4(o.matrixWorld).applyMatrix4(inv));
+    });
+    return box;
+  }
+
+  // THE HEAD, IN THE SEAT. A pilot looks where the camera looks -- out along
+  // the wing in a turn, over the nose on the approach -- and a pilot that
+  // does not is a mannequin strapped to a chair. Written on top of whatever
+  // the seated pose left, like every other layer here, so _releaseBones hands
+  // the neck back when the hero climbs out.
+  lookSeated(yaw, pitch) {
+    const arms = this._rollRig();
+    const head = arms?.head ?? arms?.neck;
+    if (!head) return false;
+    // a neck does not turn as far as a pair of eyes: the rest is the eyes'
+    const y = THREE.MathUtils.clamp(yaw, -1.25, 1.25) * 0.62;
+    const p = THREE.MathUtils.clamp(pitch, -0.8, 0.9) * 0.55;
+    if (Math.abs(y) < 0.004 && Math.abs(p) < 0.004) return true;
+    this._boneTurn(head, p, y, 0);
+    return true;
   }
 
   // How far the hips stand above the soles on this body, for the bodies that
@@ -1254,9 +1364,17 @@ export class CharacterRig {
       const l = legs[side];
       this._boneTwist(l.thigh, -k);         // hip to a right angle, thighs along the pan
       this._boneTwist(l.calf, k * 0.95);    // shins down to the pedals
-      this._boneTwist(l.foot, -k * 0.15);   // the ball of the foot on the rudder bar
+      // a PARKED boot is not on this shin and turning it only spins it where
+      // it stands -- settleFeet carries that one to the end of the shin
+      if (!l.parked) this._boneTwist(l.ankle ?? l.foot, -k * 0.15); // ball of the foot on the bar
     }
-    this._boneTwist(legs.spine, -k * 0.05); // a seat reclines, barely
+    // A PILOT'S SEAT IS RAKED. Not the upright kitchen chair this used to be:
+    // every one of these aircraft sits its pilot back against a sloped pan.
+    // Gently, though -- past about this much the bodies stop getting shorter
+    // and start getting taller again, because leaning a long torso back swings
+    // the crown up and over the seat rather than down into it (measured on six
+    // bodies at 0.30: every one of them grew). It is a look, not a fit trick.
+    this._boneTwist(legs.spine, -k * SIT_RECLINE);
     if (!arms) return;
     const a = SIT_FOLD * t * (arms.sign ?? 1);
     for (const side of ['L', 'R']) {
@@ -2345,6 +2463,62 @@ export class CharacterRig {
     this.current = next;
   }
 
+  // ---- the move library (src/anims.js) --------------------------------------
+  //
+  // EIGHT DIRECTIONS OF WALK, laid over whatever this body already had. Two
+  // things in here were missing and could not be faked:
+  //   * a sidestep. Up to now a body ran sideways by being TURNED to face the
+  //     way it was going (setStrafe, and its own comment says this is the
+  //     compromise a real strafe animation would remove).
+  //   * a walk at all, on the bodies whose GLB ships a single Idle -- the
+  //     elephant hopped procedurally because there was nothing else.
+  // Nothing is replaced: these are extra entries in `actions`, so a body the
+  // library cannot fit (or a slow network) behaves exactly as it did before --
+  // `moves` stays false and the caller keeps to Idle/Run.
+  async addMoves() {
+    try {
+      const m = await movesFor(this.obj, this.def.id, WALK_SET);
+      if (!m) return false;
+      const { meta } = await loadMoves();
+      this._walkV = {};
+      for (const [n, clip] of m) {
+        this.actions[n] = this.mixer.clipAction(clip);
+        const c = meta.clips[n];
+        const d = c && Math.hypot(c.move[0], c.move[2]);
+        this._walkV[n] = d > 0.05 && c.dur > 0 ? d / c.dur : WALK_CLIP_SPEED;
+      }
+      this.moves = WALK_SET.every((n) => this.actions[n]);
+      return this.moves;
+    } catch (e) {
+      console.warn('moves: library unavailable, keeping the body\'s own clips', e);
+      return false;
+    }
+  }
+
+  // Which walk cycle matches the way the legs are actually travelling. `a` is
+  // that direction as an angle off the body's facing (0 ahead, +90° to its
+  // left, ±180° backwards) -- the same angle setStrafe is handed. Null until
+  // addMoves has landed, and null for a body the library does not fit.
+  walkClip(a, pace) {
+    if (!this.moves || !Number.isFinite(a)) return null;
+    const i = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
+    // The gate is the FORWARD cycle's reach, the same for all eight: the
+    // sidesteps cover barely half the ground per cycle (0.6 m/s against 1.01),
+    // and gating each on its own travel would have dropped a plain Ctrl-walk
+    // sideways back onto the turned-body fake -- which is the thing this is
+    // here to remove. They run at their own tempo, capped, and a sidestep
+    // hurried to its cap skates a little. That reads better than a body turned
+    // ninety degrees to walk forwards.
+    return pace <= WALK_CLIP_SPEED * WALK_MAX_RATE ? WALK_SET[i] : null;
+  }
+
+  // The tempo that makes a cycle cover the ground the hero is actually
+  // covering -- its own travel speed, not a shared guess.
+  walkRate(name, pace) {
+    return THREE.MathUtils.clamp(pace / (this._walkV?.[name] ?? WALK_CLIP_SPEED),
+      0.55, WALK_MAX_RATE);
+  }
+
   // Run-cycle playback speed follows the actual ground speed.
   setTimeScale(name, scale) {
     const a = this.actions[name];
@@ -2366,6 +2540,10 @@ export async function makeCharacter(modelId) {
   // page is running a copy it parsed before the rebuild and needs reloading.
   let bones = 0;
   rig.obj.traverse((o) => { if (o.isBone) bones++; });
+  // ...and the shared walk set on top, in its own time: a 1.9 MB library is
+  // not worth making the hero wait for, and until it lands `rig.moves` is
+  // false and nothing asks for it.
+  rig.addMoves();
   const built = measureBox(rig.obj).getSize(new THREE.Vector3());
   console.log(`personage ${def.id}: ${bones} bones, clips [${Object.keys(rig.actions)}]`
     + `, ${built.y.toFixed(2)} m tall`

@@ -8,7 +8,7 @@ import { newGltfLoader } from './gltf.js';
 // base, with the benches, the pistols and the firing range in it -- is that
 // model at x3: 48 x 138 x 15 m, the size a real cargo warehouse is. The plane
 // hall next door (src/planehall.js) is the SAME model stretched far wider and
-// longer, because 37 aeroplanes with an An-225 among them do not fit in a
+// longer, because 36 aeroplanes with an An-225 among them do not fit in a
 // cargo shed.
 //
 // Everything both of them share lives here: the door cut, the levelled slab,

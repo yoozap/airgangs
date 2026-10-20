@@ -146,6 +146,19 @@ export const CARTRIDGES = {
 // Makarov just stopped pretending to be a Parabellum (303 J -> 18 hp).
 export const HP_PER_JOULE = 34 / CARTRIDGES['9x19'].energy;
 
+// ...EXCEPT AGAINST AN AIRFRAME, which is not a wall and must not be scored
+// like one. "ofc gun must have less damage then plane vs plane crash": an
+// aeroplane is a big hollow structure and a bullet through one of its panels
+// takes almost nothing out of it, while flying another machine into it is a
+// one-shot kill. The reference is the Spitfire -- 987 hull points, and
+// 1 462 points of ramming damage (planes.js planeCrashDmg), so a collision
+// kills it outright. Small arms get `hull` of that same energy, which puts a
+// 9 mm at 14 points (72 rounds, nine magazines), a 7.62 x 39 at 47 (a whole
+// AKM magazine is worth about ONE ram) and a tyre at almost nothing. The
+// 12.7 mm under the aeroplane does not come through here at all -- it carries
+// its own flat figure (src/guns.js) -- and neither do rockets.
+const HULL = 0.4;
+
 // ---------------------------------------------------------------------------
 // THE SURFACES
 // ---------------------------------------------------------------------------
@@ -196,6 +209,39 @@ export const SURFACES = {
   glass: {
     label: 'მინა', resist: 20, thick: 0.004, graze: 0, spall: 16, hole: 2.2,
     dust: { tint: 0xd6ecf8, n: 5, speed: 3 }, sound: 'glass', pit: 1,
+  },
+  // ---- an aeroplane ------------------------------------------------------
+  // An airframe is not "metal" in the road-sign sense and it must not behave
+  // like one. These three are what a round actually meets on an aircraft:
+  //
+  // SKIN — 2024-T3 aluminium alloy, about 1.2 mm of it over a hollow bay.
+  // Aluminium takes roughly a third of the work steel does to cut, so the
+  // Poncelet sum says a 9x19 spends 69 J of its 580 getting through and
+  // carries on out the far side — which is why an aeroplane is riddled
+  // rather than dented, and why every hit here leaves TWO holes. It flakes
+  // its paint off in a bright ring (`spall`), it throws hot swarf (`sparks`),
+  // and at a shallow enough angle a pistol round skates straight off the
+  // curve of a fuselage.
+  skin: {
+    label: 'ფიუზელაჟი', resist: 900, thick: 0.0012, graze: 0.38, spall: 5.2, hole: 1.18,
+    dust: { tint: 0xb6b9bd, n: 5, speed: 3.4 }, sound: 'skin', pit: 1, sparks: 11,
+    plane: true, hull: HULL,
+  },
+  // PERSPEX — the canopy. Acrylic 6 mm thick, and nothing like a window: it
+  // does not shatter into a frame-sized sheet, it takes the hole and CRAZES,
+  // a white opaque star spreading out of the strike. No ricochet worth the
+  // name, and it stops almost nothing — 17 J out of a Parabellum's 580.
+  perspex: {
+    label: 'ფარანი', resist: 45, thick: 0.006, graze: 0.1, spall: 1, hole: 1.35,
+    dust: { tint: 0xe2f1ff, n: 6, speed: 3.1 }, sound: 'perspex', pit: 1,
+    noHole: true, plane: true, hull: HULL,
+  },
+  // RUBBER — the tyres. Soft, and it swallows a round rather than letting it
+  // skip: no ricochet, no sparks, a puff of black crumb and a flat tyre.
+  rubber: {
+    label: 'საბურავი', resist: 120, thick: 0.035, graze: 0.06, spall: 2.8, hole: 1.1,
+    dust: { tint: 0x26262a, n: 8, speed: 2.1 }, sound: 'soft', pit: 1,
+    plane: true, hull: HULL,
   },
   wood: {
     label: 'ხე', resist: 30, thick: 0.035, graze: 0.21, spall: 5.5, hole: 1.2,
@@ -408,9 +454,21 @@ export class BulletSim {
       return b.dist < 600;
     }
 
-    b.dist += hit.distance;
-    b.pos.copy(hit.point);
-    return this._resolve(b, hit, energy, v1);
+    // AN AEROPLANE'S COLLIDER IS A CRATE, NOT AN AEROPLANE. What the ray just
+    // crossed may be the box shell planes.js bakes for climbing on, which is
+    // a foot proud of the skin in places -- so the round is re-cast against
+    // the real airframe and the true panel is what answers (planedamage.js).
+    // `null` means the crate lied and there is nothing there: fly on.
+    const real = this.game.planeDamage?.refine(hit, this._d);
+    if (real === null) {
+      b.pos.copy(hit.point).addScaledVector(this._d, SKIN);
+      b.dist += hit.distance + SKIN;
+      return b.dist < 600;
+    }
+    const land = real ?? hit;
+    b.dist += this._p0.distanceTo(land.point);
+    b.pos.copy(land.point);
+    return this._resolve(b, land, energy, v1);
   }
 
   // The interesting part: dig in, punch through, or skip off.
@@ -451,7 +509,8 @@ export class BulletSim {
       ricochet,
       through: false,
       exit: null,
-      damage: Math.max(1, Math.round(energy * HP_PER_JOULE)),
+      // against an airframe this is scaled right down: see HULL above
+      damage: Math.max(1, Math.round(energy * HP_PER_JOULE * (S.hull ?? 1))),
     };
 
     if (ricochet) {

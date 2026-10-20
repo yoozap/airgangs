@@ -30,16 +30,16 @@ console.log(`RIGHT ${cols.rightHead}: ${cols.right.join(', ')}`);
 console.log(`bar   "${cols.bar}"  name-in-bar=${cols.nameInBar} button-in-bar=${cols.btnInBar} info-hidden=${cols.infoHidden}`);
 await page.screenshot({ path: DIR + '/create-veggie.png' });
 // pick a toy and shoot it again
-await page.evaluate(() => document.querySelectorAll('#race-list-2 .body-card')[1].click());
+await page.evaluate(() => {
+  const tiles = document.querySelectorAll('#race-list-2 .body-card');
+  (tiles[1] ?? tiles[0])?.click(); // the toys column is short some days
+});
 await page.waitForTimeout(2600);
 console.log('after clicking the 2nd toy: ' + await page.evaluate(() => document.getElementById('cb-line').textContent));
 await page.screenshot({ path: DIR + '/create-toys.png' });
-// and back to the roster: the info panel and its button must come back
-// ◄ უკან leaves for the MENU -- come back in through "გმირი" for the roster
+// and back to the roster: the info panel and its button must come back.
+// ◄ უკან is now "never mind" — it stays on this screen and shows the heroes.
 await page.click('#btn-char-back').catch(() => {});
-await page.waitForSelector('#screen-menu.active', { timeout: 10000 }).catch(() => {});
-await page.click('#btn-character').catch(() => {});
-await page.waitForSelector('#screen-character.active', { timeout: 10000 }).catch(() => {});
 await page.waitForTimeout(2200);
 console.log('roster: ' + await page.evaluate(() => JSON.stringify({
   info: !document.querySelector('.hangar-info').classList.contains('hidden'),

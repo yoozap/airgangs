@@ -1,7 +1,8 @@
-// The plane is not chosen at birth any more: a new hero gets its role's
-// lightest machine, and the cycler only appears for a hero that exists.
+// The plane is never chosen on the personage screen: a new hero gets its
+// role's machine, and the ◄ ► cycler that used to change it is gone — the
+// panel only NAMES the machine.
 import { chromium } from 'playwright';
-const DIR = '/private/tmp/claude-501/-Users-wazzap-tbilisifly/b0707912-0abe-48ac-b391-e34d6a8603b4/scratchpad/startplane';
+const DIR = process.env.OUT || '/tmp/startplane';
 const ctx = await chromium.launchPersistentContext(DIR + '/profile', { headless: true,
   viewport: { width: 1280, height: 800 }, args: ['--use-gl=angle', '--use-angle=metal', '--ignore-gpu-blocklist'] });
 const page = ctx.pages()[0] ?? await ctx.newPage();
@@ -26,12 +27,12 @@ if (!await page.waitForSelector('#screen-character.active', { timeout: 6000 }).t
   await page.click('#btn-auth');
   await page.waitForSelector('#screen-character.active', { timeout: 20000 });
 }
-const hidden = (id) => page.evaluate((i) => document.getElementById(i).classList.contains('hidden'), id);
+const gone = (id) => page.evaluate((i) => !document.getElementById(i), id);
 const neu = await page.$('.pl-item.new-hero');
 if (neu) await neu.click();
 await page.waitForTimeout(1500);
-console.log(`create mode:  plane-row hidden=${await hidden('char-plane-row')}`
-  + ` info-panel hidden=${await page.evaluate(() => document.querySelector('.hangar-info').classList.contains('hidden'))}`
+console.log(`create mode:  info-panel hidden=${await page.evaluate(() =>
+  document.querySelector('.hangar-info').classList.contains('hidden'))}`
   + ` bodies=${await page.evaluate(() => document.querySelectorAll('.body-card').length)}`);
 // the TOYS race: its own default body and its own starter machine
 await page.evaluate(() => document.querySelector('#race-list-2 .race-head').click());
@@ -43,10 +44,7 @@ await page.click('#btn-char-create');
 await page.waitForTimeout(1200);
 const hero = await page.evaluate(() => JSON.parse(localStorage.getItem('tf-chars-planebot')).list.slice(-1)[0]);
 console.log(`created:      race=${hero.race} model=${hero.model} plane=${hero.plane}  (role starter)`);
-console.log(`roster mode:  plane-row hidden=${await hidden('char-plane-row')} label="${(await page.textContent('#cp-label')).trim()}"`);
-await page.click('#cp-next');
-await page.waitForTimeout(600);
-const after = await page.evaluate(() => JSON.parse(localStorage.getItem('tf-chars-planebot')).list.slice(-1)[0].plane);
-console.log(`after ►:      plane=${after} label="${(await page.textContent('#cp-label')).trim()}" (saved=${after !== hero.plane})`);
+console.log(`roster mode:  cycler gone=${await gone('char-plane-row')} ◄=${await gone('cp-prev')} ►=${await gone('cp-next')}`);
+console.log(`              panel names it: "${(await page.textContent('#ci-role')).trim()}"`);
 await page.screenshot({ path: DIR + '/roster.png' });
 await ctx.close();

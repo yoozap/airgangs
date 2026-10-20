@@ -420,6 +420,75 @@ export function hitMetal(dist, vol) {
   fxAudio.tone(a, { at: 0.008, dur: 0.36, f0: 620, f1: 380, gain: 0.16, type: 'triangle' });
 }
 
+// Into an AEROPLANE'S SKIN. Not the same thing as sheet steel, and it should
+// not sound like it: an airframe is about a millimetre of aluminium stretched
+// over frames with nothing but air behind it, so a round arriving does three
+// things at once — a bright metallic SPANG off the alloy, the short tearing
+// rip of the skin actually being cut, and the hollow boxy answer of the bay
+// behind the panel. High, thin, and over in a quarter of a second; a steel
+// plate's long low ring is exactly what an aeroplane does not have.
+export function hitSkin(dist, vol) {
+  const a = fxAudio.at(dist, vol);
+  if (!a) return;
+  fxAudio.burst(a, { dur: 0.008, freq: 7400, q: 0.7, type: 'highpass', gain: 0.5, rate: 2.1 });
+  // the panel itself: thin, high partials that die fast because the skin is
+  // damped by every rivet line it is held down by
+  for (const f of [2420, 3380, 4760]) {
+    fxAudio.tone(a, {
+      dur: 0.09 + Math.random() * 0.07,
+      f0: f * (0.93 + Math.random() * 0.14), f1: f * 0.8,
+      gain: 0.08, type: 'triangle',
+    });
+  }
+  // the metal tearing round the hole
+  fxAudio.burst(a, { at: 0.003, dur: 0.04, freq: 3100, q: 1.3, gain: 0.15, rate: 1.7 });
+  // ...and the empty bay behind it
+  fxAudio.tone(a, { at: 0.007, dur: 0.19, f0: 440, f1: 250, gain: 0.12, type: 'sine' });
+}
+
+// AN AIRFRAME COMING APART. A wing sawn off along a line of bullet holes does
+// not bang -- it RENDS: a long tearing shriek as the aluminium rips through
+// the remaining skin, the spar letting go underneath it with a deep crack,
+// and the sheet booming as it swings away.
+export function metalTear(dist, vol, size = 1) {
+  const a = fxAudio.at(dist, vol, { reverb: 0.8 });
+  if (!a) return;
+  const len = 0.5 + 0.35 * Math.min(2, size);
+  // the rip itself: filtered noise swept down as the tear runs
+  const f = fxAudio.burst(a, { dur: len, freq: 2600, q: 1.6, gain: 0.42, rate: 0.85 });
+  if (f) {
+    f.frequency.setValueAtTime(2800, a.t);
+    f.frequency.exponentialRampToValueAtTime(520, a.t + len);
+  }
+  // the spar going
+  fxAudio.burst(a, { at: 0.03, dur: 0.1, freq: 420, q: 0.8, type: 'lowpass', gain: 0.5 });
+  fxAudio.tone(a, { at: 0.02, dur: 0.5, f0: 190, f1: 62, gain: 0.3, type: 'triangle' });
+  // and the sheet booming as it lets go
+  for (const hz of [320, 470, 690]) {
+    fxAudio.tone(a, {
+      at: 0.06 + Math.random() * 0.1, dur: 0.6 + Math.random() * 0.4,
+      f0: hz * (0.9 + Math.random() * 0.2), f1: hz * 0.55, gain: 0.1, type: 'triangle',
+    });
+  }
+}
+
+// Through a CANOPY. Cockpit glazing is acrylic, not window glass: it does not
+// tinkle and it does not fall out in sheets. It CRACKS — one dry snap, then
+// the crazing running out of the hole in little ticks.
+export function hitPerspex(dist, vol) {
+  const a = fxAudio.at(dist, vol);
+  if (!a) return;
+  fxAudio.burst(a, { dur: 0.01, freq: 5200, q: 0.9, type: 'highpass', gain: 0.45, rate: 1.7 });
+  fxAudio.tone(a, { dur: 0.08, f0: 1750 + Math.random() * 500, f1: 820, gain: 0.13, type: 'triangle' });
+  // the crazing travelling out through the sheet
+  for (let k = 0; k < 4; k++) {
+    fxAudio.burst(a, {
+      at: 0.012 + Math.random() * 0.09, dur: 0.025,
+      freq: 2600 + Math.random() * 2600, q: 3.4, gain: 0.05, rate: 1.9,
+    });
+  }
+}
+
 // Into dirt / grass / a roof: dull, no ring.
 export function hitSoft(dist, vol) {
   if (playSample('imp_dirt', dist, vol, { gain: 1.1, jitter: 0.14, colour: 3 })) return;

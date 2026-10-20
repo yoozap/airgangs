@@ -225,7 +225,9 @@ export class RocketLauncher {
   _targets(x, z) {
     const g = this.game;
     const near = g.world.collidablesNear ? g.world.collidablesNear(x, z) : g.world.collidables;
-    return g.world.shootables?.length ? near.concat(g.world.shootables) : near;
+    const own = g.ownPlaneTargets?.();
+    const all = g.world.shootables?.length ? near.concat(g.world.shootables) : near;
+    return own ? all.concat(own) : all;
   }
 
   _updateRockets(dt) {

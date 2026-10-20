@@ -1557,6 +1557,18 @@ export class CityMap {
   // One entry point for every bullet: merged-chunk buildings, instanced
   // churches/mosques/houses (per-instance damage), and landmark models.
   damageHit(hit, dmg) {
+    // A PARKED AEROPLANE has its own hull pool and nothing to do with the
+    // city: the targeting system takes the damage (and puts the machine's card
+    // up, src/target.js) and we hand back null, so every caller treats the hit
+    // the way it treats a statue — sparks and a bang, no address, no collapse.
+    // (`hit.planeRec` is on a hit that has been refined onto the real skin,
+    // which also says WHERE on the machine it landed: an engine is worth
+    // nearly twice a wing panel and a tyre almost nothing — planedamage.js.)
+    const plane = hit.planeRec ?? hit.object.userData?.planeRec;
+    if (plane) {
+      this.targets?.damagePlane(plane, Math.max(1, Math.round(dmg * (hit.planeMul ?? 1))));
+      return null;
+    }
     // a blast-damaged building is drawn by its own shell mesh — same record
     if (hit.object.userData?.shellOf) return this.damageBuildingHit(hit, dmg, hit.object.userData.shellOf);
     if (hit.object.userData?.buildings) return this.damageBuildingHit(hit, dmg);

@@ -36,7 +36,7 @@ html, body {
 }
 .screen.active { display: flex; }
 
-#screen-start, #screen-plane, #screen-map {
+#screen-start, #screen-plane {
   background:
     radial-gradient(1100px 560px at 72% -10%, rgba(63, 214, 255, 0.10), transparent 60%),
     radial-gradient(900px 520px at 8% 110%, rgba(255, 62, 138, 0.10), transparent 60%),
@@ -74,12 +74,6 @@ h2 {
   text-shadow: 0 0 18px rgba(63, 214, 255, 0.45);
 }
 
-.map-spot {
-  margin: 18px auto -4px; max-width: 640px; text-align: center;
-  font-size: 12px; line-height: 1.6; color: var(--cyan); letter-spacing: 0.04em;
-}
-.map-spot b { color: #fff; font-weight: 800; }
-.map-spot small { display: block; color: var(--dim); letter-spacing: 0.06em; font-size: 10px; font-family: var(--stm); }
 .big-btn {
   font-family: inherit;
   font-size: 19px;
@@ -181,57 +175,12 @@ h2 {
 }
 .plane-card.selected span { color: var(--cyan); }
 
-/* ---- city select grid ---- */
-.city-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 26px;
-}
-
-.city-card {
-  position: relative;
-  overflow: hidden;
-  background: rgba(3, 6, 12, 0.6);
-  border: 1px solid var(--line-dim);
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
-}
-.city-card svg { display: block; width: 100%; height: auto; }
-.city-card:hover { transform: translateY(-3px); }
-.city-card.selected {
-  border-color: var(--cyan);
-  box-shadow: 0 0 26px rgba(63, 214, 255, 0.28);
-}
-.city-card.locked { cursor: not-allowed; }
-.city-card.locked svg { filter: grayscale(0.55) brightness(0.55); }
-.city-card.locked:hover { transform: none; }
-.city-card.shake { animation: cc-shake 0.3s ease; }
+/* cc-shake outlived the city cards: the action bar denies a slot with it. */
 @keyframes cc-shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-5px); }
   75% { transform: translateX(5px); }
 }
-
-.cc-label { padding: 10px 14px 12px; }
-.cc-label b { font-size: 16px; display: block; }
-.cc-label small { color: var(--dim); font-size: 11.5px; }
-
-.cc-status {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 1px;
-  padding: 3px 8px;
-  background: rgba(5, 8, 14, 0.85);
-  border: 1px solid rgba(255, 62, 138, 0.5);
-  color: var(--mag);
-}
-.cc-status.open { border-color: rgba(63, 214, 255, 0.55); color: var(--cyan2); }
 
 /* ---- game ---- */
 #screen-game { background: #000; }
@@ -368,6 +317,110 @@ h2 {
   background: repeating-linear-gradient(90deg, transparent 0 10px, rgba(4, 8, 16, 0.85) 10px 12px);
   pointer-events: none;
 }
+
+/* ---- WoW-style target frame (src/target.js) -------------------------------
+   Lines up with #healthbar: same top, hard against its right edge (18 + 226
+   + 8). Portrait left, name over the hull bar — a WoW target frame. */
+#targetframe {
+  position: absolute;
+  top: 96px;
+  left: 252px;
+  /* 330, not 300: the machine's four numbers go on one line under the bar */
+  width: 330px;
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px 8px;
+  background: rgba(8, 13, 24, 0.92);
+  border: 1px solid var(--line-dim);
+  border-left: 2px solid var(--mag);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+#targetframe.hidden { display: none; }
+#tf-portrait {
+  width: 62px;
+  height: 46px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: rgba(63, 214, 255, 0.06);
+  border: 1px solid rgba(63, 214, 255, 0.22);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+.tf-body { flex: 1 1 auto; min-width: 0; }
+.tf-head { display: flex; }
+#tf-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #eaffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 10px rgba(63, 214, 255, 0.45);
+}
+#tf-role {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--bg0);
+  background: var(--mag);
+  padding: 1px 6px;
+}
+#tf-role.tank { background: var(--gold); }
+/* role chip + code/class, one line under the name */
+.tf-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0 4px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+#tf-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tf-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #1fb562, #4af09a);
+  box-shadow: 0 0 10px rgba(74, 240, 154, 0.45);
+  transition: width 0.18s linear;
+}
+.tf-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--cyan2);
+}
+.tf-foot #tf-dist { color: var(--dim); }
+/* the machine's own numbers: hull, speed, ramming power, weight */
+.tf-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--dim);
+}
+.tf-stats span { display: flex; align-items: center; gap: 3px; white-space: nowrap; flex: 0 0 auto; }
+.tf-stats b { font-weight: 700; color: var(--cyan2); }
+/* a round just landed on it */
+#targetframe.hit {
+  border-color: rgba(255, 106, 90, 0.75);
+  box-shadow: 0 0 18px rgba(255, 62, 138, 0.35);
+}
+#targetframe.dead { opacity: 0.72; border-left-color: #c8232f; }
+#targetframe.dead #tf-hp { color: #ff6a5a; }
 
 #hud-controls {
   position: absolute;
@@ -1278,7 +1331,7 @@ input[type="range"].sw-range::-webkit-slider-thumb {
   position: absolute; inset: 0; pointer-events: none; opacity: 0.07; z-index: 1;
   background: repeating-linear-gradient(0deg, transparent 0px, transparent 3px, var(--cyan) 3px, var(--cyan) 4px);
 }
-.login-wrap, .menu-wrap, .hangar, #screen-map .panel { position: relative; z-index: 2; }
+.login-wrap, .hangar { position: relative; z-index: 2; }
 
 /* ---- shared chrome (top status + pilot badge, bottom version bar) ---- */
 #chrome { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
@@ -1411,43 +1464,6 @@ input[type="range"].sw-range::-webkit-slider-thumb {
   font-family: var(--stm); font-size: 10.5px; letter-spacing: 0.14em; color: var(--dim);
 }
 
-/* ---- start menu ---- */
-#screen-menu { justify-content: flex-start; }
-.menu-wrap { padding-left: 72px; width: 560px; animation: agIn 0.4s ease both; }
-.menu-btns { display: flex; flex-direction: column; gap: 12px; width: 360px; margin-top: 40px; }
-.mbtn {
-  cursor: pointer; border: none; font-family: inherit; text-align: left;
-  background: rgba(8, 13, 22, 0.75); color: var(--text);
-  font-weight: 600; font-size: 16px; letter-spacing: 0.05em; padding: 15px 26px;
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
-  box-shadow: inset 0 0 0 1px rgba(63, 214, 255, 0.3);
-  transition: background 0.15s, box-shadow 0.15s, color 0.15s;
-}
-.mbtn:hover { background: rgba(63, 214, 255, 0.14); box-shadow: inset 0 0 0 1px var(--cyan); }
-.mbtn.primary {
-  background: var(--cyan); color: var(--bg0); font-weight: 800; font-size: 19px;
-  padding: 18px 26px; box-shadow: 0 0 28px rgba(63, 214, 255, 0.35);
-  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-}
-.mbtn.primary:hover { background: var(--cyan2); box-shadow: 0 0 44px rgba(63, 214, 255, 0.6); }
-.mbtn.ghost { background: rgba(8, 13, 22, 0.55); color: var(--dim); font-size: 15px; padding: 13px 26px; box-shadow: inset 0 0 0 1px rgba(125, 140, 161, 0.25); }
-.mbtn.ghost:hover { color: var(--mag); background: rgba(8, 13, 22, 0.55); box-shadow: inset 0 0 0 1px rgba(255, 62, 138, 0.5); }
-
-.season-card {
-  position: absolute; right: 44px; bottom: 96px; width: 300px; z-index: 2;
-  background: rgba(8, 13, 22, 0.85); padding: 14px;
-  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-  box-shadow: inset 0 0 0 1px rgba(255, 62, 138, 0.35);
-  animation: agIn 0.5s ease both;
-}
-.sc-tag { font-family: var(--stm); font-size: 11px; letter-spacing: 0.2em; color: var(--mag); margin-bottom: 10px; }
-.sc-art { height: 150px; margin-bottom: 12px; overflow: hidden; }
-.sc-art svg { width: 100%; height: 100%; display: block; }
-.sc-name { font-weight: 800; font-size: 15px; margin-bottom: 8px; }
-.sc-track { height: 6px; background: rgba(125, 140, 161, 0.2); }
-.sc-fill { height: 100%; background: var(--mag); box-shadow: 0 0 10px rgba(255, 62, 138, 0.6); }
-.sc-row { display: flex; justify-content: space-between; font-family: var(--stm); font-size: 11px; color: var(--dim); margin-top: 6px; }
-
 /* ---- hangar ---- */
 #screen-plane {
   background:
@@ -1544,23 +1560,10 @@ input[type="range"].sw-range::-webkit-slider-thumb {
 }
 .char-delete:hover { color: var(--mag); box-shadow: inset 0 0 0 1px rgba(255, 62, 138, 0.5); }
 .char-delete.hidden { display: none; }
-/* personage body cycler (create mode): ◄ 🤖 რობოტი ► */
+/* .cm-row outlived the cyclers it was written for — the 🎬 scene menu uses it */
 .cm-row { margin-top: 16px; }
 .cm-row.hidden { display: none; }
-.cm-tag { display: block; font-family: var(--stm); font-size: 11px; letter-spacing: 0.18em; color: #fff; margin-bottom: 7px; }
 .char-name-fld > span { color: #fff; }
-.cm-cycler { display: flex; align-items: stretch; gap: 6px; }
-.cm-btn {
-  cursor: pointer; border: none; background: rgba(63, 214, 255, 0.08); color: var(--cyan);
-  font-family: inherit; font-size: 14px; padding: 8px 12px;
-  box-shadow: inset 0 0 0 1px rgba(63, 214, 255, 0.3);
-}
-.cm-btn:hover { background: rgba(63, 214, 255, 0.2); }
-#cm-label {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-  font-weight: 800; font-size: 15px; background: rgba(8, 13, 22, 0.75);
-  box-shadow: inset 0 0 0 1px rgba(125, 140, 161, 0.25);
-}
 /* planes the active hero's race can't fly */
 .pl-item.locked { opacity: 0.45; }
 .pl-item.locked .pl-name::after { content: ' 🔒'; font-size: 12px; }
@@ -1626,7 +1629,7 @@ input[type="range"].sw-range::-webkit-slider-thumb {
 .hs-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
 .hs-label { color: #fff; letter-spacing: 0.06em; }
 /* li-style bullet before each "what you get" item title in the hero info panel */
-.hs-label::before, .cm-tag::before, .char-name-fld > span::before {
+.hs-label::before, .char-name-fld > span::before {
   content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
   background: var(--cyan); box-shadow: 0 0 6px rgba(63, 214, 255, 0.6);
   margin-right: 8px; vertical-align: 1px;
@@ -1648,7 +1651,6 @@ input[type="range"].sw-range::-webkit-slider-thumb {
 
 /* map screen back button sits inside the panel's top-left corner */
 .panel { position: relative; }
-.panel-back { position: absolute; top: 20px; left: 20px; }
 
 
 /* on-foot weapon slots: the category glyph sits where a skill icon would */

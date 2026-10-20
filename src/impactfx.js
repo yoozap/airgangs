@@ -27,6 +27,48 @@ import { classifySurface, surfaceOf } from './ballistics.js';
 // Nothing here is 50 cm wide. A bullet hole you can see from across the street
 // is the single thing that makes a shooter look fake up close.
 
+// ---- marks that stay ON the thing they hit ---------------------------------
+// A decal is a flat quad laid on the surface. If the surface runs out inside
+// it the rest of it hangs in the open with nothing behind it, and from a few
+// metres that reads as a bullet hole floating in mid-air -- which is exactly
+// what it is. Thin things are everywhere: a hangar's hanging conduit, an
+// aerial, a gear strut, the trailing edge of a wing.
+//
+// So the four corners are probed against the thing that was actually hit --
+// one short ray each, against ONE object, so it is cheap -- and the mark is
+// halved until they all land on it. A round into a two-centimetre cable
+// leaves a two-centimetre scratch instead of a palm-sized hole in the sky.
+const _fitRay = new THREE.Raycaster();
+const _fitFrom = new THREE.Vector3();
+const _fitDir = new THREE.Vector3();
+const FIT_CORNERS = [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]];
+const FIT_TRIES = 3;
+
+export function surfaceFit(obj, point, x, y, z, w, h) {
+  if (!obj) return 1;
+  _fitDir.copy(z).negate();
+  let k = 1;
+  for (let t = 0; t < FIT_TRIES; t++) {
+    let off = 0;
+    for (const [sx, sy] of FIT_CORNERS) {
+      _fitFrom.copy(point)
+        .addScaledVector(x, sx * w * k)
+        .addScaledVector(y, sy * h * k)
+        .addScaledVector(z, 0.3);
+      _fitRay.set(_fitFrom, _fitDir);
+      _fitRay.far = 0.62;
+      try {
+        if (!_fitRay.intersectObject(obj, true).length) off++;
+      } catch {
+        return k;                     // not something that can be probed
+      }
+    }
+    if (!off) break;
+    k *= 0.55;
+  }
+  return k;
+}
+
 // ---- decal layers ---------------------------------------------------------
 // Ring-buffered InstancedMesh, per-instance NON-UNIFORM scale (so holes can be
 // elliptical) and per-instance colour (so one layer serves brick, concrete,
@@ -70,7 +112,9 @@ class DecalLayer {
   // `along` is the in-plane direction the stretch runs in (the incoming flight
   // path flattened onto the surface). Without it the stamp is spun at random,
   // which is right for a square-on hit.
-  stamp(point, normal, w, h, { along = null, tint = null, slide = 0 } = {}) {
+  // `fit` is the object the mark landed on: the quad is shrunk until it sits
+  // entirely on it, so nothing hangs over an edge into open air.
+  stamp(point, normal, w, h, { along = null, tint = null, slide = 0, fit = null } = {}) {
     const i = this.cursor;
     this.cursor = (this.cursor + 1) % this.max;
     this._z.copy(normal).normalize();
@@ -89,6 +133,11 @@ class DecalLayer {
     this._y.crossVectors(this._z, this._x).normalize();
     this._b.makeBasis(this._x, this._y, this._z);
     this._q.setFromRotationMatrix(this._b);
+    if (fit) {
+      const k = surfaceFit(fit, point, this._x, this._y, this._z, w, h);
+      w *= k;
+      h *= k;
+    }
     this._p.copy(point).addScaledVector(this._z, this.lift);
     if (slide) this._p.addScaledVector(this._x, slide * w);
     this._m.compose(this._p, this._q, this._s.set(w, h, 1));
@@ -666,6 +715,12 @@ export class ImpactFX {
     // is what the address toast and the window logic need.
     const res = g.world.damageHit?.(hit, info.damage) ?? null;
 
+    // AN AEROPLANE ANSWERS FOR ITSELF. Aluminium skin, a perspex canopy and
+    // rubber tyres are not things the city is made of, the marks have to ride
+    // the airframe rather than the world, and a round through a millimetre of
+    // alloy leaves a hole on BOTH sides. All of that is src/planedamage.js.
+    if (hit.planeRec && g.planeDamage?.mark(info)) return null;
+
     // PAPER OWNS ITS OWN HOLE. A target card takes dozens of them and each one
     // has to be in the right place to a millimetre to be worth anything, so it
     // paints them into its own face instead of taking a decal quad each
@@ -695,7 +750,7 @@ export class ImpactFX {
     // The far side of anything it went through gets its own, rougher hole.
     if (info.through && info.exit && !S.noHole && surface !== 'glass') {
       this.exits.stamp(info.exit, this._v.copy(normal).negate(), cal * 1.7, cal * 1.7,
-        { tint: S.dust.tint });
+        { tint: S.dust.tint, fit: info.hit?.object ?? null });
       this.debris.emit(info.exit, Math.ceil(S.dust.n * 0.6), {
         tint: S.dust.tint, dir: this._v2.copy(dir), cone: 1.4,
         speed: S.dust.speed * 1.2, size: cal * 1.4, up: 0.3, life: 0.5, grav: 9,
@@ -720,12 +775,15 @@ export class ImpactFX {
   // so it comes in here for the marks, the debris and the right noise only --
   // which is how a 12.7 mm round stops leaving the same crater a rocket does.
   markHit(hit, point, normal, dir, cart, { sound = true } = {}) {
+    // ...and an aeroplane still answers for itself, whichever gun arrived
+    const plane = hit.planeRec && this.game.planeDamage?.trace(hit, point, normal, dir, cart);
+    if (plane) return plane;
     const surface = classifySurface(hit, this.game.world);
     const S = surfaceOf(surface);
     const cal = cart.bullet / 1000;
     const cosI = Math.max(0.05, Math.min(1, Math.abs(normal.dot(dir))));
     const info = {
-      S, surface, point, normal, dir, cart,
+      hit, S, surface, point, normal, dir, cart,
       energy: cart.energy, graze: Math.asin(cosI), through: false, exit: null,
       holeW: cal * S.hole,
       holeL: (cal * S.hole) / cosI,
@@ -740,15 +798,16 @@ export class ImpactFX {
   // A round that bit and stayed, or punched through: pit + spall + dust.
   _strike(info, cal, dist, vol, res) {
     const { S, point, normal, dir, surface } = info;
+    const on = info.hit?.object ?? null;
     if (!S.noHole) {
       // The spall patch first, tinted to the material, then THE HOLE on top of
       // it at the bullet's own diameter — stretched along the flight path when
       // the round came in at a slant.
       const halo = cal * S.spall * (0.8 + Math.random() * 0.45);
       this.spall.stamp(point, normal, halo, halo * (0.8 + Math.random() * 0.4),
-        { tint: S.dust.tint, along: null });
+        { tint: S.dust.tint, along: null, fit: on });
       this.pits.stamp(point, normal, info.holeL * 1.7, info.holeW * 1.7,
-        { along: dir, tint: surface === 'metal' ? 0xc9ccd2 : 0xffffff });
+        { along: dir, tint: surface === 'metal' ? 0xc9ccd2 : 0xffffff, fit: on });
     }
     const d = S.dust;
     this.debris.emit(point, d.n, {
@@ -773,7 +832,7 @@ export class ImpactFX {
     // the texture's bite sits ~0.29 of the way along the groove, so slide the
     // stamp forward to put that bite exactly where the round touched
     this.scuffs.stamp(point, normal, len, cal * 2.6,
-      { along: dir, tint: S.dust.tint, slide: 0.29 });
+      { along: dir, tint: S.dust.tint, slide: 0.29, fit: info.hit?.object ?? null });
     this.debris.emit(point, Math.ceil(S.dust.n * 0.8), {
       tint: S.dust.tint, dir: this._v.copy(dir).reflect(normal), cone: 1.6,
       speed: S.dust.speed * 1.5, size: cal * 1.6, up: 0.3, life: 0.6, grav: 7,
