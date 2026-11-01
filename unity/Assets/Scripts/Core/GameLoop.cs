@@ -3040,6 +3040,8 @@ namespace TbilisiFly.Core
             _foot.OnHint = (s) => OnHint?.Invoke(s);
             Mode = GameMode.OnFoot;
             if (UsePurchasedShooter) Character.CoverShootHero.Attach(this, Rig); // Character/CoverShootHero.cs
+            // hands/elbows stay outside the fruit hull under the purchased clips (Character/BodyClearance.cs)
+            Character.BodyClearanceLayer.Attach(Rig, () => Mode == GameMode.OnFoot && !_foot.Climb.Active);
             OnBodySpawned?.Invoke();
         }
 
