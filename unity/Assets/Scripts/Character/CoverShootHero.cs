@@ -7,35 +7,62 @@ namespace TbilisiFly.Character
     /// Marques) onto the hero's own CharacterRig when
     /// <see cref="Core.GameLoop.UsePurchasedShooter"/> is true (user decision,
     /// 2026-11-01: "shooting u can move new one from our assets ... i dont need
-    /// old gun reload shooting from js"). Replaces the JS-ported on-foot
-    /// shooting/aim/cover/weapon path wholesale — see Core/GameLoop.cs's
-    /// StageOnFoot/StageOnFootPurchased split and Core/HeldWeapon.cs's own
-    /// `UsePurchasedShooter` early-return.
+    /// old gun reload shooting from js").
+    ///
+    /// ================================ SCOPE (narrowed 2026-11-01 15:3x) ===========
+    /// Coordinator decision: two systems must not fight over the hero's
+    /// Animator. Character/FootController.cs (ticked fully by Core/
+    /// GameLoop.StageOnFootPurchased, exactly like the JS-ported path) stays
+    /// the ONLY owner of Pos/Yaw/Grounded/climb/boarding/handedness — so this
+    /// class does NOT add `MoveBehaviour` (no Rigidbody-driven WASD
+    /// locomotion from the pack) and does NOT assign
+    /// Resources/ThirdParty/CoverShoot/Animators/CharacterController.controller
+    /// onto `rig.Anim` (that stays free for the parkour/locomotion
+    /// PlayableGraph another agent owns). What this class DOES still own:
+    /// aim (RMB)/shoot (LMB, routed into Combat/CoverShootBridge.cs's
+    /// IDamageWorld)/cover (take/leave/peek/shoot-from-cover against the
+    /// invisible cover markers below)/reload/weapon pickups+switching
+    /// (Character/CoverShootPickups.cs)/the third-person orbit camera/the
+    /// Georgian HUD feed (UI/Hud/CoverShootAmmoView.cs). `BasicBehaviour` +
+    /// a Rigidbody + CapsuleCollider are still attached — `AimBehaviour`/
+    /// `ShootBehaviour`/`CoverBehaviour` all read `behaviourManager`
+    /// (BasicBehaviour) for the Animator/camera/collider references and
+    /// `GetRigidBody.MoveRotation`-style calls for their OWN facing turns
+    /// (aiming at the camera, turning to face a cover wall) — none of that
+    /// is ground locomotion, so a permanently-KINEMATIC Rigidbody is the
+    /// right fit: `MoveRotation` still works on it (physics-interpolated),
+    /// but nothing (no force/velocity) ever drives it, so it can never
+    /// fight FootController's own direct `Rig.Root.position` writes.
+    ///
+    /// Visual feedback for aim/shoot/cover/reload is INTENTIONALLY not
+    /// wired to Mecanim here (no controller = `Animator.SetBool`/
+    /// `SetTrigger` calls the pack still makes are harmless no-ops) — the
+    /// task calls for driving the body through
+    /// `ParkourClipPlayer.PlayOverlay(clip, mask, weight)` with the pack's
+    /// own pistol_/rifle_ clips instead, which is not wired up yet (see
+    /// report). Gameplay state that used to be read off an Animator bool is
+    /// exposed as a plain C# property instead for testability:
+    /// `AimBehaviour.IsAiming`, `CoverBehaviour.IsCovering`,
+    /// `ShootBehaviour.IsReloading` (all added to the pack's own files).
     ///
     /// ================================ WHERE THE COMPONENTS LIVE =================
-    /// The pack's `BasicBehaviour`/`MoveBehaviour`/`AimBehaviour`/
-    /// `ShootBehaviour`/`CoverBehaviour` + `Rigidbody` + `CapsuleCollider` all go
-    /// on `rig.Root.gameObject` — NOT on `rig.Model` (the Animator's own
-    /// GameObject, 3 empty transforms below Root: Root/act/anim/Model, see
-    /// CharacterRig.cs's header on ActGroup/AnimGroup). Root is already what
-    /// every other system in this project reads (`GameLoop.Foot.Pos`/
-    /// `Rig.Root.position`, `ToggleBoard`'s reach checks, `UpdateZones`), so
-    /// putting the Rigidbody there means every one of those call sites keeps
-    /// working with ZERO follow-sync code — Model just rides along as Root's
-    /// ordinary visual descendant, exactly as it always has.
-    ///
-    /// The one price: `BasicBehaviour.Awake` was edited
-    /// (ThirdParty/CoverShoot/Scripts/PlayerScripts/BasicBehaviour.cs) to find
-    /// the Animator with `GetComponentInChildren` instead of `GetComponent`,
-    /// since it does not live on the same object. The one thing that costs:
-    /// `ShootBehaviour.OnAnimatorIK` never fires (Unity only calls it on a
-    /// component sharing the Animator's own GameObject), so the fine
-    /// torso-lean IK pass is inert — `AimBehaviour`'s whole-body turn
-    /// (`Rotating()`) still works and is what actually turns the hero to face
-    /// the camera/travel direction.
+    /// `BasicBehaviour`/`AimBehaviour`/`ShootBehaviour`/`CoverBehaviour` +
+    /// `Rigidbody` + `CapsuleCollider` all go on `rig.Root.gameObject` — NOT
+    /// on `rig.Model` (the Animator's own GameObject, 3 empty transforms
+    /// below Root: Root/act/anim/Model, see CharacterRig.cs's header on
+    /// ActGroup/AnimGroup). Root is already what every other system in this
+    /// project reads (`GameLoop.Foot.Pos`/`Rig.Root.position`,
+    /// `ToggleBoard`'s reach checks, `UpdateZones`), so this costs zero
+    /// follow-sync code. `BasicBehaviour.Awake` was edited (ThirdParty/
+    /// CoverShoot/Scripts/PlayerScripts/BasicBehaviour.cs) to find the
+    /// Animator with `GetComponentInChildren` instead of `GetComponent`,
+    /// since it does not live on the same object — the one cost:
+    /// `ShootBehaviour.OnAnimatorIK` never fires (needs the same
+    /// GameObject), so the fine torso-lean IK pass stays inert;
+    /// `AimBehaviour`'s whole-body turn (`Rotating()`) still works.
     ///
     /// ================================ AWAKE-ORDERING =============================
-    /// Every one of the 5 behaviours reads a cross-reference in `Awake()`
+    /// Every one of the 3 behaviours reads a cross-reference in `Awake()`
     /// (`BasicBehaviour.playerCamera.GetComponent&lt;ThirdPersonOrbitCam&gt;()`,
     /// `GenericBehaviour.GetComponent&lt;BasicBehaviour&gt;()`) — fields that can
     /// only be assigned AFTER `AddComponent` returns, which is already too
@@ -43,6 +70,14 @@ namespace TbilisiFly.Character
     /// GameObject. So both the hero root and the camera are built while
     /// temporarily INACTIVE (Awake is deferred until `SetActive(true)`), wired,
     /// THEN activated — see <see cref="BuildCamera"/>/<see cref="Setup"/>.
+    ///
+    /// ================================ INPUT =================================
+    /// Every `Input.Get*` call across the pack's scripts was mechanically
+    /// renamed to `CoverShootInput.Get*` (see that file's header): this
+    /// project's play-mode harness drives input exclusively through the new
+    /// Input System (`InputSystem.QueueStateEvent`), which legacy
+    /// `UnityEngine.Input` never observed here — found by the first real
+    /// CoverShootRun play-mode run (every pack behaviour was inert).
     /// </summary>
     public sealed class CoverShootHero : MonoBehaviour
     {
@@ -53,12 +88,9 @@ namespace TbilisiFly.Character
         Rigidbody _rb;
         CapsuleCollider _capsule;
         BasicBehaviour _basic;
-        MoveBehaviour _move;
         AimBehaviour _aim;
         ShootBehaviour _shoot;
         CoverBehaviour _cover;
-        ThirdPersonOrbitCam _orbitCam;
-        RuntimeAnimatorController _controller;
 
         bool _suspendedByBoarding;
         bool _suspendedByParkour;
@@ -120,8 +152,7 @@ namespace TbilisiFly.Character
             CoverShootPickups.EnsureSpawned(game, rig);
             TbilisiFly.UI.Hud.CoverShootAmmoView.EnsureInstalled();
 
-            Debug.Log($"COVERSHOOT attach id={rig.Id} humanoid=1 bodyHeight={rig.BodyHeight:F2} " +
-                      $"controller={(_controller != null ? 1 : 0)}");
+            Debug.Log($"COVERSHOOT attach id={rig.Id} humanoid=1 bodyHeight={rig.BodyHeight:F2} movementOwner=FootController");
         }
 
         void BuildPhysics()
@@ -129,9 +160,16 @@ namespace TbilisiFly.Character
             _rb = GetComponent<Rigidbody>();
             if (_rb == null) _rb = gameObject.AddComponent<Rigidbody>();
             _rb.mass = 75f;
-            _rb.freezeRotation = true; // the pack rotates via MoveRotation itself, not physics torque
+            _rb.freezeRotation = true;
+            // ALWAYS kinematic: Character/FootController.cs owns Pos/Yaw now
+            // (Core/GameLoop.StageOnFootPurchased calls its full Update()),
+            // not this Rigidbody. `MoveRotation` still works fine on a
+            // kinematic body (physics-interpolated) for AimBehaviour/
+            // CoverBehaviour's own facing turns — it just never receives a
+            // force/velocity, so it can never fight FootController's direct
+            // `Rig.Root.position` writes.
+            _rb.isKinematic = true;
             _rb.interpolation = RigidbodyInterpolation.Interpolate;
-            _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
             _capsule = GetComponent<CapsuleCollider>();
             if (_capsule == null) _capsule = gameObject.AddComponent<CapsuleCollider>();
@@ -139,46 +177,39 @@ namespace TbilisiFly.Character
             _capsule.height = h;
             _capsule.radius = Mathf.Clamp(h * 0.16f, 0.22f, 0.32f);
             _capsule.center = new Vector3(0f, h * 0.5f, 0f); // Root sits at the feet/ground point (CharacterRig.NormalizeHeight)
-            // PhysicMaterial/PhysicMaterialCombine are obsolete in this Unity
-            // version (renamed PhysicsMaterial/PhysicsMaterialCombine).
-            if (_capsule.material == null)
-                _capsule.material = new PhysicsMaterial("CoverShootChar") { dynamicFriction = 0.6f, staticFriction = 0.6f, frictionCombine = PhysicsMaterialCombine.Average };
         }
 
         void BuildBehaviours()
         {
+            // No MoveBehaviour: ground locomotion stays with FootController
+            // (coordinator decision 2026-11-01) — only the aim/shoot/cover
+            // trio, riding on BasicBehaviour's shared references.
             _basic = GetComponent<BasicBehaviour>() ?? gameObject.AddComponent<BasicBehaviour>();
-            _move = GetComponent<MoveBehaviour>() ?? gameObject.AddComponent<MoveBehaviour>();
             _aim = GetComponent<AimBehaviour>() ?? gameObject.AddComponent<AimBehaviour>();
             _shoot = GetComponent<ShootBehaviour>() ?? gameObject.AddComponent<ShootBehaviour>();
             _cover = GetComponent<CoverBehaviour>() ?? gameObject.AddComponent<CoverBehaviour>();
 
             _basic.sprintButton = "CS_Sprint";
-            _move.jumpButton = "Jump"; // default Input Manager axis, unchanged
         }
 
+        // Coordinator decision 2026-11-01 15:5x: no ThirdPersonOrbitCam —
+        // Core/GameLoop.cs's own on-foot camera (TickOnFootCamera/
+        // TickChaseCamera) keeps owning the camera under the purchased-
+        // shooter path too, so FootController's camera-relative turning
+        // (CamYaw) stays valid and A/D stay screen-relative. AimBehaviour/
+        // CoverBehaviour/ShootBehaviour's own `GetCamScript.*` calls are all
+        // null-guarded or replaced with direct `playerCamera` reads (see
+        // their own files) since there is no ThirdPersonOrbitCam to find.
         void BuildCamera()
         {
             if (_game.MainCamera == null) return;
-            var camGo = _game.MainCamera.gameObject;
-            _orbitCam = camGo.GetComponent<ThirdPersonOrbitCam>();
-            bool firstTime = _orbitCam == null;
-            if (firstTime) camGo.SetActive(false); // defer Awake until `player` is set below
-
-            if (firstTime) _orbitCam = camGo.AddComponent<ThirdPersonOrbitCam>();
-            _orbitCam.player = _rig.Root;
-            _orbitCam.XAxis = "CS_AnalogX";
-            _orbitCam.YAxis = "CS_AnalogY";
-
-            if (firstTime) camGo.SetActive(true);
             _basic.playerCamera = _game.MainCamera.transform;
         }
 
         void WireShootFields()
         {
-            _controller = Resources.Load<RuntimeAnimatorController>("ThirdParty/CoverShoot/Animators/CharacterController");
-            if (_controller != null && _rig.Anim != null) _rig.Anim.runtimeAnimatorController = _controller;
-
+            // No AnimatorController assignment here (see class header) —
+            // rig.Anim stays free for the parkour/locomotion PlayableGraph.
             _shoot.shootButton = "Fire1";       // left mouse, see InputManager.asset default alt button
             _shoot.pickButton = "CS_Interact";
             _shoot.changeButton = "CS_Change";
@@ -293,13 +324,23 @@ namespace TbilisiFly.Character
         // =====================================================================
         void BuildCoverMarkers()
         {
-            Vector3[] dirs = { transform.forward, -transform.forward, transform.right, -transform.right };
+            // Widened 2026-11-01: the original 4-direction/5 m scan found
+            // ZERO markers when spawn happens to be in open ground (the
+            // first real CoverShootRun run — airport tarmac, nothing within
+            // 5 m in any cardinal direction). 16-direction compass, 15 m —
+            // still a one-shot scan at spawn, not a moving search, but a
+            // much better chance of finding SOMETHING cover-shaped nearby.
             int coverInvis = LayerMask.NameToLayer("Cover Invisible");
+            Debug.Log($"COVERSHOOT covermarkers_enter coverInvisLayer={coverInvis} pos={transform.position}");
             if (coverInvis < 0) return;
-            foreach (var d in dirs)
+            int built = 0;
+            for (int i = 0; i < 16; i++)
             {
+                float a = i * (360f / 16f) * Mathf.Deg2Rad;
+                Vector3 d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
                 Vector3 origin = transform.position + Vector3.up * 1f;
-                if (Physics.Raycast(origin, d, out var hit, 5f) && hit.collider != null && hit.collider.gameObject != gameObject)
+                if (Physics.Raycast(origin, d, out var hit, 15f) && hit.collider != null && hit.collider.gameObject != gameObject
+                    && !hit.collider.CompareTag("Player"))
                 {
                     var marker = new GameObject("CoverMarker_" + hit.collider.name);
                     marker.layer = coverInvis;
@@ -308,16 +349,20 @@ namespace TbilisiFly.Character
                     var box = marker.AddComponent<BoxCollider>();
                     box.size = new Vector3(2.2f, 2.0f, 0.1f);
                     box.isTrigger = false;
+                    built++;
                     // Static per the README ("remember to set all cover objects
                     // on the scene as Static") — StaticEditorFlags is editor-
                     // only; a runtime-spawned collider has no batching to lose.
                 }
             }
+            Debug.Log($"COVERSHOOT covermarkers built={built}");
         }
 
         // =====================================================================
         // SUSPEND / RESUME — boarding (b) and climb/parkour (c) both pause the
-        // pack rather than fight it for the body, per the task brief.
+        // pack's aim/shoot/cover trio rather than let it fight for control
+        // while the body is seated or climbing. Movement itself was never
+        // this class's to pause (FootController owns it unconditionally).
         // =====================================================================
 
         /// <summary>Core/GameLoop.cs's BoardSequence calls this: true right as
@@ -333,10 +378,6 @@ namespace TbilisiFly.Character
         void Update()
         {
             if (_rig == null) return;
-            // Climb.Active flips true the instant TryStart succeeds (the
-            // "reach" beat, before any clip is chosen) — Clips.IsPlaying
-            // alone misses that opening window, which is exactly when
-            // FootController.TickClimbAndFreeRun starts writing Pos/Yaw.
             bool parkour = _game != null && _game.Foot != null && (_game.Foot.Clips.IsPlaying || _game.Foot.Climb.Active);
             if (parkour != _suspendedByParkour)
             {
@@ -350,37 +391,19 @@ namespace TbilisiFly.Character
             bool suspend = _suspendedByBoarding || _suspendedByParkour;
             bool wasSuspended = !_basic.enabled;
             if (suspend == wasSuspended) return;
-
             SetBehavioursEnabled(!suspend);
-            if (_rb != null) _rb.isKinematic = suspend;
-
-            if (!suspend)
-            {
-                // Reclaim the Animator's output from whichever external
-                // PlayableGraph was driving it (ParkourClipPlayer.Play's own
-                // AnimationPlayableOutput.Create steals it — see that file's
-                // header). Null/reassign forces Unity to rebuild the
-                // AnimatorController's internal graph and rebind it as the
-                // Animator's output; Rebind() is the documented follow-up.
-                if (_rig.Anim != null && _controller != null)
-                {
-                    _rig.Anim.runtimeAnimatorController = null;
-                    _rig.Anim.runtimeAnimatorController = _controller;
-                    _rig.Anim.Rebind();
-                }
-            }
         }
 
         void SetBehavioursEnabled(bool on)
         {
             if (_basic != null) _basic.enabled = on;
-            if (_move != null) _move.enabled = on;
             if (_aim != null) _aim.enabled = on;
             if (_shoot != null) _shoot.enabled = on;
             if (_cover != null) _cover.enabled = on;
-            if (_orbitCam != null) _orbitCam.enabled = on;
         }
 
-        public bool IsArmed => _shoot != null; // weapon-slot query lives on ShootBehaviour's own private inventory; exposed state is via WeaponUIManager's bridge events (UI/Hud/CoverShootAmmoView.cs)
+        public AimBehaviour Aim => _aim;
+        public ShootBehaviour Shoot => _shoot;
+        public CoverBehaviour Cover => _cover;
     }
 }

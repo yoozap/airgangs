@@ -156,6 +156,9 @@ namespace TbilisiFly.Character
 
         /// <summary>Same idea for the "hang" phase's SetHangPose.</summary>
         public bool HangClipActive;
+        /// <summary>2026-11-01: a purchased approach clip (up-jump / climb-up
+        /// into the grab) owns the reach beat — SetHangPose stands down.</summary>
+        public bool ReachClipActive;
 
         /// <summary>src/foot.js `this._climbLead` — the leg that found the
         /// wall last time (callers alternate it across climbs). Null outside
@@ -423,7 +426,7 @@ namespace TbilisiFly.Character
                 keys = () =>
                 {
                     if (jumpedFor) FootPoses.SetAirPose(rig, 1f, 0.3f + 0.4f * e, 1f);
-                    else if (c.Hold) FootPoses.SetHangPose(rig, e, 0f);
+                    else if (c.Hold && !ReachClipActive) FootPoses.SetHangPose(rig, e, 0f);
                     else FootPoses.SetPullPose(rig, e * 0.6f, 0f, c.Lead);
                 };
                 handW = e;

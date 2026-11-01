@@ -499,6 +499,30 @@ namespace TbilisiFly.PlayModeTests
             AssertFails(fails);
         }
 
+        /// <summary>Deterministic combat staging. Scenario 3/4 used to call
+        /// NearestBuilding off wherever Scenario1 (park-in-shed) and
+        /// Scenario2 (swap to a parked hall/warehouse plane) happened to
+        /// leave the ActivePlane — out by the real airport (ShedLayout.
+        /// ShedLat/Lon, ~19.6 km from the city's Delisi data origin), which
+        /// is NOT ringed by any CombatBuildingChunk the way the dense city
+        /// around the spawn is. "Nearest building to nothing nearby" is a
+        /// different, far-off, possibly degenerate target every run — which
+        /// is exactly the "fails when the nearest-building choice is
+        /// unlucky" behaviour this fix removes. Core/SpawnResolver.cs's
+        /// answer is a pure function of the same city data every run, so
+        /// teleporting here first makes the SAME building get picked every
+        /// time.</summary>
+        static void PositionForCombatNearSpawn(PlaneController plane)
+        {
+            var spot = TbilisiFly.Core.SpawnResolver.Resolve();
+            float gy = _game.Terrain != null ? _game.Terrain.HeightAtGame(spot.GameX, spot.GameZ) : 0f;
+            plane.transform.SetPositionAndRotation(new Vector3(spot.Pos.x, gy + 90f, spot.Pos.z), Quaternion.identity);
+            plane.Airborne = true;
+            plane.Velocity = Vector3.zero;
+            plane.Rates = Vector3.zero;
+            Fact("COMBAT_STAGE_POS", V(plane.transform.position));
+        }
+
         // =====================================================================
         // SCENARIO 3 — from the air, Space fires the machine gun, the skill
         // bar's slot 2 fires a rocket (src/game.js:1468-1481 stick, skillbar.js
@@ -518,6 +542,9 @@ namespace TbilisiFly.PlayModeTests
             FactB("S3_FLYING", plane != null && _game.Mode == GameMode.Flying);
             if (plane == null || _game.Mode != GameMode.Flying)
             { Check(fails, "flow_damage_flying", false, $"mode={_game.Mode} plane={(plane != null)}"); AssertFails(fails); yield break; }
+
+            PositionForCombatNearSpawn(plane);
+            yield return Idle(5);
 
             bool found = NearestBuilding(plane.transform.position, out var nearest, out int bi,
                 out Vector3 bCenter, out float bTop, out float bWallBase, out float bSpan);
@@ -609,6 +636,26 @@ namespace TbilisiFly.PlayModeTests
             Check(fails, "flow_damage_gunFired", _game.Guns != null && shotsAfter > shotsBefore, $"ShotCount {shotsBefore}->{shotsAfter}");
             Check(fails, "flow_damage_gunHitBuilding", gunHit, $"no building HP decreased after up to 180 frames of Space at {F(standoff)} m from building #{bi}");
 
+            // BACK OFF before the rocket. The gun's own diagnostic loop above
+            // halves `standoff` on every miss and never backs off again, so by
+            // the time it exhausts its tries the plane can be left a few
+            // METRES from the wall (measured: muzzle 4.5 m out on try 3) —
+            // close enough that a rocket fired from there impacts before this
+            // test's next frame can observe `Rockets.Live` go 0->1 (first run
+            // of this file: Live stayed 0->0 across 30+ frames even though the
+            // building's own HP kept dropping — proof it DID fly and hit,
+            // just too fast for `Live` to ever read non-zero). Not a game bug:
+            // Combat/Rockets.cs firing from 4 m out and detonating almost at
+            // the muzzle is correct; the TEST must stand off first, same as
+            // it did for the gun's own opening shot.
+            float rocketStandoff = Mathf.Max(150f, bSpan * 0.6f + 90f);
+            Vector3 rocketFirePos = aimPoint + dirAway * rocketStandoff;
+            plane.transform.SetPositionAndRotation(rocketFirePos,
+                Quaternion.LookRotation((aimPoint - rocketFirePos).normalized, Vector3.up));
+            plane.Velocity = Vector3.zero;
+            plane.Rates = Vector3.zero;
+            yield return Idle(5);
+
             // ---- a rocket — skill slot 2, cooldown-gated (one press -> one) --
             yield return Tap(Key.Digit2);
             yield return Idle(3);
@@ -688,6 +735,9 @@ namespace TbilisiFly.PlayModeTests
             var plane = _game.ActivePlane;
             if (plane == null) { Check(fails, "flow_crash_hasPlane", false, "no ActivePlane"); AssertFails(fails); yield break; }
 
+            PositionForCombatNearSpawn(plane);
+            yield return Idle(5);
+
             bool found = NearestBuilding(plane.transform.position, out var nearest, out int bi,
                 out Vector3 bCenter, out float bTop, out float bWallBase, out float bSpan);
             FactB("S4_TARGET_FOUND", found);
@@ -701,6 +751,58 @@ namespace TbilisiFly.PlayModeTests
             if (approachDir.sqrMagnitude < 1f) approachDir = Vector3.forward;
             approachDir.Normalize();
             float standoff = Mathf.Max(120f, bSpan * 0.6f + 90f);
+
+            // DIAGNOSTIC/RETARGET — same technique Scenario3 already proved out
+            // (lines above): `wallPoint` is an AVERAGE over one building's
+            // vertex range (NearestBuilding's own doc comment), which is not
+            // guaranteed to be real collider surface at an irregular
+            // footprint's exact centre. The first run of this file flew the
+            // plane 900+ m past the target with Mode staying Flying the whole
+            // time (S4_PLANE_POS_AFTER far from S4_TARGET_CENTER) — the straight
+            // line toward `wallPoint` never intersected anything, so
+            // Core/PlaneWallContact.cs's own TouchWall raycast (the thing that
+            // actually triggers `_hull.Explode`/Mode.Crashed on a square hit)
+            // had nothing to hit either. Firing a real Physics.Raycast along
+            // the same line first, and sliding `wallPoint` onto whatever it
+            // DOES hit, makes the approach aim at real geometry instead of an
+            // empty courtyard — same fix shape, not a different behaviour.
+            bool diagHit = false;
+            float diagStandoff = standoff;
+            for (int tries = 0; tries < 5 && !diagHit; tries++)
+            {
+                Vector3 firePos = wallPoint + approachDir * diagStandoff;
+                Vector3 fireDir = (wallPoint - firePos).normalized;
+                diagHit = Physics.Raycast(new Ray(firePos, fireDir), out RaycastHit dh, diagStandoff + 50f, ~0);
+                FactB($"S4_DIAG_RAY_HIT_{tries}", diagHit);
+                if (diagHit)
+                {
+                    Fact($"S4_DIAG_HIT_POINT_{tries}", V(dh.point));
+                    var hitChunk = dh.collider.GetComponent<CombatBuildingChunk>();
+                    if (hitChunk != null)
+                    {
+                        int hitBi = hitChunk.BuildingAt(dh.triangleIndex);
+                        if (hitBi >= 0)
+                        {
+                            if (hitChunk != nearest || hitBi != bi)
+                            {
+                                Fact("S4_DIAG_RETARGET", $"aimed at chunk bi={bi}, the ray actually lands on bi={hitBi} — using that one");
+                                nearest = hitChunk; bi = hitBi;
+                                bCenter = new Vector3(hitChunk.CxOf(bi), hitChunk.TopOf(bi), hitChunk.CzOf(bi));
+                                bTop = hitChunk.TopOf(bi); bWallBase = hitChunk.WallBaseOf(bi); bSpan = hitChunk.SpanOf(bi);
+                            }
+                            wallPoint = dh.point; // the REAL surface, not the vertex-average centroid
+                            approachDir = -fireDir; approachDir.y = 0f;
+                            if (approachDir.sqrMagnitude < 1f) approachDir = fireDir * -1f;
+                            approachDir.Normalize();
+                        }
+                        else diagHit = false; // triangle not inside any registered building range
+                    }
+                    else diagHit = false; // hit something with no HP (terrain, a plane) — not a crash target
+                }
+                diagStandoff *= 0.5f; // halve the gap and try again, same as Scenario3
+            }
+            FactB("S4_DIAG_VERIFIED", diagHit);
+            standoff = Mathf.Max(120f, bSpan * 0.6f + 90f);
             Vector3 startPos = wallPoint + approachDir * standoff;
 
             plane.Airborne = true;

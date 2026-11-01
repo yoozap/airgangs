@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
 
 // CoverBehaviour inherits from GenericBehaviour. This class corresponds to take cover and covering moves behaviour.
 // TbilisiFly glue (2026-11-01 compile-fix pass): dropped `using
@@ -31,6 +32,10 @@ public class CoverBehaviour : GenericBehaviour
 
 	private bool takeCover;                          // Boolean to determine whether or not the player has to take cover.
 	private bool isCovering;                         // Boolean to determine whether or not the player is covering.
+	// TbilisiFly glue: no AnimatorController on rig.Anim under the
+	// purchased-shooter path — CoverShootRun.cs reads this instead of
+	// `GetAnim.GetBool("Cover")`.
+	public bool IsCovering => isCovering;
 	private bool possibleCover;                      // Boolean to determine if exists a possible cover to take.
 	private bool isAiming;                           // Boolean to get whether or not the player is aiming.
 	private RaycastHit coverWall;                    // Current cover wall.
@@ -72,6 +77,7 @@ public class CoverBehaviour : GenericBehaviour
 	private float horizontalClampAngle = 50f;        // Aiming clamp angle when peeking a corner.
 	private float showPathTimer;                     // Timer to determine when path to cover will be shown.
 	private CapsuleCollider col;                     // Reference to the player collider.
+	private AimBehaviour aimBehaviour;               // TbilisiFly glue — see IsAiming read in Update() below.
 
 	// Start is always called after any Awake functions.
 	void Start ()
@@ -89,6 +95,7 @@ public class CoverBehaviour : GenericBehaviour
 		shift = Vector3.zero;
 		line = this.GetComponent<LineRenderer>();
 		wayPointIndex = 0;
+		aimBehaviour = this.GetComponent<AimBehaviour>();
 		col = GetComponent<CapsuleCollider> ();
 		standingHeight = col.height;
 		maxJumpCoverDist = col.radius * 5;
@@ -100,8 +107,11 @@ public class CoverBehaviour : GenericBehaviour
 	// Update is used to set features regardless the active behaviour.
 	void Update ()
 	{
-		// Get current aim status.
-		isAiming = behaviourManager.GetAnim.GetBool(aimBool);
+		// Get current aim status. TbilisiFly glue: was GetAnim.GetBool(aimBool)
+		// — no AnimatorController on rig.Anim under the purchased-shooter
+		// path (Character/CoverShootHero.cs's class header), so that always
+		// read false. Read AimBehaviour's own C# state directly instead.
+		isAiming = aimBehaviour != null && aimBehaviour.IsAiming;
 
 		// Handle possible cover target features (sign, path).
 		possibleCover = HasPossibleCover(GetCamTarget(), out projectedCoverWall);
@@ -124,7 +134,7 @@ public class CoverBehaviour : GenericBehaviour
 			}
 
 			// Handle enter/exit/covering special actions when cover button is pressed.
-			if (Input.GetButtonUp (coverButton))
+			if (CoverShootInput.GetButtonUp (coverButton))
 			{
 				HandleCoverActions();
 
@@ -149,7 +159,7 @@ public class CoverBehaviour : GenericBehaviour
 						behaviourManager.LockTempBehaviour(this.behaviourCode);
 						// Set navigation to take cover parameters.
 						navToDest = true;
-						behaviourManager.GetCamScript.SetFOV(behaviourManager.sprintFOV);
+						behaviourManager.GetCamScript?.SetFOV(behaviourManager.sprintFOV);
 						coverWall = projectedCoverWall;
 					}
 				}
@@ -168,12 +178,12 @@ public class CoverBehaviour : GenericBehaviour
 			// Limit rotation angle when corner peek aiming.
 			if (isAiming && corner)
 			{
-				behaviourManager.GetCamScript.ToggleClampHorizontal(-horizontalClampAngle, horizontalClampAngle, -coverWall.normal);
+				behaviourManager.GetCamScript?.ToggleClampHorizontal(-horizontalClampAngle, horizontalClampAngle, -coverWall.normal);
 			}
 			// Clamp off.
 			else
 			{
-				behaviourManager.GetCamScript.ToggleClampHorizontal();
+				behaviourManager.GetCamScript?.ToggleClampHorizontal();
 			}
 
 			// Align jump over cover direction (jump over is a transitional action to default behaviour).
@@ -480,7 +490,7 @@ public class CoverBehaviour : GenericBehaviour
 		currentCoverObj = coverWall.collider.gameObject;
 		wayPointIndex = 0;
 		behaviourManager.UnlockTempBehaviour(this.behaviourCode);
-		behaviourManager.GetCamScript.ResetFOV();
+		behaviourManager.GetCamScript?.ResetFOV();
 	}
 
 	// Handle cover.
@@ -505,9 +515,9 @@ public class CoverBehaviour : GenericBehaviour
 
 		// Make the camera follows the player when orientation is changing (turning corners or rounded covers).
 		if (behaviourManager.IsHorizontalMoving ())
-			behaviourManager.GetCamScript.LockOnDirection (-coverWall.normal);
+			behaviourManager.GetCamScript?.LockOnDirection (-coverWall.normal);
 		else
-			behaviourManager.GetCamScript.UnlockOnDirection ();
+			behaviourManager.GetCamScript?.UnlockOnDirection ();
 
 		// Turn player against the cover.
 		Rotating(coverWall.normal);
@@ -670,7 +680,7 @@ public class CoverBehaviour : GenericBehaviour
 		// Shift camera position on corners.
 		int factor = ((corner && isCovering) && behaviourManager.IsHorizontalMoving()) ? 1 : 0;
 		factor *= direction;
-		behaviourManager.GetCamScript.SetXCamOffset(factor * camCornerOffset);
+		behaviourManager.GetCamScript?.SetXCamOffset(factor * camCornerOffset);
 
 		// Set corner parameter on animator controller.
 		behaviourManager.GetAnim.SetBool(cornerBool, corner);

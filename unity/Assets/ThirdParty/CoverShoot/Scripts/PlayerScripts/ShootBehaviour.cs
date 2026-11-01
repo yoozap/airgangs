@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
+using TbilisiFly.Combat;
 
 // ShootBehaviour inherits from GenericBehaviour. This class corresponds to shoot/reload/change/add/drop weapons behaviour.
 // Due to its characteristics, this behaviour will always be called regardless the current state (including active and overriding ones).
@@ -28,6 +30,15 @@ public class ShootBehaviour : GenericBehaviour
 	public Vector3 LeftArmLongGuard;                               // Local left arm rotation when guarding with a long gun.
 
 	private int activeWeapon = 0;                                  //  Index of the active weapon.
+	// TbilisiFly glue: no AnimatorController is assigned to rig.Anim under
+	// the purchased-shooter path (see Character/CoverShootHero.cs's class
+	// header), so gameplay state that used to be read off an Animator bool
+	// is exposed as plain C# properties instead.
+	private bool _reloading;                                      // Mirrors reloadBool's SetBool calls below — see IsReloading.
+	private float _reloadTimer;                                   // Counts down to EndReloadWeapon() — see Update()'s own note.
+	const float ReloadSeconds = 1.6f;                              // A reasonable pistol/rifle reload duration (no animation length to read without a controller).
+	public bool HasWeapon => activeWeapon > 0;                     // Core/GameLoop.cs's StageOnFootPurchased feeds this into _foot.Armed.
+	public bool IsReloading => _reloading;
 	private int weaponTypeInt;                                     // Animator variable related to the weapon type.
 	private int changeWeaponTrigger;                               // Animator trigger for changing weapon.
 	private int shootingTrigger;                                   // Animator trigger for shooting weapon.
@@ -118,26 +129,28 @@ public class ShootBehaviour : GenericBehaviour
 	private void Update()
 	{
 		// Handle shoot weapon action.
-		if (Input.GetAxisRaw(shootButton) != 0 && !isShooting && activeWeapon > 0 && burstShotCount == 0)
+		if (CoverShootInput.GetAxisRaw(shootButton) != 0 && !isShooting && activeWeapon > 0 && burstShotCount == 0)
 		{
 			isShooting = true;
 			ShootWeapon(activeWeapon);
 		}
-		else if (isShooting && Input.GetAxisRaw(shootButton) == 0)
+		else if (isShooting && CoverShootInput.GetAxisRaw(shootButton) == 0)
 		{
 			isShooting = false;
 		}
 		// Handle reload weapon action.
-		else if (Input.GetButtonUp(reloadButton) && activeWeapon > 0)
+		else if (CoverShootInput.GetButtonUp(reloadButton) && activeWeapon > 0)
 		{
 			if (weapons[activeWeapon].StartReload())
 			{
-				AudioSource.PlayClipAtPoint(weapons[activeWeapon].reloadSound, gunMuzzle.position, 0.5f);
+				if (weapons[activeWeapon].reloadSound != null) AudioSource.PlayClipAtPoint(weapons[activeWeapon].reloadSound, gunMuzzle.position, 0.5f);
 				behaviourManager.GetAnim.SetBool(reloadBool, true);
+				_reloading = true;
+				_reloadTimer = ReloadSeconds;
 			}
 		}
 		// Handle drop weapon action.
-		else if (Input.GetButtonDown(dropButton) && activeWeapon > 0)
+		else if (CoverShootInput.GetButtonDown(dropButton) && activeWeapon > 0)
 		{
 			// End reload parameters, drop weapon and change to another one in inventory.
 			EndReloadWeapon();
@@ -149,13 +162,13 @@ public class ShootBehaviour : GenericBehaviour
 		// Handle change weapon action.
 		else
 		{
-			if ((Input.GetAxisRaw(changeButton) != 0 && !isChangingWeapon))
+			if ((CoverShootInput.GetAxisRaw(changeButton) != 0 && !isChangingWeapon))
 			{
 				isChangingWeapon = true;
 				int nextWeapon = activeWeapon + 1;
 				ChangeWeapon(activeWeapon, (nextWeapon) % weapons.Count);
 			}
-			else if (Input.GetAxisRaw(changeButton) == 0)
+			else if (CoverShootInput.GetAxisRaw(changeButton) == 0)
 			{
 				isChangingWeapon = false;
 			}
@@ -165,21 +178,37 @@ public class ShootBehaviour : GenericBehaviour
 		if (isShotAlive)
 			ShotDecay();
 
-		isAiming = behaviourManager.GetAnim.GetBool(aimBool);
+		// TbilisiFly glue: was `behaviourManager.GetAnim.GetBool(aimBool)` —
+		// with no AnimatorController assigned to rig.Anim (see Character/
+		// CoverShootHero.cs's class header), Animator.GetBool has no
+		// parameter table to read and always returns false, so `isAiming`
+		// never went true and ShootWeapon's very first check
+		// (`if (!isAiming ...) return;`) silently blocked every shot. Read
+		// AimBehaviour's own C# state directly instead.
+		isAiming = aimBehaviour != null && aimBehaviour.IsAiming;
+
+		// Auto-complete reload on a timer — EndReloadWeapon() is "called by
+		// animation" in the stock asset (an AnimationEvent on the reload
+		// clip), which never fires with no AnimatorController driving one.
+		if (_reloading)
+		{
+			_reloadTimer -= Time.deltaTime;
+			if (_reloadTimer <= 0f) EndReloadWeapon();
+		}
 	}
 
 	// Shoot the weapon.
 	private void ShootWeapon(int weapon, bool firstShot = true)
 	{
 		// Check conditions to shoot.
-		if (!isAiming || isAimBlocked || behaviourManager.GetAnim.GetBool(reloadBool) || !weapons[weapon].Shoot(firstShot))
+		if (!isAiming || isAimBlocked || _reloading || !weapons[weapon].Shoot(firstShot))
 			return;
 
 		// Update parameters: burst count, trigger for animation, crosshair change and recoil camera bounce.
 		burstShotCount++;
 		behaviourManager.GetAnim.SetTrigger(shootingTrigger);
 		aimBehaviour.crosshair = shootCrosshair;
-		behaviourManager.GetCamScript.BounceVertical(weapons[weapon].recoilAngle);
+		behaviourManager.GetCamScript?.BounceVertical(weapons[weapon].recoilAngle);
 
 		// Cast the shot to find a target.
 		Vector3 imprecision = Random.Range(-shotErrorRate, shotErrorRate) * behaviourManager.playerCamera.right;
@@ -219,7 +248,7 @@ public class ShootBehaviour : GenericBehaviour
 			DrawShoot(destination, Vector3.up, null, false, false);
 		}
 		// Play shot sound.
-		AudioSource.PlayClipAtPoint(weapons[weapon].shotSound, gunMuzzle.position, 5f);
+		if (weapons[weapon].shotSound != null) AudioSource.PlayClipAtPoint(weapons[weapon].shotSound, gunMuzzle.position, 5f);
 		// Trigger alert callback
 		GameObject.FindGameObjectWithTag("GameController").SendMessage("RootAlertNearby", ray.origin, SendMessageOptions.DontRequireReceiver);
 		// Reset shot lifetime.
@@ -335,13 +364,13 @@ public class ShootBehaviour : GenericBehaviour
 				if (activeWeapon > 0)
 				{
 					// Set camera bounce return on recoil end.
-					behaviourManager.GetCamScript.BounceVertical(-weapons[activeWeapon].recoilAngle * 0.1f);
+					behaviourManager.GetCamScript?.BounceVertical(-weapons[activeWeapon].recoilAngle * 0.1f);
 
 					// Handle next shot for burst or auto mode.
 					if (shotDecay <= (0.4f - 2 * Time.deltaTime))
 					{
 						// Auto mode, keep firing while shoot button is pressed.
-						if (weapons[activeWeapon].mode == InteractiveWeapon.WeaponMode.AUTO && Input.GetAxisRaw(shootButton) != 0)
+						if (weapons[activeWeapon].mode == InteractiveWeapon.WeaponMode.AUTO && CoverShootInput.GetAxisRaw(shootButton) != 0)
 						{
 							ShootWeapon(activeWeapon, false);
 						}
@@ -363,7 +392,7 @@ public class ShootBehaviour : GenericBehaviour
 		else
 		{
 			isShotAlive = false;
-			behaviourManager.GetCamScript.BounceVertical(0);
+			behaviourManager.GetCamScript?.BounceVertical(0);
 			burstShotCount = 0;
 		}
 	}
@@ -403,6 +432,7 @@ public class ShootBehaviour : GenericBehaviour
 	public void EndReloadWeapon()
 	{
 		behaviourManager.GetAnim.SetBool(reloadBool, false);
+		_reloading = false;
 		weapons[activeWeapon].EndReload();
 	}
 
@@ -415,10 +445,13 @@ public class ShootBehaviour : GenericBehaviour
 	// Check if aim is blocked by obstacles.
 	private bool CheckForBlockedAim()
 	{
-		isAimBlocked = Physics.SphereCast(this.transform.position + castRelativeOrigin, 0.1f, behaviourManager.GetCamScript.transform.forward, out RaycastHit hit, distToHand - 0.1f);
+		// TbilisiFly glue: was GetCamScript.transform.forward — playerCamera
+		// IS that same transform (no ThirdPersonOrbitCam needed to read it).
+		Vector3 camFwd = behaviourManager.playerCamera.forward;
+		isAimBlocked = Physics.SphereCast(this.transform.position + castRelativeOrigin, 0.1f, camFwd, out RaycastHit hit, distToHand - 0.1f);
 		isAimBlocked = isAimBlocked && hit.collider.transform != this.transform;
 		behaviourManager.GetAnim.SetBool(blockedAimBool, isAimBlocked);
-		Debug.DrawRay(this.transform.position + castRelativeOrigin, behaviourManager.GetCamScript.transform.forward * distToHand, isAimBlocked ? Color.red : Color.cyan);
+		Debug.DrawRay(this.transform.position + castRelativeOrigin, camFwd * distToHand, isAimBlocked ? Color.red : Color.cyan);
 
 		return isAimBlocked;
 	}

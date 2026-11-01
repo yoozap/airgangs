@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
 
 // This class corresponds to any in-game weapon interactions.
 // TbilisiFly glue (2026-11-01 compile-fix pass): dropped `using
@@ -100,7 +101,7 @@ public class InteractiveWeapon : MonoBehaviour
 	void Update()
 	{
 		// Handle player pick weapon action.
-		if (this.pickable && Input.GetButtonDown(playerInventory.pickButton))
+		if (this.pickable && CoverShootInput.GetButtonDown(playerInventory.pickButton))
 		{
 			// Disable weapon physics.
 			rbody.isKinematic = true;
@@ -122,7 +123,7 @@ public class InteractiveWeapon : MonoBehaviour
 	{
 		if(collision.collider.gameObject != player && Vector3.Distance(transform.position, player.transform.position) <= 5f)
 		{
-			AudioSource.PlayClipAtPoint(dropSound, transform.position, 0.5f);
+			if (dropSound != null) AudioSource.PlayClipAtPoint(dropSound, transform.position, 0.5f);
 		}
 	}
 
@@ -166,7 +167,12 @@ public class InteractiveWeapon : MonoBehaviour
 	public void Toggle(bool active)
 	{
 		if (active)
-			AudioSource.PlayClipAtPoint(pickSound, transform.position, 0.5f);
+			// TbilisiFly glue: null-guarded — PlayClipAtPoint throws NRE on a
+			// null clip, which was silently aborting the whole AddWeapon()
+			// call chain mid-method (activeWeapon never got set) when the
+			// Resources/Audio asset was briefly missing. See this file's
+			// other PlayClipAtPoint call sites, all guarded the same way.
+			if (pickSound != null) AudioSource.PlayClipAtPoint(pickSound, transform.position, 0.5f);
 		weaponHud.Toggle(active);
 		UpdateHud();
 	}
@@ -218,7 +224,7 @@ public class InteractiveWeapon : MonoBehaviour
 			return true;
 		}
 		if (firstShot && noBulletSound)
-			AudioSource.PlayClipAtPoint(noBulletSound, this.transform.Find("muzzle").position, 5f);
+			if (noBulletSound != null) AudioSource.PlayClipAtPoint(noBulletSound, this.transform.Find("muzzle").position, 5f);
 		return false;
 	}
 

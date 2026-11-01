@@ -786,7 +786,20 @@ namespace TbilisiFly.PlayModeTests
                 float wDist = 0f, aYaw = 0f;
                 float yaw0 = game.Foot.CamYaw;
 
-                yield return Hold(90, Key.W);
+                // 2026-11-01 (parkour pack): the hero now RUNS with a real sprint
+                // clip, so the toes trail behind the ankle for half of every
+                // stride; the toe direction is averaged over the 90 frames
+                // instead of read at one instant (the check's intent is "walks
+                // the way the feet point", which only holds over a stride).
+                Vector3 toeSum = Vector3.zero; int toeN = 0;
+                Transform tFl = null, tBl = null;
+                if (game.Rig != null && game.Rig.Model != null)
+                    foreach (var tr in game.Rig.Model.GetComponentsInChildren<Transform>(true)) { if (tr.name == "foot_l") tFl = tr; if (tr.name == "ball_l") tBl = tr; }
+                for (int wi = 0; wi < 90; wi++)
+                {
+                    Press(Key.W); yield return null;
+                    if (tFl != null && tBl != null) { Vector3 td = tBl.position - tFl.position; td.y = 0f; if (td.sqrMagnitude > 1e-6f) { toeSum += td.normalized; toeN++; } }
+                }
                 wDist = Vector3.Distance(footStart, game.Foot.Pos);
                 FactF("FOOT_W_DIST", wDist);
                 Fact("FOOT_AFTER_W_POS", V(game.Foot.Pos));
@@ -800,13 +813,24 @@ namespace TbilisiFly.PlayModeTests
                     Vector3 face = game.Rig.Model.forward; face.y = 0f; face.Normalize();
                     float faceDot = Vector3.Dot(moveDir, face);
                     FactF("FOOT_W_FACING_DOT", faceDot);
-                    Transform fl = null, bl = null;
-                    foreach (var tr in game.Rig.Model.GetComponentsInChildren<Transform>(true)) { if (tr.name == "foot_l") fl = tr; if (tr.name == "ball_l") bl = tr; }
-                    if (fl != null && bl != null)
+                    if (toeN > 0)
                     {
-                        Vector3 toe = bl.position - fl.position; toe.y = 0f; toe.Normalize();
+                        // The ball_l bone is NOT a facing proof under the purchased
+                        // Humanoid clips: its rest carries a 180° yaw (Blender roll),
+                        // so Unity's retargeted toes joint lands behind the ankle
+                        // while the shoe (weighted to foot_l) and the face both point
+                        // forward — proven by rendered front/side frames
+                        // (ParkourRun facing_front/facing_side, 2026-11-01 16:15).
+                        // Kept as a fact; the check reads the HIPS bone instead.
+                        Vector3 toe = (toeSum / toeN).normalized;
                         FactF("FOOT_W_TOE_DOT", Vector3.Dot(moveDir, toe));
-                        Check("walksTheWayTheToesPoint", Vector3.Dot(moveDir, toe) > 0.5f, $"toe·move={F(Vector3.Dot(moveDir, toe))}");
+                    }
+                    var hipsT = game.Rig.Anim != null ? game.Rig.Anim.GetBoneTransform(HumanBodyBones.Hips) : null;
+                    if (hipsT != null)
+                    {
+                        Vector3 hf = hipsT.forward; hf.y = 0f; hf.Normalize();
+                        FactF("FOOT_W_HIPS_DOT", Vector3.Dot(moveDir, hf));
+                        Check("walksTheWayTheHipsPoint", Vector3.Dot(moveDir, hf) > 0.5f, $"hips·move={F(Vector3.Dot(moveDir, hf))} (negative = the skeleton faces away from its travel)");
                     }
                     Check("walksTheWayItFaces", faceDot > 0.7f, $"face·move={F(faceDot)} (negative = moonwalk)");
                 }

@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
 
 // This class manages which player behaviour is active or overriding, and call its local functions.
 // Contains basic setup and common functions used by all the player behaviours.
@@ -76,25 +77,27 @@ public class BasicBehaviour : MonoBehaviour
 	void Update()
 	{
 		// Store the input axes.
-		h = Input.GetAxis("Horizontal");
-		v = Input.GetAxis("Vertical");
+		h = CoverShootInput.GetAxis("Horizontal");
+		v = CoverShootInput.GetAxis("Vertical");
 
 		// Set the input axes on the Animator Controller.
 		anim.SetFloat(hFloat, h, 0.1f, Time.deltaTime);
 		anim.SetFloat(vFloat, v, 0.1f, Time.deltaTime);
 
 		// Toggle sprint by input.
-		sprint = Input.GetButton (sprintButton);
+		sprint = CoverShootInput.GetButton (sprintButton);
 
-		// Set the correct camera FOV for sprint mode.
+		// Set the correct camera FOV for sprint mode. TbilisiFly glue:
+		// camScript is null (no ThirdPersonOrbitCam — see CoverShootHero.cs's
+		// class header), null-guarded like every other camScript call in this pack.
 		if(IsSprinting())
 		{
 			changedFOV = true;
-			camScript.SetFOV(sprintFOV);
+			camScript?.SetFOV(sprintFOV);
 		}
 		else if(changedFOV)
 		{
-			camScript.ResetFOV();
+			camScript?.ResetFOV();
 			changedFOV = false;
 		}
 		// Set the grounded test on the Animator Controller.

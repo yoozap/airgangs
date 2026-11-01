@@ -1485,5 +1485,65 @@
   "date": "2026-11-01",
   "fix": "Citations added in LandmarkPlacer.cs / LandmarkRenderer.cs; LandmarksRestProbe + tools/_probe_landmarksrest.mjs oracle; docs/port_units/landmarks_rest.json merged; 8 exclusions filed",
   "evidence": "TILE_ROOF_BUCKET found=1 vertCount=76 triCount=48 = Node TILE_ROOF_EXPECT seg=12 vertCount=76 triCount=48 | GRANITE_TINT hex=8e8a80 expectedHex=8e8a80 | city 97.58% -> 98.17% (244 lines left, none in landmarks.js); TOTAL 96.10%"
+ },
+ {
+  "id": "misc-rest-walk",
+  "area": "Core",
+  "item": "Remaining-line walk of crane.js, infra.js, citymap.js, planedamage.js, planephys.js, weapons.js, skillbar.js (misc-rest agent 2026-11-01). REAL gaps found: planephys.js:534/915 ImpactFx and Sweep were missing their _sparks ember bursts; weapons.js:505-512 ChestForward (reload pose) was credited to the inert FootWeaponFrame.cs and HeldWeapon used raw aim; crane.js:821-828 the warehouse fan switch Press/CycleButton had no runtime caller (B key). infra.js and planedamage.js were ported under other names (InfraKitInstancer, PlaneMarkFx) and are now cited. Noted, not fixed: City/CollidableHash<T> (93 claimed lines) has zero live instantiations.",
+  "status": "fixed",
+  "owner": "agent: misc-rest (sonnet)",
+  "date": "2026-11-01",
+  "fix": "PlanePhysics.cs sparks (JsMath.Round count); Weapons.ChestForward + HeldWeapon reload pose; WarehouseFanSwitch.HandleBKey in Update; stale NOT PORTED comments fixed; docs/port_units/misc_rest.json merged (infra 98→0 free, planedamage 96→1, weapons 3→0, crane 224→216)",
+  "evidence": "SPARKS id=impactfx handled=true embers=6 expect=6 | SPARKS id=sweep embers=8 expect=8 | CHESTFWD id=rig has=true x=0 y=0 z=1 | CRANEREST_BKEY_MODE0=Off NEAR_PRESSED_MODE1=Lo MODE2=Hi MODE3=Off FAR_PRESSED_MODE=Off (run 15:30, errCS=0)"
+ },
+ {
+  "id": "parkour-clips-first-wiring",
+  "area": "Character",
+  "item": "Parkour Animation Set (purchased) on the hero, first wiring (Sonnet parkour agent 2026-11-01): no AnimatorController/Playables existed — all motion was procedural bone twisting on a Base the Animator writes, so clips compose additively. 17 in-place clips imported; ParkourClipPlayer (PlayableGraph + AnimationClipPlayable on CharacterRig.Anim, snapshot-Slerp blend-in, auto-stop) wired to X roll, Z slide→vault redirect, climb pull/mantle, hang, C let-go (the let-go key was hard-coded false before). All 132 pack clips copied to Resources/Art/Anims/Parkour for the full move table (Fable agent in flight).",
+  "status": "fixed",
+  "owner": "agent: parkour (sonnet) → fable fork",
+  "date": "2026-11-01",
+  "fix": "Character/ParkourClipLibrary.cs, ParkourClipPlayer.cs; FootController StartRoll/StartSlide/ToggleCrouch + climb-owns-frame; FootClimb MantleClipActive/HangClipActive; Tests/PlayMode/ParkourRun.cs (headless-safe: no WaitForEndOfFrame, real-time bounded loops)",
+  "evidence": "PARKOUR_SUMMARY ok=17 bad=0 | PARKOUR_RETARGET body=apple handDisp=0.43 footDisp=1.374 | PARKOUR_FLOW key=X clip=IP-mantle-low-frontroll-sprint-to-sprint playing=true bones=moved handDisp=4.115 footDisp=4.261 rootDisp=4.339 | PARKOUR_X_RETURNED_TO_IDLE=true | Z: no vault obstacle at the spawn (procedural slide) | C: crouch toggle | PLAYMODE RESULT=PASS | gotcha: WaitForEndOfFrame never resumes in a headless PlayMode run and also stalls NUnit's Timeout"
+ },
+ {
+  "id": "parkour-moves-full-set",
+  "area": "Character",
+  "item": "USER: 'take all real movements from my parkour assets. all!' / 'running, walking, whole movement take from assets… of parkour i mean'. Fable agent 2026-11-01: 74 moves in Character/ParkourMoves.cs over the whole Parkour Animation Set (64 FBX) plus the 15 Cover+Shoot loops the parkour pack lacks (walk/jog/strafe/crouch), all IP twins with FootController owning the root; locomotion by speed band (parkour-idle, walk_fwd, jog_fwd, sprint loop at rate v/8.4), air/landing by fall height (midair variants, hard1, hardhands, lying-back→kipup), X roll, Z/Shift+W vault-or-mantle by obstacle height+depth, ledge reach/hang/switch/pull/drop(180), wall plants with up-jump/step-up/leap/180/backflip/outward/tictac follow-ups; ParkourClipPlayer = loco A/B cross-fade + one-shot mixer + masked overlay layer (PlayOverlay for the cover-shoot agent).",
+  "status": "fixed",
+  "owner": "agent: parkour (fable fork)",
+  "date": "2026-11-01",
+  "fix": "Character/ParkourMoves.cs (+Probe 159 face ladder/top/depth, WallAhead 200), ParkourClipPlayer.cs, FootController.cs (PlayMove 304, Launch 317, StartWallPlant 326, StartKnockdown 342, TickOwnedFrame 354, X 611, Z 646, landings 899, wall 1175, jump 1186, climb 1200-1232, vault carry 1258, letgo 1271, edge drops 1476, loco 1578, stop 1582, midair 1610); ParkourRun ×3; chain19 gate reads the <test-run> element",
+  "evidence": "PARKOUR_SUMMARY ok=79 bad=0 total=79 | PARKOUR_FLOW key=W move=run clip=IP-sprint-loop-smooth rootDisp=5.13 bones=moved | Shift+W vault-shoulderroll rootDisp=6.77 obstacle=0.8m | mantle-high-climbup-sprint obstacle=1.5m | wall-plant-front, wall-180-leap, wall-up-jump rootDisp=1.34 | up-jump-to-ledge-grab hang=true, switchsides, ledge drop | landings 3m/4.5m/7m (hard1-slower, hardhands, kipup) | X roll rootDisp=4.34 | chain19 gate result=Passed total=7 passed=7 (FirstPlayModeRun, KeysRun×3, ParkourRun×3); build 16:25 staged (swaps when the game exits); frames scratchpad/parkour2/shots/*.png (facing_front: eyes toward travel; facing_side: real stride) | wired-but-geometry-untriggered in the course: tic-tac, outward leaps, backflip, 3 m variants, drop180, vault-to-fall"
+ },
+ {
+  "id": "mantle-keys-index",
+  "area": "Character",
+  "item": "FootPoses MANTLE_KEYS rows were one value short → IndexOutOfRangeException on every climb-out frame (48 per run), masked by the weak chain gate.",
+  "status": "fixed",
+  "owner": "agent: parkour (fable fork)",
+  "date": "2026-11-01",
+  "fix": "FootPoses.cs rows completed",
+  "evidence": "ParkourRun clean; chain19 ERROR_COUNT gate"
+ },
+ {
+  "id": "landing-step-window-skip",
+  "area": "Character",
+  "item": "A fall whose last frame lands inside the 0.25 m step window skipped Land2 entirely (no landing clip, no fall damage, no roll-out); the midair loop also stayed stuck after a vault.",
+  "status": "fixed",
+  "owner": "agent: parkour (fable fork)",
+  "date": "2026-11-01",
+  "fix": "FootController landings 899 / midair 1610",
+  "evidence": "PARKOUR_FLOW key=W(off 3m) move=landing-hard1-slower air=IP-midair-lowvel; (off 7m) move=kipup"
+ },
+ {
+  "id": "range-registry-stale-pivots",
+  "area": "Combat",
+  "item": "RangeBootstrap.All (static) kept destroyed door pivots across a second scene boot → 165-170 MissingReferenceException per combined test session, present since chain17 and hidden by the `grep result=\"Passed\"` gate (any passed test-case matched).",
+  "status": "fixed",
+  "owner": "agent: parkour (fable fork)",
+  "date": "2026-11-01",
+  "fix": "Combat/RangeBootstrap.cs registry reset; chain19 gates on the <test-run> element's own result",
+  "evidence": "combined session errors 170 -> 0; chain19 result=Passed total=7 passed=7"
  }
 ]

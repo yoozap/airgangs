@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
 
 // AimBehaviour inherits from GenericBehaviour. This class corresponds to aim and strafe behaviour.
 public class AimBehaviour : GenericBehaviour
@@ -12,6 +13,11 @@ public class AimBehaviour : GenericBehaviour
 
 	private int aimBool;                                                  // Animator variable related to aiming.
 	private bool aim;                                                     // Boolean to determine whether or not the player is aiming.
+	// TbilisiFly glue: no AnimatorController on rig.Anim under the
+	// purchased-shooter path (Character/CoverShootHero.cs's class header),
+	// so ShootBehaviour (and CoverShootRun.cs) read this instead of
+	// `GetAnim.GetBool("Aim")`, which always reads false with no parameter table.
+	public bool IsAiming => aim;
 	private int cornerBool;                                               // Animator variable related to cover corner..
 	private bool peekCorner;                                              // Boolean to get whether or not the player is on a cover corner.
 	private Vector3 initialRootRotation;                                  // Initial root bone local rotation.
@@ -47,11 +53,11 @@ public class AimBehaviour : GenericBehaviour
 		peekCorner = behaviourManager.GetAnim.GetBool(cornerBool);
 
 		// Activate/deactivate aim by input.
-		if (Input.GetAxisRaw(aimButton) != 0 && !aim)
+		if (CoverShootInput.GetAxisRaw(aimButton) != 0 && !aim)
 		{
 			StartCoroutine(ToggleAimOn());
 		}
-		else if (aim && Input.GetAxisRaw(aimButton) == 0)
+		else if (aim && CoverShootInput.GetAxisRaw(aimButton) == 0)
 		{
 			StartCoroutine(ToggleAimOff());
 		}
@@ -60,7 +66,7 @@ public class AimBehaviour : GenericBehaviour
 		canSprint = !aim;
 
 		// Toggle camera aim position left or right, switching shoulders.
-		if (aim && Input.GetButtonDown (shoulderButton) && !peekCorner)
+		if (aim && CoverShootInput.GetButtonDown (shoulderButton) && !peekCorner)
 		{
 			aimCamOffset.x = aimCamOffset.x * (-1);
 			aimPivotOffset.x = aimPivotOffset.x * (-1);
@@ -101,8 +107,13 @@ public class AimBehaviour : GenericBehaviour
 	{
 		aim = false;
 		yield return new WaitForSeconds(0.3f);
-		behaviourManager.GetCamScript.ResetTargetOffsets();
-		behaviourManager.GetCamScript.ResetMaxVerticalAngle();
+		// TbilisiFly glue: GetCamScript is null now (ThirdPersonOrbitCam was
+		// removed — Core/GameLoop.cs's own on-foot camera owns the camera
+		// under the purchased-shooter path too, coordinator decision
+		// 2026-11-01 15:5x, so A/D stay screen-relative). Every GetCamScript
+		// call in this pack is null-guarded for that reason.
+		behaviourManager.GetCamScript?.ResetTargetOffsets();
+		behaviourManager.GetCamScript?.ResetMaxVerticalAngle();
 		yield return new WaitForSeconds(0.05f);
 		behaviourManager.RevokeOverridingBehaviour(this);
 	}
@@ -112,7 +123,7 @@ public class AimBehaviour : GenericBehaviour
 	{
 		// Set camera position and orientation to the aim mode parameters.
 		if(aim)
-			behaviourManager.GetCamScript.SetTargetOffsets (aimPivotOffset, aimCamOffset);
+			behaviourManager.GetCamScript?.SetTargetOffsets (aimPivotOffset, aimCamOffset);
 	}
 
 	// LocalLateUpdate: manager is called here to set player rotation after camera rotates, avoiding flickering.
@@ -137,7 +148,9 @@ public class AimBehaviour : GenericBehaviour
 		forward = forward.normalized;
 
 		// Always rotates the player according to the camera horizontal rotation in aim mode.
-		Quaternion targetRotation =  Quaternion.Euler(0, behaviourManager.GetCamScript.GetH, 0);
+		// TbilisiFly glue: was GetCamScript.GetH — read playerCamera's own
+		// yaw directly (same transform our camera drives; no ThirdPersonOrbitCam needed).
+		Quaternion targetRotation =  Quaternion.Euler(0, behaviourManager.playerCamera.eulerAngles.y, 0);
 
 		float minSpeed = Quaternion.Angle(transform.rotation, targetRotation) * aimTurnSmoothing;
 
@@ -165,7 +178,7 @@ public class AimBehaviour : GenericBehaviour
 	{
 		if (crosshair)
 		{
-			float mag = behaviourManager.GetCamScript.GetCurrentPivotMagnitude(aimPivotOffset);
+			float mag = behaviourManager.GetCamScript != null ? behaviourManager.GetCamScript.GetCurrentPivotMagnitude(aimPivotOffset) : 0f;
 			if (mag < 0.05f)
 				GUI.DrawTexture(new Rect(Screen.width / 2 - (crosshair.width * 0.5f),
 										 Screen.height / 2 - (crosshair.height * 0.5f),

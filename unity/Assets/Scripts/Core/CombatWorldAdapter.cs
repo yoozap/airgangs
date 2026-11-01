@@ -990,11 +990,19 @@ namespace TbilisiFly.Core
             // shell and cockpit kit, which is the exact trap the JS comment
             // there warns about).
             float span = rec != null ? Mathf.Max(rec.HalfSpan * 2f, rec.Size) : 0f;
-            if (span <= 0f) return false;
+            if (span <= 0f)
+            {
+                Debug.Log($"TRYPARKINSHED fail=noSpan hasRec={rec != null} halfSpan={(rec != null ? rec.HalfSpan : 0f):F2} size={(rec != null ? rec.Size : 0f):F2}");
+                return false;
+            }
             float tall = AirframeHeight(plane, rec);
 
             Vector3 door = ShedLayout.ScaledDoor(ShedBuildScale); // src/shed.js:82-86, real Door0 at this shed's real scale
-            if (span > door.x * 2f - 2f || tall > door.y - 0.6f) return false; // src/game.js:898
+            if (span > door.x * 2f - 2f || tall > door.y - 0.6f)
+            {
+                Debug.Log($"TRYPARKINSHED fail=fit span={span:F2} tall={tall:F2} doorX2m2={door.x * 2f - 2f:F2} doorYm06={door.y - 0.6f:F2} hasCockpitKit={(rec != null && rec.CockpitKit != null)}");
+                return false; // src/game.js:898
+            }
 
             // src/shed.js's park point is in shed-local game-frame metres —
             // mirror x (GeoFrame rule #3, ShedFill.cs's own header) before
@@ -1028,24 +1036,57 @@ namespace TbilisiFly.Core
             // for one frame until something else touched these fields.
             plane.Airborne = false;
             plane.Speed = 0f;
+            Debug.Log($"TRYPARKINSHED ok span={span:F2} tall={tall:F2} at={at} gy={gy:F2} wheelH={wheelH:F2}");
             return true;
         }
 
         /// <summary>Unity-native stand-in for src/planes.js's measured
         /// `wrapper.userData.height` (no runtime mesh-measurement system is ported
-        /// — PlaneCatalog.cs's own header). Encapsulates renderer bounds only —
-        /// the climb-shell is a bare BoxCollider with no renderer so it is
-        /// excluded for free, and the cockpit kit (if any) is excluded explicitly,
-        /// same exclusion the JS comment at game.js:892-894 calls for.</summary>
+        /// — PlaneCatalog.cs's own header). The cockpit kit (if any) is excluded
+        /// explicitly, same exclusion the JS comment at game.js:892-894 calls
+        /// for, and the climb-shell is a bare BoxCollider with no renderer so it
+        /// is excluded for free.
+        ///
+        /// FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_AIRPORT
+        /// scenario (2026-11-01): this used to Encapsulate each Renderer's
+        /// `.bounds`, which is a WORLD-SPACE axis-aligned box — fine for a
+        /// level aeroplane, wrong for one that is banked or climbing, which is
+        /// exactly the attitude Scenario1 leaves the plane in right before
+        /// pressing 🛬 (climb, roll, roll back toward level — not guaranteed
+        /// to land back at EXACTLY zero bank). Measured: span=11.26 (correct,
+        /// a P-51's wingspan is rotation-invariant on X) but tall=13.28 — nowhere
+        /// near a real P-51's ~3-4 m height, and suspiciously close to
+        /// span-ish (wingspan rotated toward vertical, SIN of the residual
+        /// bank angle, dumped straight into the world Y axis). src/planes.js's
+        /// own `u.height` is measured ONCE off the model's rest pose and never
+        /// changes while flying, so this port's door-height check must be
+        /// equally orientation-invariant: measure each renderer's bounds in
+        /// the PLANE ROOT's own body frame (undo the root's current world
+        /// rotation, keep each child's own offset/tilt) instead of raw world
+        /// space, so the door-fit check reads the airframe's real, fixed
+        /// height no matter how the pilot is currently banked.</summary>
         static float AirframeHeight(PlaneController plane, PlaneDamageRecord rec)
         {
-            Bounds b = default; bool any = false;
+            Transform root = plane.transform;
+            Quaternion invRot = Quaternion.Inverse(root.rotation);
+            Vector3 origin = root.position;
+            float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
             foreach (var r in plane.GetComponentsInChildren<Renderer>())
             {
                 if (rec != null && rec.CockpitKit != null && r.transform.IsChildOf(rec.CockpitKit)) continue;
-                if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
+                Bounds wb = r.bounds; // world AABB — corners, not just center+extent, survive the un-rotate below
+                Vector3 c = wb.center, e = wb.extents;
+                for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                {
+                    Vector3 corner = c + new Vector3(sx * e.x, sy * e.y, sz * e.z);
+                    float localY = (invRot * (corner - origin)).y; // the plane's OWN up axis, not world up
+                    if (localY < minY) minY = localY;
+                    if (localY > maxY) maxY = localY;
+                }
             }
-            return any ? b.size.y : 0f;
+            return float.IsPositiveInfinity(minY) ? 0f : maxY - minY;
         }
 
         /// <summary>src/game.js:955-974 — on foot, returning to the airport stands
@@ -1097,6 +1138,7 @@ namespace TbilisiFly.Core
             var plane = game.ActivePlane;
             bool onFoot = game.Mode == GameMode.OnFoot; // src/game.js:933 `const onFoot = !!this.foot?.active;`
             GameObject warehouse = GameObject.Find("warehouse"); // src/game.js:886/958 `o.userData?.shed` / `o.name === 'warehouse'`
+            Debug.Log($"GOAIRPORTORSHED warehouseFound={warehouse != null} planePos={plane.transform.position} shedSpawnPos={game.ShedSpawnPos}");
 
             // FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_AIRPORT
             // scenario (2026-11-01): this used to branch on `distToShed < 250f`

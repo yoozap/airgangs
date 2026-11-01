@@ -278,6 +278,127 @@ namespace TbilisiFly.Character
         MoveInput _lastM;
 
         // =====================================================================
+        // THE PARKOUR / LOCOMOTION LAYER — 2026-11-01, user: "u need take all
+        // real movements from my parkour assets. all!" and "running, walking,
+        // whole movement take from the assets". See ParkourMoves (the table and
+        // the obstacle probes) and ParkourClipPlayer (the graph). FootController
+        // still owns the ROOT (Pos/Yaw/Speed/Vy, closed-loop on the world); the
+        // clips own the BONES whenever the hero is unarmed and on foot.
+        // =====================================================================
+        /// <summary>The last parkour move started (name / clip stem), for the tests and the HUD.</summary>
+        public string LastMove { get; private set; }
+        public string LastMoveClip { get; private set; }
+        public System.Action<string, string> OnParkourMove;
+        bool _airClipOwns;                 // a midair/leap/jump clip owns the air pose
+        float _landLock;                   // s left of a landing clip holding the body planted
+        ParkourMoves.Move _pendingClimbClip; // the vault/mantle clip picked for the climb just started
+        bool _hangSwitchWas, _drop180;
+        string _lastLocoName;
+        float _stopCd;
+        bool _wallGrabPending; float _wallGrabT;
+        sealed class WallState { public float T; public Vector3 N; public bool Angled; public float LateralSign; public bool LedgeAbove; public ParkourMoves.Move Plant; }
+        WallState _wall;
+        sealed class LyingState { public float T; public bool Kipup; }
+        LyingState _lying;
+
+        void PlayMove(CharacterRig rig, ParkourMoves.Move mv, bool? loop = null, float? blend = null)
+        {
+            if (mv == null || rig?.Anim == null) return;
+            var clip = ParkourClipLibrary.Get(mv.Clip);
+            if (clip == null) { Debug.LogWarning($"PARKOUR missing clip {mv.Clip}"); return; }
+            Clips.Play(rig.Anim, clip, loop ?? mv.Loop, blend ?? mv.Blend);
+            LastMove = mv.Name; LastMoveClip = clip.name;
+            OnParkourMove?.Invoke(mv.Name, clip.name);
+            Debug.Log($"PARKOUR_MOVE move={mv.Name} clip={clip.name} cat={mv.Cat}");
+        }
+
+        /// <summary>A launch: the air integration below flies it (gravity,
+        /// landing, the midair clip), exactly like a jump.</summary>
+        void Launch(ParkourMoves.Move mv)
+        {
+            if (Mathf.Abs(mv.Arc.z) > 1e-4f) { Yaw = Wrap(Yaw + mv.Arc.z); CamYaw = Yaw + LookYaw; _yawWas = Yaw; }
+            Speed = mv.Arc.x;
+            Vy = mv.Arc.y; _jumpV = Mathf.Max(1f, mv.Arc.y);
+            Grounded = false; _coyote = 0f; _jumpBuf = 0f; _air = null; _fallFrom = Pos.y;
+            _airClipOwns = true;
+        }
+
+        void StartWallPlant(CharacterRig rig, ParkourMoves.Obstacle o, bool airborne, float lateral)
+        {
+            Vector3 n = o.Normal; n.y = 0f; if (n.sqrMagnitude < 1e-6f) return; n.Normalize();
+            Vector3 into = -n;
+            Yaw = Mathf.Atan2(-into.x, -into.z); CamYaw = Yaw + LookYaw; _yawWas = Yaw;
+            Pos.x = o.Point.x + n.x * 0.42f; Pos.z = o.Point.z + n.z * 0.42f;
+            Speed = 0f; Vy = 0f; _air = null; _airClipOwns = false;
+            var plant = ParkourMoves.PickWallPlant(o, airborne, lateral);
+            // a ledge within reach after an up-jump: probe from where the hands would be
+            var up = ParkourMoves.Probe(Pos + Vector3.up * 2.0f, into, 1.2f);
+            bool ledgeAbove = up.Hit && !up.Wall && up.Height > 0.3f;
+            _wall = new WallState { T = 0f, N = n, Angled = o.Angle > 28f, LateralSign = lateral, LedgeAbove = ledgeAbove, Plant = plant };
+            PlayMove(rig, plant);
+            OnHint?.Invoke("🧗 კედელი — Space ასვლა · S შემობრუნება · X სალტო · A/D გვერდზე");
+        }
+
+        void StartKnockdown(CharacterRig rig)
+        {
+            _lying = new LyingState { T = 0f, Kipup = false };
+            Speed = 0f; Vy = 0f; _strafing = false;
+            PlayMove(rig, ParkourMoves.LyingBack);
+            OnHint?.Invoke("💫 დაეცა — ფეხზე წამოდგომა…");
+        }
+
+        /// <summary>Frames a parkour state owns outright (wall plant, landing
+        /// lock, knocked down): the body stays put, the clip plays, and the
+        /// keys pick what happens next. Returns true when the rest of
+        /// Update() must stand down this frame.</summary>
+        bool TickOwnedFrame(float dt, CharacterRig rig, ref MoveInput m)
+        {
+            if (_lying != null)
+            {
+                _lying.T += dt;
+                if (!_lying.Kipup && _lying.T > 1.1f) { _lying.Kipup = true; PlayMove(rig, ParkourMoves.Kipup); }
+                else if (_lying.Kipup && !Clips.IsPlaying) { _lying = null; return false; }
+                Speed = 0f; m = new MoveInput { Jump = false };
+                rig.Locomote(dt, 0f, RunSpeed); rig.SettleBody(dt);
+                return true;
+            }
+            if (_wall != null)
+            {
+                var w = _wall; w.T += dt;
+                string key = null;
+                bool jumpEdge = m.Jump && !_jumpWas; _jumpWas = m.Jump;
+                if (jumpEdge) key = "space";
+                else if (m.Roll && !_rollWas) key = "x";
+                else if (m.Slide && !_slideWas) key = "z";
+                else if (m.Z > 0f) key = "s";
+                else if (m.X > 0f) key = "a";
+                else if (m.X < 0f) key = "d";
+                else if (m.Z < 0f && w.T > 0.12f) key = "w";
+                _rollWas = m.Roll; _slideWas = m.Slide;
+                Speed = 0f; Vy = 0f;
+                if (key != null || w.T >= w.Plant.Lock + 0.35f)
+                {
+                    var leap = ParkourMoves.PickWallFollowUp(key, w.Angled, w.LedgeAbove);
+                    _wall = null;
+                    PlayMove(rig, leap);
+                    Launch(leap);
+                    if (key == "space" && w.LedgeAbove) { _wallGrabPending = true; _wallGrabT = 0f; }
+                    return false; // the air integration flies the leap from here
+                }
+                rig.Locomote(dt, 0f, RunSpeed); rig.SettleBody(dt);
+                return true;
+            }
+            if (_landLock > 0f)
+            {
+                _landLock -= dt;
+                Speed = 0f;
+                m = new MoveInput { Jump = m.Jump };
+                return false; // keep the ground/pose path running, just with no intent
+            }
+            return false;
+        }
+
+        // =====================================================================
         // INPUT — src/foot.js:4726-4744 _readMove, left input-agnostic: the
         // owning MonoBehaviour fills this from whatever input system the
         // project uses (not this port's job — FlightModel.cs's StickInput
@@ -368,7 +489,8 @@ namespace TbilisiFly.Character
             // (grounded, letGoPush) is irrelevant here because the lines below
             // force Grounded = true and Speed = 0 anyway.
             if (Climb.Active) Climb.EndClimb(rig, "abort", ref Pos);
-            Clips.Stop(); _rollClipOwns = false; _climbClipPhase = null; _letGoPending = false;
+            Clips.StopAll(); _rollClipOwns = false; _climbClipPhase = null; _letGoPending = false;
+            _wall = null; _lying = null; _landLock = 0f; _airClipOwns = false; _pendingClimbClip = null; _wallGrabPending = false; _lastLocoName = null;
             _roll = null; _rollCd = 0f; _rollBuf = 0f; _rollWas = false;
             _slide = null; _slideCd = 0f; _slideBuf = 0f; _slideWas = false;
             _air = null;
@@ -486,13 +608,8 @@ namespace TbilisiFly.Character
             // while the clip owns the shape. `air` (buffered roll-out-of-a-
             // fall/dive) gets the fall-shaped clip; an ordinary grounded X
             // dodge-roll gets the sprint-to-sprint one.
-            var rollClip = ParkourClipLibrary.Get(air ? ParkourClipLibrary.LandingFrontRoll : ParkourClipLibrary.MantleLowFrontRoll);
-            if (rig?.Anim != null && rollClip != null)
-            {
-                Clips.Play(rig.Anim, rollClip, loop: false, blendIn: 0.08f);
-                _rollClipOwns = true;
-            }
-            else _rollClipOwns = false;
+            PlayMove(rig, air ? ParkourMoves.RollAir : ParkourMoves.RollGround);
+            _rollClipOwns = Clips.IsPlaying;
             return true;
         }
 
@@ -525,6 +642,10 @@ namespace TbilisiFly.Character
                     {
                         _lastLead = Climb.Lead;
                         _slideCd = SlideCdTime; // same cooldown courtesy a real slide would have left
+                        var oz = ParkourMoves.Probe(Pos, facingDir);
+                        _pendingClimbClip = (oz.Hit && oz.Depth < 1.6f)
+                            ? ParkourMoves.PickVault(oz, Mathf.Abs(Speed), _lastM.Sprint)
+                            : ParkourMoves.PickMantle(oz.Hit ? oz.Height : 1.0f, Mathf.Abs(Speed), _lastM.Sprint, true);
                         return true; // Climb (the vault path) now owns the body
                     }
                     Climb.EndClimb(rig, "abort", ref Pos); // too tall for a vault — ordinary slide below
@@ -767,6 +888,18 @@ namespace TbilisiFly.Character
                 }
             }
             _slideBuf = 0f;
+            _airClipOwns = false;
+            if (Clips.IsPlaying && Clips.CurrentClip != null && Clips.CurrentClip.StartsWith("IP-midair")) Clips.Stop();
+            if (_roll == null && _slide == null && !Armed)
+            {
+                // the purchased landings by fall height (ParkourMoves.PickLanding):
+                // a soft/hard plant that holds the body for the clip's own beat,
+                // hands-first into a run when W is held, and from a big fall a
+                // knockdown the kipup gets up from
+                var lm = ParkourMoves.PickLanding(drop, _lastM.Sprint, _lastM.Z < 0f);
+                if (lm == ParkourMoves.LyingBack) { StartKnockdown(rig); }
+                else if (lm != null) { PlayMove(rig, lm); _landLock = lm.Lock; }
+            }
             if (drop < FallSafe) return;
             float f = Mathf.Clamp01((drop - FallSafe) / (FallFatal - FallSafe));
             OnFallDamage?.Invoke(f);
@@ -849,116 +982,6 @@ namespace TbilisiFly.Character
         }
 
         // =====================================================================
-        // CLIMB/FREE-RUN ONLY — for Core/GameLoop.cs's StageOnFootPurchased,
-        // which (while GameLoop.UsePurchasedShooter is true) never calls the
-        // full Update() below: the purchased Cover+Shoot asset's own
-        // Rigidbody/MoveBehaviour own ordinary ground movement, and running
-        // the whole monolith alongside it would fight that Rigidbody for
-        // Pos every frame. This is a DELIBERATE DUPLICATE of Update()'s own
-        // "---- free-run (Assassin's Creed high profile) + Space-climbs ----"
-        // and "---- climb owns the frame entirely ----" blocks just below
-        // (lines ~997-1091), not a refactor of them: the two call sites are
-        // mutually exclusive for the life of one GameLoop (the flag never
-        // flips mid-session), so sharing `Climb`/`Clips`/`_climbClipPhase`/
-        // `_letGoPending`/`_gY`/`_lastLead`/`_jumpBuf`/`_jumpWas`/`_coyote`
-        // between a shared method and Update() risked only one thing —
-        // Update() ALSO needs `_jumpBuf` for Cover.Tick a few lines before
-        // its own copy of this block runs, so hoisting the jump-edge
-        // bookkeeping out of Update() would shift exactly when Cover sees a
-        // buffered jump. Duplicating instead of extracting avoids that
-        // entirely, at the cost of keeping the two copies honest if either
-        // is ever touched again — both are tagged with this same comment.
-        //
-        // What is intentionally OMITTED from this copy: the plain-jump
-        // branch (Update()'s `else if (_jumpBuf > 0f && _coyote > 0f)`,
-        // which sets `Vy`/`_air` — fields nothing under the purchased path
-        // ever reads, since MoveBehaviour.jumpButton already owns ordinary
-        // jumping there with its own Rigidbody impulse).
-        //
-        // Returns true the frame a climb (or its reach/pull/mantle beats)
-        // owns Pos/Yaw — the caller must write them onto its own Rigidbody-
-        // backed transform that frame and skip its own movement entirely.
-        // =====================================================================
-        public bool TickClimbAndFreeRun(float dt, CharacterRig rig, MoveInput m)
-        {
-            bool jumpPressed = m.Jump && !_jumpWas;
-            _jumpWas = m.Jump;
-            if (jumpPressed) _jumpBuf = JumpBufferTime;
-            _jumpBuf = Mathf.Max(0f, _jumpBuf - dt);
-            _coyote = Grounded ? Coyote : Mathf.Max(0f, _coyote - dt);
-            if (_jumpBuf > 0f && Crouched && !Cover.Active) { Crouched = false; _jumpBuf = 0f; }
-
-            Vector3 facingDir = new Vector3(-Mathf.Sin(Yaw), 0f, -Mathf.Cos(Yaw));
-            bool freeRun = m.Z < 0f && (m.Sprint || !Grounded);
-            if (!Climb.Active)
-            {
-                var dirs = new System.Collections.Generic.List<Vector3> { facingDir };
-                if (_strafing && Mathf.Abs(Speed) > 0.5f) dirs.Add(new Vector3(-Mathf.Sin(_moveYaw), 0f, -Mathf.Cos(_moveYaw)));
-                if (freeRun && _roll == null && _slide == null && _dive == null && !Crouched
-                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
-                    && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
-                {
-                    _jumpBuf = 0f; _lastLead = Climb.Lead;
-                }
-                else if (_jumpBuf > 0f && _roll == null && _slide == null
-                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
-                    && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
-                {
-                    _jumpBuf = 0f; _jumpWas = true; _lastLead = Climb.Lead;
-                }
-            }
-
-            if (Climb.Active)
-            {
-                string phase = Climb.Phase;
-                if (phase == "hang")
-                {
-                    if (_climbClipPhase != "hang")
-                    {
-                        var c = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedIdle);
-                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: true, blendIn: 0.15f);
-                        _climbClipPhase = "hang";
-                    }
-                }
-                else if (phase == "pull" || phase == "mantle")
-                {
-                    if (_climbClipPhase != "pull" && _climbClipPhase != "mantle")
-                    {
-                        AnimationClip c = !Climb.Hold
-                            ? ParkourClipLibrary.Get(ParkourClipLibrary.VaultLowKongShort)
-                            : (Climb.High < 0.5f ? ParkourClipLibrary.Get(ParkourClipLibrary.MantleLowClimbup)
-                                                  : ParkourClipLibrary.Get(ParkourClipLibrary.MantleHighClimbup));
-                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: false, blendIn: 0.1f);
-                    }
-                    _climbClipPhase = phase;
-                }
-                Climb.HangClipActive = Clips.IsPlaying && _climbClipPhase == "hang";
-                Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle");
-
-                bool letGo = _letGoPending; _letGoPending = false;
-                string exit = Climb.Tick(dt, rig, ref Pos, ref Yaw, new FootClimb.ClimbInput { MoveZ = m.Z, JumpPressed = jumpPressed, LetGoPressed = letGo });
-                if (exit != null)
-                {
-                    var (grounded, pushOff) = Climb.EndClimb(rig, exit, ref Pos);
-                    if (exit == "done") { Speed = 0f; Vy = 0f; Grounded = true; }
-                    else if (exit == "letgo") { Grounded = false; Vy = 0f; _fallFrom = Pos.y; }
-                    _accV = 0f; _speedWas = Speed; _turnV = 0f; _yawWas = Yaw;
-
-                    _climbClipPhase = null;
-                    if (exit == "letgo")
-                    {
-                        var dropClip = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedDrop);
-                        if (rig?.Anim != null && dropClip != null) Clips.Play(rig.Anim, dropClip, loop: false, blendIn: 0.06f);
-                    }
-                    else Clips.Stop();
-                }
-                return true;
-            }
-            Climb.TickClimbOut(dt, rig);
-            return false;
-        }
-
-        // =====================================================================
         // ONE FRAME — src/foot.js:5475-6259 update(). Call from LateUpdate.
         // =====================================================================
         public void Update(float dt, CharacterRig rig, MoveInput m)
@@ -969,6 +992,7 @@ namespace TbilisiFly.Character
             // Update() runs (this port's own rule: Update() is called from
             // LateUpdate, after the Animator). See ParkourClipPlayer.Tick.
             Clips.Tick(dt);
+            if (TickOwnedFrame(dt, rig, ref m)) return;
 
             // src/foot.js:4746-4779 `_planeTargets()` — resolved ONCE per
             // frame (the JS calls it once and reuses the result for both the
@@ -1111,17 +1135,45 @@ namespace TbilisiFly.Character
             {
                 var dirs = new System.Collections.Generic.List<Vector3> { facingDir };
                 if (_strafing && Mathf.Abs(Speed) > 0.5f) dirs.Add(new Vector3(-Mathf.Sin(_moveYaw), 0f, -Mathf.Cos(_moveYaw)));
-                if (freeRun && _roll == null && _slide == null && _dive == null && !Crouched
-                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
+                // a wall-grab leap keeps trying to catch the ledge for a second
+                if (_wallGrabPending) { _wallGrabT += dt; if (_wallGrabT > 1.2f || Grounded) _wallGrabPending = false; }
+                bool wantClimb = freeRun || _wallGrabPending;
+                bool climbable = _roll == null && _slide == null && _dive == null && !Crouched
+                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null);
+                ParkourMoves.Obstacle ahead = default;
+                bool probed = false;
+                if (wantClimb && climbable) { ahead = ParkourMoves.Probe(Pos, facingDir); probed = true; }
+                if (wantClimb && climbable
                     && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
                 {
-                    _jumpBuf = 0f; _lastLead = Climb.Lead;
+                    _jumpBuf = 0f; _lastLead = Climb.Lead; _wallGrabPending = false;
+                    float h = probed && ahead.Hit ? ahead.Height : (Climb.High * 2.6f);
+                    // VAULT = over a THIN obstacle (its top runs < 1.6 m before
+                    // dropping away); anything you can stand on is a MANTLE,
+                    // whatever FootClimb's Hold says (Hold is hang-vs-no-hang)
+                    bool thin = probed && ahead.Hit && !ahead.Wall && ahead.Depth < 1.6f;
+                    _pendingClimbClip = (!Climb.Hold && thin)
+                        ? ParkourMoves.PickVault(ahead, Mathf.Abs(Speed), m.Sprint)
+                        : ParkourMoves.PickMantle(h, Mathf.Abs(Speed), m.Sprint, m.Z < 0f);
                 }
                 else if (_jumpBuf > 0f && _roll == null && _slide == null
                     && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
                     && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
                 {
                     _jumpBuf = 0f; _jumpWas = true; _lastLead = Climb.Lead;
+                    var o2 = ParkourMoves.Probe(Pos, facingDir);
+                    bool thin2 = o2.Hit && !o2.Wall && o2.Depth < 1.6f;
+                    _pendingClimbClip = (!Climb.Hold && thin2)
+                        ? ParkourMoves.PickVault(o2, Mathf.Abs(Speed), m.Sprint)
+                        : ParkourMoves.PickMantle(o2.Hit ? o2.Height : Climb.High * 2.6f, Mathf.Abs(Speed), m.Sprint, m.Z < 0f);
+                }
+                else if (freeRun && climbable && probed && ahead.Hit && ahead.Wall && ahead.Dist < (Grounded ? 1.05f : 0.8f)
+                         && (Grounded ? Mathf.Abs(Speed) > 3.5f : Vy < 3f))
+                {
+                    // WALL: nothing to grab within reach — plant on it and let the
+                    // next key pick the leap (ParkourMoves.PickWallFollowUp)
+                    StartWallPlant(rig, ahead, !Grounded, m.X != 0f ? -Mathf.Sign(m.X) : 1f);
+                    return;
                 }
                 else if (_jumpBuf > 0f && _coyote > 0f)
                 {
@@ -1131,6 +1183,7 @@ namespace TbilisiFly.Character
                     Vy = _jumpV;
                     _air = new AirState { W = 0f, P = 0f, Out = AirOut, Fall = false, Lead = (_airLead = -_airLead), Lean = Mathf.Clamp(run, 0.15f, 1.4f) };
                     Grounded = false; _coyote = 0f; _jumpBuf = 0f; _fallFrom = Pos.y;
+                    if (!Armed) { PlayMove(rig, ParkourMoves.JumpStart); _airClipOwns = true; }
                 }
             }
 
@@ -1144,31 +1197,47 @@ namespace TbilisiFly.Character
                 // and ParkourClipPlayer's header for why HandsOnLedge/
                 // PlantFoot/BodyPivot all keep working unchanged either way.
                 string phase = Climb.Phase;
-                if (phase == "hang")
+                if (phase == "reach")
                 {
-                    if (_climbClipPhase != "hang")
+                    if (_climbClipPhase != "reach")
                     {
-                        var c = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedIdle);
-                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: true, blendIn: 0.15f);
+                        // the approach beat: a sprint runs up the wall into the
+                        // grab, a standing start up-jumps into it; a vault's
+                        // reach is already the vault clip's own wind-up
+                        if (Climb.Hold) PlayMove(rig, (m.Sprint && Mathf.Abs(Speed) > 4f) ? ParkourMoves.LedgeClimbUp : ParkourMoves.LedgeUpJump);
+                        else if (_pendingClimbClip != null) PlayMove(rig, _pendingClimbClip);
+                        _climbClipPhase = "reach";
+                    }
+                }
+                else if (phase == "hang")
+                {
+                    bool switchEdge = m.X != 0f && !_hangSwitchWas; _hangSwitchWas = m.X != 0f;
+                    if (_climbClipPhase == "switch" && !Clips.IsPlaying) _climbClipPhase = null;
+                    if (switchEdge && _climbClipPhase != "switch") { PlayMove(rig, ParkourMoves.LedgeSwitch); _climbClipPhase = "switch"; }
+                    else if (_climbClipPhase != "hang" && _climbClipPhase != "switch")
+                    {
+                        PlayMove(rig, ParkourMoves.LedgeIdle);
                         _climbClipPhase = "hang";
                     }
+                    if (m.Z > 0f) _drop180 = true; // S: turn away from the wall on the way down
                 }
                 else if (phase == "pull" || phase == "mantle")
                 {
                     if (_climbClipPhase != "pull" && _climbClipPhase != "mantle")
                     {
-                        // !Hold = a straight-through vault (Z redirected into
-                        // this climb from StartSlide); Hold+High splits a real
-                        // climb's final beat into mantle-low vs mantle-high.
-                        AnimationClip c = !Climb.Hold
-                            ? ParkourClipLibrary.Get(ParkourClipLibrary.VaultLowKongShort)
-                            : (Climb.High < 0.5f ? ParkourClipLibrary.Get(ParkourClipLibrary.MantleLowClimbup)
-                                                  : ParkourClipLibrary.Get(ParkourClipLibrary.MantleHighClimbup));
-                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: false, blendIn: 0.1f);
+                        // the clip the move table picked for THIS obstacle
+                        // (ParkourMoves.PickVault / PickMantle, measured off the
+                        // real geometry in front of the feet); the ledge-grab
+                        // jump when pulling up out of a hang
+                        var mv = _pendingClimbClip ?? (!Climb.Hold ? ParkourMoves.VaultKongShort
+                                                      : (Climb.High < 0.5f ? ParkourMoves.MantleLowKongShort : ParkourMoves.MantleHighToRun));
+                        if (Climb.Hold && _climbClipPhase == "hang") mv = Climb.High < 0.5f ? ParkourMoves.MantleLowKongShort : ParkourMoves.LedgeJump;
+                        PlayMove(rig, mv);
                     }
                     _climbClipPhase = phase;
                 }
-                Climb.HangClipActive = Clips.IsPlaying && _climbClipPhase == "hang";
+                Climb.ReachClipActive = Clips.IsPlaying && _climbClipPhase == "reach";
+                Climb.HangClipActive = Clips.IsPlaying && (_climbClipPhase == "hang" || _climbClipPhase == "switch");
                 Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle");
 
                 // src/foot.js:5282 — C lets go of a hang; see ToggleCrouch's
@@ -1177,25 +1246,34 @@ namespace TbilisiFly.Character
                 string exit = Climb.Tick(dt, rig, ref Pos, ref Yaw, new FootClimb.ClimbInput { MoveZ = m.Z, JumpPressed = jumpPressed, LetGoPressed = letGo });
                 if (exit != null)
                 {
+                    bool wasVault = !Climb.Hold;
                     var (grounded, pushOff) = Climb.EndClimb(rig, exit, ref Pos);
                     if (exit == "done") { Speed = 0f; Vy = 0f; Grounded = true; }
                     else if (exit == "letgo") { Grounded = false; Vy = 0f; _fallFrom = Pos.y; }
+                    if (exit == "done" && wasVault && _pendingClimbClip != null && _pendingClimbClip.Cat == "vault")
+                    {
+                        // a VAULT goes OVER the obstacle: the climb put the body on
+                        // its top, so carry the run off the far side (the clip is
+                        // still playing — it is the vault's own second half)
+                        Speed = Mathf.Max(4.5f, _speedWas); Vy = 1.6f; Grounded = false; _coyote = 0f; _fallFrom = Pos.y; _air = null;
+                    }
                     // THE LEAN-SPRING / AK BUG FIX — src/foot.js:5062-5066. Must
                     // run the SAME frame EndClimb does, before anything below
                     // reads _accV/_turnV off a `Speed` that was just zeroed.
                     _accV = 0f; _speedWas = Speed; _turnV = 0f; _yawWas = Yaw;
 
-                    _climbClipPhase = null;
+                    _climbClipPhase = null; _pendingClimbClip = null; _hangSwitchWas = false;
                     if (exit == "letgo")
                     {
-                        // a quick release flourish — AirPose (next frame) ramps
-                        // its own influence in over AIR_IN (90 ms), so this is
-                        // visible for roughly that long before the fall pose
-                        // takes back over; a deliberate, documented scope cut.
-                        var dropClip = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedDrop);
-                        if (rig?.Anim != null && dropClip != null) Clips.Play(rig.Anim, dropClip, loop: false, blendIn: 0.06f);
+                        // the drop clip owns the fall (AirPose stands down while
+                        // _airClipOwns); S turns the body away from the wall
+                        bool d180 = _drop180;
+                        PlayMove(rig, d180 ? ParkourMoves.LedgeDrop180 : ParkourMoves.LedgeDrop);
+                        if (d180) { Yaw = Wrap(Yaw + Mathf.PI); CamYaw = Yaw + LookYaw; _yawWas = Yaw; Speed = 1.6f; }
+                        _airClipOwns = true;
                     }
                     else Clips.Stop();
+                    _drop180 = false;
                 }
                 return; // the climb owns the whole frame, like foot.js:5542-5545
             }
@@ -1386,7 +1464,19 @@ namespace TbilisiFly.Character
                 bool airborne = Pos.y > gY + 0.25f || Vy > 0f;
                 if (airborne)
                 {
-                    if (Grounded && !_fallFrom.HasValue) _fallFrom = Pos.y;
+                    if (Grounded && !_fallFrom.HasValue)
+                    {
+                        _fallFrom = Pos.y;
+                        // running off a high edge: the pack's drop (a reverse
+                        // gainer at a sprint, a front-flip dive with Z held)
+                        if (!Armed && _jumpBuf <= 0f && Vy <= 0.01f && Mathf.Abs(Speed) > 4.5f && _roll == null && _slide == null && _dive == null
+                            && Physics.Raycast(Pos + Vector3.up * 0.3f, Vector3.down, out var below, 30f, ~0, QueryTriggerInteraction.Ignore)
+                            && Pos.y - below.point.y > ParkourMoves.DropHighMin)
+                        {
+                            PlayMove(rig, m.Slide ? ParkourMoves.DropDive : (m.Sprint ? ParkourMoves.DropHigh : ParkourMoves.DropHighToSprint));
+                            _airClipOwns = true;
+                        }
+                    }
                     Grounded = false;
                     Vy -= Gravity * (_dive != null && _dive.T < DiveFly ? DiveGFrac : 1f) * dt;
                     Pos.y += Vy * dt;
@@ -1399,7 +1489,12 @@ namespace TbilisiFly.Character
                 }
                 else
                 {
-                    if (!Grounded && _fallFrom.HasValue)
+                    // 2026-11-01: a fall whose last frame lands inside the 0.25 m
+                    // step window used to skip Land2 entirely (no landing clip, no
+                    // fall damage, no roll-out) — a frame-rate lottery. It is a
+                    // landing like any other.
+                    if (!Grounded && _fallFrom.HasValue && _fallFrom.Value - Pos.y > 0.6f) { Pos.y = gY; Vy = 0f; Grounded = true; Land2(rig, _fallFrom.Value); }
+                    else if (!Grounded && _fallFrom.HasValue)
                         Footsteps?.Land(new Footsteps.Query { Pos = Pos, Speed = Speed, Grounded = true, Crouched = Crouched, Stroll = _stroll, RunSpeed = RunSpeed }, Mathf.Max(0f, _fallFrom.Value - Pos.y));
                     Pos.y += (gY - Pos.y) * Mathf.Min(1f, 18f * dt);
                     Vy = 0f; Grounded = true; _fallFrom = null;
@@ -1468,20 +1563,69 @@ namespace TbilisiFly.Character
                 RigSeatExtras.SetStrafe(rig, sa, dt, walkEligible ? 0f : sb);
             }
 
-            rig.Locomote(dt, (_roll != null || _slide != null || (_air != null && !Grounded) || walkEligible) ? 0f : (turningInPlace ? 1.1f : Speed), RunSpeed);
+            // ---- THE LOCOMOTION LOOPS (ParkourMoves.PickLoco): unarmed, on
+            // the ground, nothing else owning the body → the purchased stance
+            // clip for this speed band plays at a rate that matches the feet
+            // to the real speed; otherwise the loop is dropped and the old
+            // procedural stance owns the bones again ----
+            bool locoOwns = false;
+            {
+                bool free = !Armed && Grounded && !Climb.Active && _roll == null && _slide == null && _dive == null && _flip == null
+                            && !Cover.Active && _wall == null && _lying == null && _landLock <= 0f && !(HeldByWindProvider?.Invoke() ?? false);
+                if (free)
+                {
+                    float strafeIntent = _strafing ? Wrap(_moveYaw - Yaw) : 0f;
+                    var lm = ParkourMoves.PickLoco(Speed, m.Sprint && m.Z < 0f, Crouched, Mathf.Abs(strafeIntent) > 0.3f ? Mathf.Sign(strafeIntent) : 0f, out float rate);
+                    // a sprint that stops dead: the pack's stop clip, once
+                    _stopCd = Mathf.Max(0f, _stopCd - dt);
+                    if (!Clips.IsPlaying && _stopCd <= 0f && _speedWas > 5.5f && Mathf.Abs(Speed) < 0.8f && !moving)
+                    { PlayMove(rig, ParkourMoves.Stop); _landLock = ParkourMoves.Stop.Lock; _stopCd = 1.5f; }
+                    var lclip = ParkourClipLibrary.Get(lm.Clip);
+                    if (lclip != null)
+                    {
+                        Clips.PlayLoco(rig.Anim, lclip, rate, lm == ParkourMoves.Idle ? 0.25f : 0.15f);
+                        if (_lastLocoName != lm.Name) { _lastLocoName = lm.Name; LastMove = lm.Name; LastMoveClip = lclip.name; OnParkourMove?.Invoke(lm.Name, lclip.name); }
+                        locoOwns = true;
+                    }
+                }
+                if (!locoOwns && Clips.LocoClip != null) { Clips.StopLoco(); _lastLocoName = null; }
+            }
+            bool clipOwnsBody = locoOwns || (!Armed && Clips.IsPlaying);
+
+            rig.Locomote(dt, (_roll != null || _slide != null || (_air != null && !Grounded) || walkEligible || clipOwnsBody) ? 0f : (turningInPlace ? 1.1f : Speed), RunSpeed);
 
             // ---- crouch ----
             float crouchWant = Crouched ? 1f : 0f;
             if (Cover.Active) crouchWant += (0.15f /* POP_CROUCH */ - crouchWant) * Smooth01(Cover.State.Pop);
             _crouchT += (crouchWant - _crouchT) * Mathf.Min(1f, 10f * dt);
-            if (!Climb.Active && _roll == null && _slide == null && _flip == null)
+            if (!Climb.Active && _roll == null && _slide == null && _flip == null && !locoOwns)
                 FootPoses.SetCrouch(rig, _crouchT);
+
+            // ---- the air: the purchased clips own it (jump start, then the
+            // parkour midair loops by fall speed); AirPose stands down ----
+            if (!Grounded && !Armed && _flip == null && _roll == null && _slide == null && _dive == null && !Climb.Active)
+            {
+                if (!Clips.IsPlaying || (_airClipOwns && Vy < -2.5f && Clips.CurrentClip != null && Clips.CurrentClip.StartsWith("IP-midair") == false && !Clips.CurrentClip.Contains("drop") && !Clips.CurrentClip.Contains("leap") && !Clips.CurrentClip.Contains("backflip") && !Clips.CurrentClip.Contains("jump")))
+                {
+                    var mid = ParkourMoves.PickMidair(Vy, Mathf.Abs(Speed));
+                    if (Clips.CurrentClip != ParkourClipLibrary.Stem(mid.Clip)) PlayMove(rig, mid);
+                    _airClipOwns = true;
+                }
+            }
+            if (Grounded)
+            {
+                // a midair LOOP never ends by itself: the ground ends it (whatever
+                // set _airClipOwns — a jump, a drop, or a vault's carry-over)
+                _airClipOwns = false;
+                if (Clips.IsPlaying && Clips.CurrentClip != null && Clips.CurrentClip.StartsWith("IP-midair")) Clips.Stop();
+            }
 
             // ---- the tumble pose goes on LAST (src/foot.js:6088-6108) ----
             if (_flip != null) { /* reel-only backflip — not driven by this port's input surface; TickFlip() below if ever started */ TickFlip(rig, dt); }
             else if (_roll != null) { RollPose(rig); if (_roll.Done) EndRoll(rig); }
             else if (_slide != null) SlidePose(rig, _slide.Blend, _slide.Side, 0f);
             else if (_dive != null) DivePose(rig);
+            else if (_airClipOwns && !Grounded) { rig.ActGroup.localRotation = Quaternion.identity; }
             else AirPose(rig, dt);
 
             // ---- momentum estimators + body lean/arm swing (src/foot.js:6110-6217) ----
@@ -1524,7 +1668,7 @@ namespace TbilisiFly.Character
             {
                 Speed = Speed, RunSpeed = RunSpeed, Turn = _turnV, Accel = _accV, Stroll = _strollT,
                 Crouch = _crouchT,
-                Blend = (_roll != null || _slide != null || _dive != null || Climb.Active || !Grounded || _coverW > 0.5f) ? 0f : 1f,
+                Blend = (_roll != null || _slide != null || _dive != null || Climb.Active || !Grounded || _coverW > 0.5f || clipOwnsBody) ? 0f : 1f,
                 Lean = leanP, Bank = leanR,
                 ChestPitch = chestPitch, HeadYaw = headYaw, ChestYaw = chestYaw,
                 GunTwist = gunTwist, GunDip = gunDip, GunPitch = gunPitch,

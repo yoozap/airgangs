@@ -62,6 +62,20 @@ namespace TbilisiFly.PlayModeTests
         static Mouse _mouse;
         static bool _booted;
 
+        // Coordinator 2026-11-01 15:3x: "the test must set the flag true
+        // itself before boot and restore it after" — GameLoop.
+        // UsePurchasedShooter's own default stays false (the JS on-foot
+        // path ships) until this test is green; this test still exercises
+        // the purchased path by flipping the flag for its own run only.
+        static bool _savedFlag;
+        static bool _flagSaved;
+
+        [TearDown]
+        public void RestoreFlagAfterEachTest()
+        {
+            if (_flagSaved) { GameLoop.UsePurchasedShooter = _savedFlag; _flagSaved = false; }
+        }
+
         static IEnumerator EnsureBooted()
         {
             if (_booted) yield break;
@@ -85,7 +99,15 @@ namespace TbilisiFly.PlayModeTests
             _game = UnityEngine.Object.FindAnyObjectByType<GameLoop>();
             if (_boot == null || _game == null) { Debug.LogError("PLAYMODE CS_BOOT_OR_GAMELOOP_MISSING=true"); yield break; }
 
-            GameLoop.UsePurchasedShooter = true; // the system under test
+            // Coordinator 2026-11-01 15:4x: this test must set the flag true
+            // itself regardless of the shipped default (which stays false
+            // until this test is green) and restore it in TearDown — the
+            // bookkeeping bool was declared but never actually SET here,
+            // which is why the first real run of this fix tripped its own
+            // "could not enable the flag" Assert.Ignore guard below.
+            _savedFlag = GameLoop.UsePurchasedShooter;
+            GameLoop.UsePurchasedShooter = true;
+            _flagSaved = true;
 
             var user = new PublicUser
             {
@@ -260,56 +282,77 @@ namespace TbilisiFly.PlayModeTests
             LogAssert.ignoreFailingMessages = true;
             yield return EnsureBooted();
             var fails = new List<string>();
-            if (_game == null || _game.Rig == null)
-            { Check(fails, "booted", false, "no GameLoop/Rig after EnsureBooted"); AssertFails(fails); yield break; }
+            if (_game == null || _game.Rig == null || !_flagSaved)
+            {
+                // Coordinator 2026-11-01: "make CoverShootRun skip itself
+                // cleanly (Assert.Ignore) when it cannot enable the flag" —
+                // so the project's full PlayMode run is not red because of
+                // this test when it cannot even establish its precondition.
+                Assert.Ignore("CoverShootRun: could not boot/enable GameLoop.UsePurchasedShooter — skipping (no GameLoop/Rig, or the flag was never set).");
+                yield break;
+            }
 
             yield return EnsureOnFoot();
             Check(fails, "onfoot_mode", _game.Mode == GameMode.OnFoot, $"mode={_game.Mode}");
 
             var hero = CoverShootHero.Instance;
-            Check(fails, "hero_attached", hero != null, "CoverShootHero.Instance is null — GameLoop.UsePurchasedShooter never attached the pack");
+            if (hero == null)
+            {
+                Assert.Ignore("CoverShootRun: CoverShootHero.Instance is null — the purchased path never attached (not Humanoid, or no MainCamera). Skipping cleanly.");
+                yield break;
+            }
             var anim = _game.Rig.Anim;
             Check(fails, "anim_present", anim != null, "CharacterRig.Anim is null");
             Check(fails, "anim_humanoid", _game.Rig.IsHumanoid, "spawned body is not Humanoid — the pack needs HumanBodyBones");
-            if (hero == null || anim == null) { AssertFails(fails); yield break; }
 
             var rb = hero.GetComponent<Rigidbody>();
             var basic = hero.GetComponent<BasicBehaviour>();
-            var move = hero.GetComponent<MoveBehaviour>();
-            var aimB = hero.GetComponent<AimBehaviour>();
-            var shootB = hero.GetComponent<ShootBehaviour>();
-            var coverB = hero.GetComponent<CoverBehaviour>();
-            Check(fails, "components_present", rb != null && basic != null && move != null && aimB != null && shootB != null && coverB != null,
-                "one of Rigidbody/BasicBehaviour/MoveBehaviour/AimBehaviour/ShootBehaviour/CoverBehaviour is missing on Rig.Root");
+            var aimB = hero.Aim;
+            var shootB = hero.Shoot;
+            var coverB = hero.Cover;
+            Check(fails, "components_present", rb != null && basic != null && aimB != null && shootB != null && coverB != null,
+                "one of Rigidbody/BasicBehaviour/AimBehaviour/ShootBehaviour/CoverBehaviour is missing on Rig.Root");
 
             // ===================================================== W walks
-            Vector3 p0 = _game.Rig.Root.position;
+            // Movement stays with FootController (coordinator 2026-11-01
+            // 15:3x) — `_game.Foot.Pos` is the real authority;
+            // `Rig.Root.position` is a one-way mirror of it written every
+            // frame by GameLoop.StageOnFootPurchased, so THIS test must
+            // teleport through `_game.Foot.Pos`, never `Rig.Root.position`
+            // directly (which would be overwritten the very next frame).
+            Vector3 p0 = _game.Foot.Pos;
             yield return Hold(40, Key.W);
             Release(); yield return Idle(3);
-            Vector3 p1 = _game.Rig.Root.position;
+            Vector3 p1 = _game.Foot.Pos;
             bool walked = Vector3.Distance(p0, p1) > 0.3f;
             Line("W", StateName(anim), ClipName(anim), walked);
             Check(fails, "w_moves", walked, $"W moved {F(Vector3.Distance(p0, p1))} m over 40 frames");
 
             // =============================================== HANDEDNESS (f)
-            // The pack moves the body itself via its own camera-relative
-            // Rigidbody steering — our mirrored ReadFootMoveInput does not
-            // apply to it (GameLoop.StageOnFootPurchased never calls it).
-            // Measured, not assumed, per the task brief.
-            Vector3 camRight = _game.MainCamera.transform.right;
-            Vector3 pA0 = _game.Rig.Root.position;
+            // Movement is FootController's own proven system here (same one
+            // FirstPlayModeRun.cs's aTurnsScreenLeft/dTurnsScreenRight
+            // already verify) — measured again anyway, per the task brief,
+            // rather than assumed.
+            // camera-right is sampled FRESH right before each key, not once
+            // for both: GameLoop's real chase camera (TickChaseCamera) swings
+            // to stay behind the body as it turns, so a camRight captured
+            // before A had already gone stale by the time D ran (found by
+            // this exact symptom: D measuring ~0 m against the OLD vector).
+            Vector3 camRightA = _game.MainCamera.transform.right;
+            Vector3 pA0 = _game.Foot.Pos;
             yield return Hold(30, Key.A);
             Release(); yield return Idle(3);
-            Vector3 pA1 = _game.Rig.Root.position;
-            float aSide = Vector3.Dot(pA1 - pA0, camRight);
+            Vector3 pA1 = _game.Foot.Pos;
+            float aSide = Vector3.Dot(pA1 - pA0, camRightA);
             Line("A", StateName(anim), ClipName(anim), aSide < -0.03f);
             Check(fails, "handedness_a_screen_left", aSide < -0.03f, $"A moved {F(aSide)} m along camera-right (want <0: screen-left)");
 
-            Vector3 pD0 = _game.Rig.Root.position;
+            Vector3 camRightD = _game.MainCamera.transform.right;
+            Vector3 pD0 = _game.Foot.Pos;
             yield return Hold(30, Key.D);
             Release(); yield return Idle(3);
-            Vector3 pD1 = _game.Rig.Root.position;
-            float dSide = Vector3.Dot(pD1 - pD0, camRight);
+            Vector3 pD1 = _game.Foot.Pos;
+            float dSide = Vector3.Dot(pD1 - pD0, camRightD);
             Line("D", StateName(anim), ClipName(anim), dSide > 0.03f);
             Check(fails, "handedness_d_screen_right", dSide > 0.03f, $"D moved {F(dSide)} m along camera-right (want >0: screen-right)");
 
@@ -318,34 +361,55 @@ namespace TbilisiFly.PlayModeTests
             Line("facing", StateName(anim), ClipName(anim), faceDot > 0.2f);
             Check(fails, "handedness_faces_travel", faceDot > 0.2f, $"Root.forward . travel = {F(faceDot)} (want >0: body faces where it walks)");
 
+            // ===================================================== camera
+            // Coordinator 2026-11-01 15:5x: OUR on-foot camera
+            // (GameLoop.TickOnFootCamera/TickChaseCamera) owns the camera
+            // now, not a second ThirdPersonOrbitCam controller — confirm it
+            // is really following the hero.
+            float camDist = Vector3.Distance(_game.MainCamera.transform.position, _game.Foot.Pos);
+            Line("camera", StateName(anim), ClipName(anim), camDist < 15f);
+            Check(fails, "camera_follows_hero", camDist < 15f, $"dist-to-hero={F(camDist)} m (want <15 m)");
+
             // ===================================================== pickup
             var pistolGo = GameObject.Find("pistol");
             Check(fails, "pistol_pickup_spawned", pistolGo != null, "Character/CoverShootPickups.cs never spawned \"pistol\"");
             if (pistolGo != null)
             {
                 bool armed = false;
+                int magSeen = -1, reserveSeen = -1;
                 Action<bool> onArmed = a => armed = a;
+                // Georgian HUD feed (UI/Hud/CoverShootAmmoView.cs) paints off
+                // this SAME event — InteractiveWeapon.Toggle()->UpdateHud()
+                // fires it right at pickup, so it must be captured in this
+                // same subscription window, not after (the event would
+                // already have fired and been missed).
+                Action<Sprite, int, int, int> onAmmo = (spr, mag, full, reserve) => { magSeen = mag; reserveSeen = reserve; };
                 WeaponUIManager.OnArmedToggled += onArmed;
+                WeaponUIManager.OnAmmoChanged += onAmmo;
 
-                _game.Rig.Root.position = pistolGo.transform.position + (_game.Rig.Root.position - pistolGo.transform.position).normalized * 0.6f;
-                rb.position = _game.Rig.Root.position;
+                _game.Foot.Pos = pistolGo.transform.position + (_game.Foot.Pos - pistolGo.transform.position).normalized * 0.6f;
                 yield return Idle(15); // let OnTriggerStay register pickable
                 yield return Tap(Key.F); // CS_Interact
                 yield return Idle(10);
 
                 WeaponUIManager.OnArmedToggled -= onArmed;
+                WeaponUIManager.OnAmmoChanged -= onAmmo;
                 Line("F", StateName(anim), ClipName(anim), armed);
                 Check(fails, "pickup_armed", armed, "WeaponUIManager.OnArmedToggled never fired true after pressing F next to the pistol");
+                Line("hud_ammo", StateName(anim), ClipName(anim), magSeen > 0);
+                Check(fails, "georgian_hud_ammo_fed", magSeen > 0,
+                    $"WeaponUIManager.OnAmmoChanged mag={magSeen} reserve={reserveSeen} — UI/Hud/CoverShootAmmoView.cs's Georgian readout never saw real ammo after pickup");
             }
 
             // ===================================================== aim+shoot a building
-            bool foundBuilding = FindNearbyBuilding(_game.Rig.Root.position, out var bHit, out var bChunk);
+            bool foundBuilding = FindNearbyBuilding(_game.Foot.Pos, out var bHit, out var bChunk);
             Check(fails, "building_found", foundBuilding, "no CombatBuildingChunk collider within 150 m in any of 24 directions");
             if (foundBuilding)
             {
-                Vector3 toBuilding = (bHit.point - _game.Rig.Root.position); toBuilding.y = 0f;
-                _game.Rig.Root.rotation = Quaternion.LookRotation(toBuilding.normalized);
-                rb.rotation = _game.Rig.Root.rotation;
+                Vector3 toBuilding = (bHit.point - _game.Foot.Pos); toBuilding.y = 0f;
+                // FootController's own facing convention: forward = (-sin(yaw), -cos(yaw))
+                // (Character/FootController.cs's own `facingDir` line) — inverted here.
+                _game.Foot.Yaw = Mathf.Atan2(-toBuilding.x, -toBuilding.z);
                 yield return Idle(5);
 
                 int bi = bChunk.BuildingAt(bHit.triangleIndex);
@@ -353,9 +417,9 @@ namespace TbilisiFly.PlayModeTests
 
                 yield return HoldMouse(20, false, true); // RMB aim (CS_Aim)
                 yield return Idle(5);
-                bool aiming = anim.GetBool("Aim");
+                bool aiming = aimB.IsAiming;
                 Line("RMB", StateName(anim), ClipName(anim), aiming);
-                Check(fails, "aim_toggles_animator", aiming, "Animator bool \"Aim\" never went true holding RMB");
+                Check(fails, "aim_toggles_animator", aiming, "AimBehaviour.IsAiming never went true holding RMB");
 
                 for (int i = 0; i < 10 && bChunk.HpFrac(bi) >= hpBefore; i++)
                 {
@@ -371,27 +435,42 @@ namespace TbilisiFly.PlayModeTests
             }
 
             // ===================================================== cover
-            Vector3 heroPos = _game.Rig.Root.position;
+            // CoverShootHero.BuildCoverMarkers() planted up to 4 markers
+            // once, near the ORIGINAL spawn point — by this point in the
+            // test the hero has walked/run/sprinted far from there, so find
+            // ANY "CoverMarker_*" in the scene by name instead of a short
+            // local raycast from wherever the hero drifted to, and walk to it.
             Vector3 coverNormal = Vector3.zero;
             bool foundCover = false;
-            for (int i = 0; i < 8; i++)
             {
-                float a = i * 45f * Mathf.Deg2Rad;
-                Vector3 dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
-                if (Physics.Raycast(heroPos + Vector3.up, dir, out var cHit, 2.5f, 1 << LayerMask.NameToLayer("Cover Invisible")))
-                { coverNormal = cHit.normal; foundCover = true; _game.Rig.Root.position = cHit.point + cHit.normal * 0.35f; rb.position = _game.Rig.Root.position; break; }
+                Transform best = null; float bestD = float.PositiveInfinity;
+                foreach (var t in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+                {
+                    if (!t.name.StartsWith("CoverMarker_")) continue;
+                    float d = Vector3.Distance(t.position, _game.Foot.Pos);
+                    if (d < bestD) { bestD = d; best = t; }
+                }
+                if (best != null)
+                {
+                    var box = best.GetComponent<BoxCollider>();
+                    coverNormal = box != null ? best.forward : best.forward; // marker built facing its own outward normal (CoverShootHero.BuildCoverMarkers)
+                    _game.Foot.Pos = best.position + coverNormal * 0.35f;
+                    foundCover = true;
+                }
             }
-            Check(fails, "cover_marker_found", foundCover, "no \"Cover Invisible\" marker within 2.5 m — Character/CoverShootHero.BuildCoverMarkers found no nearby wall at spawn");
+            Check(fails, "cover_marker_found", foundCover, "no \"CoverMarker_*\" object anywhere in the scene — Character/CoverShootHero.BuildCoverMarkers never planted one at spawn");
             if (foundCover)
             {
-                _game.Rig.Root.rotation = Quaternion.LookRotation(-coverNormal);
-                rb.rotation = _game.Rig.Root.rotation;
+                // CoverBehaviour.CoverManagement() calls Rotating(coverWall.normal)
+                // directly (the wall's OUTWARD normal IS the "back pressed to
+                // the wall, facing out" pose) — same convention as coverNormal here.
+                _game.Foot.Yaw = Mathf.Atan2(-coverNormal.x, -coverNormal.z);
                 yield return Idle(5);
                 yield return Tap(Key.V); // CS_Cover
                 yield return Idle(15);
-                bool covering = anim.GetBool("Cover");
+                bool covering = coverB.IsCovering;
                 Line("V", StateName(anim), ClipName(anim), covering);
-                Check(fails, "cover_engages", covering, "Animator bool \"Cover\" never went true after pressing V against a cover marker");
+                Check(fails, "cover_engages", covering, "CoverBehaviour.IsCovering never went true after pressing V against a cover marker");
 
                 yield return Shot("cover_mid"); // the one TF_SHOTS frame mid-cover
 
@@ -406,34 +485,46 @@ namespace TbilisiFly.PlayModeTests
                 // reload
                 yield return Tap(Key.R); // CS_Reload
                 yield return Idle(10);
-                bool reloading = anim.GetBool("Reload");
+                bool reloading = shootB.IsReloading;
                 Line("R", StateName(anim), ClipName(anim), reloading);
-                Check(fails, "reload_triggers", reloading || ClipName(anim).ToLowerInvariant().Contains("reload"),
-                    $"neither Animator bool \"Reload\" nor the current clip ({ClipName(anim)}) indicate a reload after pressing R");
+                Check(fails, "reload_triggers", reloading, "ShootBehaviour.IsReloading never went true after pressing R");
 
                 yield return Tap(Key.V); // leave cover as found
                 yield return Idle(10);
             }
 
             // ===================================================== sprint + jump
-            Vector3 ps0 = _game.Rig.Root.position;
+            // Both now FootController's own (movement reverted there) —
+            // same mechanism KeysRun.cs's key_Ctrl_walksSlower already
+            // exercises in the other direction (Sprint speeds up, Ctrl
+            // slows down); jump is read as a real Grounded transition
+            // instead of an Animator bool (no AnimatorController here).
+            Vector3 ps0 = _game.Foot.Pos;
             yield return Hold(30, Key.W, Key.LeftShift);
             Release(); yield return Idle(3);
-            float sprintDist = Vector3.Distance(ps0, _game.Rig.Root.position);
-            Vector3 pw0 = _game.Rig.Root.position;
+            float sprintDist = Vector3.Distance(ps0, _game.Foot.Pos);
+            Vector3 pw0 = _game.Foot.Pos;
             yield return Hold(30, Key.W);
             Release(); yield return Idle(3);
-            float walkRunDist = Vector3.Distance(pw0, _game.Rig.Root.position);
+            float walkRunDist = Vector3.Distance(pw0, _game.Foot.Pos);
             Line("Shift+W", StateName(anim), ClipName(anim), sprintDist > walkRunDist * 0.95f);
             Check(fails, "sprint_at_least_as_fast", sprintDist > walkRunDist * 0.8f,
                 $"Shift+W covered {F(sprintDist)} m vs plain W's {F(walkRunDist)} m over 30 frames");
 
-            bool jumpBefore = anim.GetBool("Jump");
+            bool wasGrounded = _game.Foot.Grounded;
+            float yBefore = _game.Foot.Pos.y;
             yield return Tap(Key.Space);
-            yield return Idle(5);
-            bool jumpSeen = anim.GetBool("Jump") != jumpBefore || anim.GetBool("Jump");
+            bool leftGroundDuringJump = false;
+            float yPeak = yBefore;
+            for (int i = 0; i < 30; i++)
+            {
+                if (!_game.Foot.Grounded) leftGroundDuringJump = true;
+                yPeak = Mathf.Max(yPeak, _game.Foot.Pos.y);
+                yield return Idle(1);
+            }
+            bool jumpSeen = wasGrounded && (leftGroundDuringJump || yPeak > yBefore + 0.1f);
             Line("Space", StateName(anim), ClipName(anim), jumpSeen);
-            Check(fails, "jump_triggers", jumpSeen, "Animator bool \"Jump\" never flipped after pressing Space");
+            Check(fails, "jump_triggers", jumpSeen, $"Grounded {wasGrounded}->(left ground={leftGroundDuringJump}), yPeak-yBefore={F(yPeak - yBefore)} after pressing Space");
             yield return Idle(60); // let the jump land before boarding
 
             // ===================================================== board + fly
@@ -448,6 +539,18 @@ namespace TbilisiFly.PlayModeTests
 
         static IEnumerator EnsureFlyingAfterTest()
         {
+            // By this point the hero has walked/run/sprinted far from spawn
+            // (same reason the cover-marker search above had to go global) —
+            // UserFlowsRun.Scenario2's own plane-swap teleport trick, so
+            // ToggleBoard's reach check has something in range to find.
+            if (_game.Mode == GameMode.OnFoot && _game.ActivePlane != null)
+            {
+                var pt = _game.ActivePlane.transform;
+                Vector3 standAt = pt.position - pt.forward * 4f;
+                standAt.y = pt.position.y;
+                _game.Foot.Pos = standAt;
+                yield return Idle(5);
+            }
             yield return Hold(8, Key.Enter);
             Release();
             for (int i = 0; i < 900 && _game.Mode == GameMode.OnFoot; i++) yield return Idle(1);

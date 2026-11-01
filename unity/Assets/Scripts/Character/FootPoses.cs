@@ -94,9 +94,12 @@ namespace TbilisiFly.Character
         // characters.js:239-243 MANTLE_KEYS — row 0 is PULL_KEYS[4]'s own tail
         static readonly float[][] MantleKeys =
         {
-            new[] { 0.00f, -0.60f, 0.90f, -0.25f, -0.45f, 0.85f, 0.05f, -0.28f },
-            new[] { 0.50f, -0.45f, 0.55f, -0.15f, -0.35f, 0.90f, -0.10f, -0.05f },
-            new[] { 1.00f, 0f, 0f, 0f, 0f, 0f, 0f, 0f },
+            // 2026-11-01: each row is [u, 8 values] like PULL_KEYS — the port had
+            // dropped one value per row, so LegKeysAt read index 8 and threw on
+            // every climb-out frame (48 IndexOutOfRange per ParkourRun).
+            new[] { 0.00f, -0.60f, 0.90f, -0.25f, -0.45f, 0.85f, 0.05f, -0.28f, 0.00f },
+            new[] { 0.50f, -0.45f, 0.55f, -0.15f, -0.35f, 0.90f, -0.10f, -0.18f, -0.05f },
+            new[] { 1.00f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f },
         };
 
         public struct RollBall { public float Core, R; }

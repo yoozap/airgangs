@@ -309,6 +309,15 @@ namespace TbilisiFly.Combat
         /// </summary>
         public static int DiscoverAndAdoptAll()
         {
+            // `All` is STATIC and survives a scene (re)load; a Range adopted from
+            // the previous Game scene keeps door/paper pivots that are now
+            // destroyed, and TickAll threw MissingReferenceException on them
+            // every frame (165-170 per play-mode session that boots the scene
+            // twice: FirstPlayModeRun then KeysRun/ParkourRun — 2026-11-01).
+            // Drop every range whose pivots are gone before re-discovering.
+            All.RemoveAll(r => r == null
+                || r.Doors.Exists(d => d == null || d.Pivot == null)
+                || r.Sheets.Exists(sh => sh == null || sh.Pivot == null));
             int before = All.Count;
             var seen = new HashSet<Transform>();
             foreach (var t in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))

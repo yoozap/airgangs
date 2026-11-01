@@ -1,10 +1,10 @@
 # TbilisiFly → Unity: what moved, what is left
 
-_Generated 2026-11-01 14:09 by tools/port_status_md.py. Numbers come from the port manifest, the unit claims and docs/open_items.json; do not edit by hand._
+_Generated 2026-11-01 16:28 by tools/port_status_md.py. Numbers come from the port manifest, the unit claims and docs/open_items.json; do not edit by hand._
 
 ## 1. The one-line answer
 
-**46,888 of 48,889 budgeted JS lines are ported (95.9%), 45,101 of them probe-verified; 2,001 lines remain, which the audit (docs/BUDGET_AUDIT.md) found to be mostly budget artefact, not behaviour.** The C# side is 111,446 lines in 399 files. Every box of the quality bar (section 3) is checked with a live proof. Tracker: 142 fixed · 8 open · 7 decisions · 2 deferred.
+**46,888 of 48,889 budgeted JS lines are ported (95.9%), 45,101 of them probe-verified; 2,001 lines remain, which the audit (docs/BUDGET_AUDIT.md) found to be mostly budget artefact, not behaviour.** The C# side is 111,446 lines in 399 files. Every box of the quality bar (section 3) is checked with a live proof. Tracker: 148 fixed · 8 open · 7 decisions · 2 deferred.
 
 Lines are not the whole story: the port's worst bug class is FINISHED code that never runs (no caller, not in Game.unity, dead delegate) and formulas that are right in a right-handed frame and wrong in Unity's left-handed one. Sections 4–6 are about those.
 
@@ -74,6 +74,12 @@ Every checked row names the probe line that proved it REACHED in Assets/Scenes/G
 - **keymap-audit** — GameLoop.cs ~2636: Alt branch gated on _foot.Armed like the RMB branch; docs/KEYMAP.md (table: key, mode, JS action, Unity handler, tested-by, status); new Tests/PlayMode/KeysRun.cs (FlyingKeys/OnFootKeys/MenuKeys)
 - **crash-fx-light-pool-unwired** — CombatWorldAdapter.cs:938-939 assigns both hooks to GameLoop.TakeFxLight/FreeFxLight; Probes/CrashFxLightProbe regexes the real file for the assignment and drives TakeFxLight 9x asserting 3 distinct lights (round-robin); game.js:606-613 centreAim filed as an e
 - **landmarks-rest-walk** — Citations added in LandmarkPlacer.cs / LandmarkRenderer.cs; LandmarksRestProbe + tools/_probe_landmarksrest.mjs oracle; docs/port_units/landmarks_rest.json merged; 8 exclusions filed
+- **misc-rest-walk** — PlanePhysics.cs sparks (JsMath.Round count); Weapons.ChestForward + HeldWeapon reload pose; WarehouseFanSwitch.HandleBKey in Update; stale NOT PORTED comments fixed; docs/port_units/misc_rest.json merged (infra 98→0 free, planedamage 96→1, weapons 3→0, crane 2
+- **parkour-clips-first-wiring** — Character/ParkourClipLibrary.cs, ParkourClipPlayer.cs; FootController StartRoll/StartSlide/ToggleCrouch + climb-owns-frame; FootClimb MantleClipActive/HangClipActive; Tests/PlayMode/ParkourRun.cs (headless-safe: no WaitForEndOfFrame, real-time bounded loops)
+- **parkour-moves-full-set** — Character/ParkourMoves.cs (+Probe 159 face ladder/top/depth, WallAhead 200), ParkourClipPlayer.cs, FootController.cs (PlayMove 304, Launch 317, StartWallPlant 326, StartKnockdown 342, TickOwnedFrame 354, X 611, Z 646, landings 899, wall 1175, jump 1186, climb 
+- **mantle-keys-index** — FootPoses.cs rows completed
+- **landing-step-window-skip** — FootController landings 899 / midair 1610
+- **range-registry-stale-pivots** — Combat/RangeBootstrap.cs registry reset; chain19 gates on the <test-run> element's own result
 
 ## 6. Rules every agent must apply (learned the hard way)
 

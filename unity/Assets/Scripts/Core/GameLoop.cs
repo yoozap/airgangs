@@ -906,60 +906,65 @@ namespace TbilisiFly.Core
         }
 
         /// <summary>The on-foot branch while <see cref="UsePurchasedShooter"/>
-        /// is true: Character/CoverShootHero's own Rigidbody + the pack's 5
-        /// MonoBehaviours move/rotate the body and drive the camera every
-        /// frame on their own (real Unity components, ticked by the engine —
-        /// not something this method calls), so this is deliberately NOT a
-        /// call into `_foot.Update`/`TickOnFootCamera`: those are the JS-
-        /// ported movement/camera/weapon/cover path this mode replaces. Everything
-        /// here is the SMALL SUBSET that still has to run regardless of which
-        /// system owns movement — zone boundary slam, the climb-back-in hint
-        /// — read off `Rig.Root.position` (which the pack's own Rigidbody now
-        /// drives) rather than the stale `_foot.Pos` (which only `_foot.Update`
-        /// writes).</summary>
+        /// is true. Coordinator decision 2026-11-01 15:3x: two systems must
+        /// not fight over the hero's Animator/position, so movement stays
+        /// EXACTLY where it already was — `_foot.Update` runs in full here,
+        /// identically to the JS-ported <see cref="StageOnFoot"/> below, and
+        /// this is why handedness/boarding/climb/the harness all keep
+        /// working unchanged. What the purchased pack actually replaces is
+        /// narrower: aim/shoot/cover/reload/pickups/the orbit camera (real
+        /// Unity MonoBehaviours — AimBehaviour/ShootBehaviour/CoverBehaviour/
+        /// ThirdPersonOrbitCam, ticked by the engine, not by this method) —
+        /// so FootCover/FootWeapons stay un-engaged here (nothing calls
+        /// `_foot.ToggleCover`/assigns `IsArmedProvider` under this mode;
+        /// ReadDiscreteKeys's own `!UsePurchasedShooter` gates keep it that
+        /// way) and `TickOnFootCamera` is skipped (the pack's own
+        /// ThirdPersonOrbitCam owns the camera instead).</summary>
         void StageOnFootPurchased(float dt)
         {
-            // Keep the OLD position/yaw state truthfully mirrored onto
-            // wherever the pack's own Rigidbody actually put the body this
-            // frame. Cheap and otherwise unused under this mode, but it is
-            // what keeps `game.Foot.Pos`-reading code elsewhere (several
-            // protected play-mode tests this task may not edit —
-            // FirstPlayModeRun.cs/KeysRun.cs read `game.Foot.Pos` for their
-            // own on-foot movement/turn assertions) seeing REAL movement
-            // instead of a frozen value, without this mode ever writing
-            // `Rig.Root.position` itself (that would fight the Rigidbody).
-            _foot.Pos = Rig.Root.position;
-            _foot.Yaw = _foot.CamYaw = Rig.Root.eulerAngles.y * Mathf.Deg2Rad;
+            var m = ReadFootMoveInput();
+            // CoverShootHero.Shoot.HasWeapon (TbilisiFly glue property) feeds
+            // FootController's own armed-gated terms (strafe direction, the
+            // stride/gun-reach pose blend) so the body keeps reading
+            // consistently whichever system holds the weapon.
+            _foot.Armed = Character.CoverShootHero.Instance?.Shoot != null && Character.CoverShootHero.Instance.Shoot.HasWeapon;
+            // Coordinator decision 2026-11-01 15:5x: keep OUR on-foot camera
+            // (below) instead of a second ThirdPersonOrbitCam controller, so
+            // A/D stay screen-relative through FootController's own
+            // CamYaw-driven turning. TickChaseCamera already has an aim-
+            // shoulder-offset hook (FootController.AimingProvider, read at
+            // FootController.cs:1853) that nothing in this project ever
+            // wired up before — AimBehaviour.IsAiming (TbilisiFly glue
+            // property) feeds it directly, which is the "apply that offset
+            // inside our camera" the coordinator asked for.
+            _foot.AimingProvider = () => Character.CoverShootHero.Instance?.Aim != null && Character.CoverShootHero.Instance.Aim.IsAiming;
+            ReadFootLook();
 
-            // Climb/free-run (coordinator 2026-11-01 15:20: "X starts a clip
-            // that never advances because _foot.Update is skipped"). Reads
-            // raw W/Shift/Space off the keyboard the same way ReadFootMoveInput
-            // does (pure read, no side effects, the mirrored X/StrafeX sign it
-            // also computes is simply unused by the climb trigger). While a
-            // climb owns the frame (FootController.TickClimbAndFreeRun's own
-            // Climb.Active/Clips.IsPlaying — Character/CoverShootHero.cs's
-            // Update() watches both of those to suspend the pack's Rigidbody),
-            // Pos/Yaw come from the climb, not from the Rigidbody.
-            var climbInput = ReadFootMoveInput();
-            bool climbOwnsFrame = _foot.TickClimbAndFreeRun(dt, Rig, climbInput);
-            if (climbOwnsFrame)
+            _foot.NearbyPlane = ActivePlane != null ? ActivePlane.transform : null;
+            _foot.NearbyPlaneShell = null;
+
+            _foot.Update(dt, Rig, m);
+            Rig.Root.position = _foot.Pos;
+            Rig.Root.rotation = Quaternion.Euler(0f, _foot.Yaw * Mathf.Rad2Deg, 0f);
+            TickOnFootCamera(dt);
+
+            Footsteps?.Update(dt, new Footsteps.Query
             {
-                Rig.Root.position = _foot.Pos;
-                Rig.Root.rotation = Quaternion.Euler(0f, _foot.Yaw * Mathf.Rad2Deg, 0f);
-                var rb = Rig.Root.GetComponent<Rigidbody>();
-                if (rb != null) { rb.position = Rig.Root.position; rb.rotation = Rig.Root.rotation; }
-            }
+                Pos = _foot.Pos, Speed = _foot.Speed, Grounded = _foot.Grounded,
+                Crouched = _foot.Crouched, Stroll = false, RunSpeed = _foot.RunSpeed,
+                Suppressed = false, Rig = Rig,
+            });
 
             _collisionTimer += dt;
             if (_collisionTimer > 0.15f)
             {
                 _collisionTimer = 0f;
-                UpdateZones(Rig.Root.position.x, Rig.Root.position.z);
+                UpdateZones(_foot.Pos.x, _foot.Pos.z);
             }
 
             if (ActivePlane != null)
             {
-                float d2 = Vector3.Distance(Rig.Root.position, ActivePlane.transform.position);
+                float d2 = Vector3.Distance(_foot.Pos, ActivePlane.transform.position);
                 float reach2 = Mathf.Max(BoardDist, (ActivePlane.Model?.Span ?? 12f) * 0.5f + 3f);
                 if (d2 < reach2) OnHint?.Invoke("Enter — თვითმფრინავში დაბრუნება ✈");
             }

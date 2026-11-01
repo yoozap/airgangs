@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using TbilisiFly.Character; // CoverShootInput — see that file's header
 
 // This class corresponds to the 3rd person camera features.
 public class ThirdPersonOrbitCam : MonoBehaviour
@@ -64,11 +65,11 @@ public class ThirdPersonOrbitCam : MonoBehaviour
 	{
 		// Get mouse movement to orbit the camera.
 		// Mouse:
-		angleH += Mathf.Clamp(Input.GetAxis("Mouse X"), -1, 1) * horizontalAimingSpeed;
-		angleV += Mathf.Clamp(Input.GetAxis("Mouse Y"), -1, 1) * verticalAimingSpeed;
+		angleH += Mathf.Clamp(CoverShootInput.GetAxis("Mouse X"), -1, 1) * horizontalAimingSpeed;
+		angleV += Mathf.Clamp(CoverShootInput.GetAxis("Mouse Y"), -1, 1) * verticalAimingSpeed;
 		// Joystick:
-		angleH += Mathf.Clamp(Input.GetAxis(XAxis), -1, 1) * 60 * horizontalAimingSpeed * Time.deltaTime;
-		angleV += Mathf.Clamp(Input.GetAxis(YAxis), -1, 1) * 60 * verticalAimingSpeed * Time.deltaTime;
+		angleH += Mathf.Clamp(CoverShootInput.GetAxis(XAxis), -1, 1) * 60 * horizontalAimingSpeed * Time.deltaTime;
+		angleV += Mathf.Clamp(CoverShootInput.GetAxis(YAxis), -1, 1) * 60 * verticalAimingSpeed * Time.deltaTime;
 
 		// Set vertical movement limit.
 		angleV = Mathf.Clamp(angleV, minVerticalAngle, targetMaxVerticalAngle);
@@ -145,8 +146,8 @@ public class ThirdPersonOrbitCam : MonoBehaviour
 		angleBetween = angleBetween * sign;
 
 		// Get current input movement to compensate after limit angle is reached.
-		float acc = Mathf.Clamp(Input.GetAxis("Mouse X"), -1, 1) * horizontalAimingSpeed;
-		acc += Mathf.Clamp(Input.GetAxis("Analog X"), -1, 1) * 60 * horizontalAimingSpeed * Time.deltaTime;
+		float acc = Mathf.Clamp(CoverShootInput.GetAxis("Mouse X"), -1, 1) * horizontalAimingSpeed;
+		acc += Mathf.Clamp(CoverShootInput.GetAxis("Analog X"), -1, 1) * 60 * horizontalAimingSpeed * Time.deltaTime;
 
 		// Limit left angle.
 		if (sign < 0 && angleBetween < leftRelHorizontalAngle)

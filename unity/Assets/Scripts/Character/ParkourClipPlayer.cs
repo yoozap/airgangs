@@ -6,168 +6,306 @@ using UnityEngine.Playables;
 namespace TbilisiFly.Character
 {
     /// <summary>
-    /// Plays ONE real Humanoid AnimationClip on a CharacterRig's Animator via
-    /// the Playables API, for the duration of a single acrobatic move (roll,
-    /// vault, mantle, ledge-grab, landing, ...). Built for this port because
-    /// NOTHING in this project plays an Animator clip at all before this file:
-    /// every veggie body's Animator exists only to carry the Humanoid Avatar
-    /// (CharacterRig.IsHumanoid/GetBoneTransform); the hero's run/idle/roll/
-    /// slide/climb poses are 100% procedural bone-twisting
-    /// (CharacterRig.BoneTwist/BoneSet, FootPoses, FootController's own
-    /// RollPose/SlidePose/DivePose/AirPose) — there is no AnimatorController
-    /// asset anywhere in `unity/Assets` and no prior Playables usage to
-    /// reconcile with.
+    /// THE ONE OWNER of a hero's Animator on foot (2026-11-01, user: "running,
+    /// walking, whole movement take from the assets"): a PlayableGraph that
+    /// plays the purchased Humanoid clips on CharacterRig.Anim —
     ///
-    /// ================================ WHY THIS COMPOSES FOR FREE =================
-    /// CharacterRig.BoneTwist/BoneSet/GetRec (CharacterRig.cs:650-716) capture
-    /// "Base" off `bone.localRotation` AS IT STANDS the first time they touch a
-    /// bone each frame — i.e. off whatever the ANIMATOR just wrote, clip or no
-    /// clip (`ClipQ`, CharacterRig.cs:643, is the explicit accessor for this:
-    /// "what the ANIMATOR put on this bone"). So once this class is driving a
-    /// clip through the rig's real Animator, every existing procedural pose
-    /// write (HandsOnLedge's world-locked IK, SetGrip, SettleFeet, PlantFoot)
-    /// keeps composing correctly ON TOP of the clip with ZERO changes —
-    /// FootClimb.cs's own HandsOnLedge already reads `rig.ClipQ(upper)` as its
-    /// pre-IK base, which only makes sense if a real clip can be present. The
-    /// callers that want the clip's shape to show UNCHANGED (the roll's tuck,
-    /// the climb's mantle swing) instead SKIP their own FootPoses call while
-    /// this class IsPlaying — see FootController.RollPose / FootClimb.Tick's
-    /// MantleClipActive/HangClipActive gates — rather than this class trying
-    /// to suppress them from the outside.
+    ///   layer 0  base mixer   [ loco A | loco B | move ]
+    ///   layer 1  overlay      one masked clip (aim/shoot/cover/reload) — the
+    ///                         cover-shoot integration layers its upper-body
+    ///                         clips here through <see cref="PlayOverlay"/>
+    ///                         instead of attaching its own AnimatorController.
     ///
-    /// ================================ THE GRAPH =================================
-    /// One AnimationClipPlayable connected straight to an AnimationPlayableOutput
-    /// bound to the rig's Animator (no mixer, no AnimatorController — there is
-    /// nothing to blend against inside Unity's own animation system, because
-    /// nothing else here ever occupies that slot). Unity auto-evaluates a
-    /// Playing graph bound this way between Update and LateUpdate, same slot
-    /// CharacterRig.cs's own header documents for the Animator in general, so
-    /// by the time FootController's LateUpdate-driven Update() runs, the
-    /// clip's current frame is already on the bones.
+    /// LOCOMOTION (<see cref="PlayLoco"/>): a looping clip chosen by
+    /// FootController from its speed band (parkour-idle, Cover+Shoot
+    /// walk/jog, the parkour sprint loop, strafe/sneak/crouch, fall) with a
+    /// playback rate so the feet match the body's real speed; swapping the
+    /// loop cross-fades A→B over `fade` seconds inside the mixer.
     ///
-    /// ================================ THE BLEND-IN ===============================
-    /// Unity's own evaluation is a hard sample — no fade. The blend-in is done
-    /// the same way RollState.In already does it for ActGroup (FootController.
-    /// RollPose: capture a start snapshot, Slerp toward the live target over a
-    /// short ease): <see cref="Play"/> snapshots every bone's localRotation
-    /// right before the new clip takes over, and <see cref="Tick"/> Slerps
-    /// each one from that snapshot toward whatever the Animator just sampled,
-    /// every frame, until the blend window closes.
+    /// MOVES (<see cref="Play"/>): a one-shot parkour clip (roll, vault,
+    /// mantle, wall plant, leap, landing, kipup, ...) takes the base mixer
+    /// over — its weight ramps 0→1 over `blendIn`, the loco weights scale
+    /// down by the same amount, and when the move ends its weight ramps back
+    /// so the loop underneath (or the procedural pose when nothing loops)
+    /// takes over without a snap. A move started while NO loop is playing
+    /// (an armed hero: the old procedural stance still owns the body) keeps
+    /// the earlier snapshot-and-Slerp blend-in so the first frames do not
+    /// read the bind pose.
     ///
-    /// The blend-OUT is deliberately NOT engineered here: when a clip ends
-    /// (or <see cref="Stop"/> is called), the bones are simply left exactly
-    /// where the clip left them and the graph stops being evaluated, and the
-    /// NEXT procedural writer (SwingArms/SwingBody's own springs, or another
-    /// FootPoses call) reads that as ITS base and eases from there under its
-    /// own existing spring/ease constants — the same "compose on whatever is
-    /// there" mechanism as the blend-in, already proven throughout this rig.
+    /// WHY THE PROCEDURAL LAYERS STILL COMPOSE: CharacterRig.BoneTwist/BoneSet
+    /// capture "Base" off whatever the Animator just wrote (CharacterRig.cs:650-716
+    /// GetRec/ClimbQ), so world-locked hands on a ledge, crouch, weapon reach
+    /// etc. keep writing on top of the clip. The writers that must NOT fight
+    /// a clip (the stick-limb gait, SwingArms/SwingBody, the air/roll/hang
+    /// poses) are gated by FootController while a clip owns the body.
+    ///
+    /// Nothing else occupies the Animator: there is no AnimatorController in
+    /// the project and this graph is the only Playables user. When nothing
+    /// is playing the graph is STOPPED so the Animator writes nothing and
+    /// the procedural stance owns the bones exactly as before this file.
     /// </summary>
     public sealed class ParkourClipPlayer
     {
         PlayableGraph _graph;
         AnimationPlayableOutput _output;
-        AnimationClipPlayable _clipPlayable;
+        AnimationLayerMixerPlayable _layers;
+        AnimationMixerPlayable _base;
+        AnimationClipPlayable _locoA, _locoB, _move, _overlay;
         Animator _anim;
-        bool _graphBuilt;
+        bool _built;
 
-        float _blendT, _blendDur;
-        Dictionary<Transform, Quaternion> _blendFrom;
-        bool _loop;
-        float _clipLen;
+        // locomotion
+        int _locoCur = -1;            // 0 = A, 1 = B, -1 = none
+        int _locoPrev = -1;           // the slot fading OUT (-1 = none)
+        float _locoFade = 1f, _locoFadeDur = 0.15f;
+        string _locoName;
+        float _locoRate = 1f;
+        float _locoLenA, _locoLenB;
 
-        public bool IsPlaying { get; private set; }
-        public string CurrentClip { get; private set; }
+        // move (one-shot)
+        bool _moveOn;
+        float _moveW, _moveTarget, _moveBlend = 0.1f, _moveLen;
+        bool _moveLoop;
+        string _moveName;
+        Dictionary<Transform, Quaternion> _blendFrom; float _blendT, _blendDur;
 
-        /// <summary>0..1 of the clip's own length — NaN-safe for a probe/test
-        /// that reads it before anything has ever played.</summary>
-        public float NormalizedTime => (_graphBuilt && _clipPlayable.IsValid() && _clipLen > 0f)
-            ? Mathf.Clamp01((float)(_clipPlayable.GetTime() / _clipLen)) : 0f;
+        // overlay
+        float _overlayW, _overlayTarget, _overlayFade = 0.1f;
+        string _overlayName;
+        bool _overlayLoop; float _overlayLen;
+
+        /// <summary>A MOVE clip currently owns the base (loops do not count).</summary>
+        public bool IsPlaying => _moveOn;
+        /// <summary>The move clip's name (take = file stem), null when no move.</summary>
+        public string CurrentClip => _moveOn ? _moveName : null;
+        /// <summary>The locomotion loop's clip name, null when none.</summary>
+        public string LocoClip => _locoCur >= 0 ? _locoName : null;
+        public string OverlayClip => _overlayTarget > 0f ? _overlayName : null;
+        public float LocoRate => _locoRate;
+        /// <summary>True when the graph is writing the body at all (loco, move or overlay).</summary>
+        public bool OwnsBody => _locoCur >= 0 || _moveOn || _moveW > 0.001f;
+
+        public float NormalizedTime => (_built && _move.IsValid() && _moveLen > 0f)
+            ? Mathf.Clamp01((float)(_move.GetTime() / _moveLen)) : 0f;
 
         static float Smooth01(float x) { x = Mathf.Clamp01(x); return x * x * (3f - 2f * x); }
 
-        void EnsureGraph(Animator anim)
+        void Build(Animator anim)
         {
-            if (_graphBuilt && _anim == anim) return;
-            if (_graphBuilt) _graph.Destroy();
+            if (_built && _anim == anim) return;
+            if (_built) _graph.Destroy();
             _anim = anim;
-            _graph = PlayableGraph.Create("ParkourClipPlayer");
+            anim.cullingMode = AnimatorCullingMode.AlwaysAnimate; // headless/offscreen must still evaluate
+            anim.applyRootMotion = false;                          // FootController owns the root
+            _graph = PlayableGraph.Create("HeroClips");
             _graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            _output = AnimationPlayableOutput.Create(_graph, "ParkourOutput", anim);
-            _graphBuilt = true;
+            _output = AnimationPlayableOutput.Create(_graph, "HeroOutput", anim);
+            _layers = AnimationLayerMixerPlayable.Create(_graph, 2);
+            _base = AnimationMixerPlayable.Create(_graph, 3);
+            _graph.Connect(_base, 0, _layers, 0);
+            _layers.SetInputWeight(0, 1f);
+            _layers.SetInputWeight(1, 0f);
+            _output.SetSourcePlayable(_layers);
+            _built = true;
+            _locoCur = -1; _moveOn = false; _moveW = _moveTarget = 0f; _overlayW = _overlayTarget = 0f;
         }
 
-        /// <summary>Start (or swap to) a clip. `loop` matches the few loop
-        /// cases this port actually wants (the hang's ledge-grab-braced-idle);
-        /// every one-shot move auto-stops itself via <see cref="Tick"/>.</summary>
+        AnimationClipPlayable MakeClip(AnimationClip clip)
+        {
+            var p = AnimationClipPlayable.Create(_graph, clip);
+            p.SetApplyFootIK(false);
+            p.SetApplyPlayableIK(false);
+            p.SetTime(0);
+            return p;
+        }
+
+        // ------------------------------------------------------------ locomotion
+        /// <summary>Cross-fade the looping stance clip to `clip` (no-op if it is
+        /// already the current loop; the rate is updated either way).</summary>
+        public void PlayLoco(Animator anim, AnimationClip clip, float rate = 1f, float fade = 0.15f)
+        {
+            if (anim == null || clip == null) return;
+            Build(anim);
+            if (_locoCur >= 0 && _locoName == clip.name)
+            {
+                SetRate(rate);
+                return;
+            }
+            int slot = _locoCur == 0 ? 1 : 0;
+            if (slot == 0)
+            {
+                if (_locoA.IsValid()) { _graph.Disconnect(_base, 0); _locoA.Destroy(); }
+                _locoA = MakeClip(clip); _graph.Connect(_locoA, 0, _base, 0); _locoLenA = clip.length;
+            }
+            else
+            {
+                if (_locoB.IsValid()) { _graph.Disconnect(_base, 1); _locoB.Destroy(); }
+                _locoB = MakeClip(clip); _graph.Connect(_locoB, 0, _base, 1); _locoLenB = clip.length;
+            }
+            _locoPrev = _locoCur;
+            _locoCur = slot;
+            _locoName = clip.name;
+            _locoFade = 0f; _locoFadeDur = Mathf.Max(0.0001f, fade);
+            SetRate(rate);
+            if (!_graph.IsPlaying()) _graph.Play();
+        }
+
+        void SetRate(float rate)
+        {
+            _locoRate = Mathf.Clamp(rate, 0.05f, 3f);
+            if (_locoCur == 0 && _locoA.IsValid()) _locoA.SetSpeed(_locoRate);
+            if (_locoCur == 1 && _locoB.IsValid()) _locoB.SetSpeed(_locoRate);
+        }
+
+        /// <summary>Drop the locomotion loop (the procedural stance takes the
+        /// bones back once the fade-out below completes).</summary>
+        public void StopLoco(float fade = 0.15f)
+        {
+            if (_locoCur < 0) return;
+            _locoPrev = _locoCur;
+            _locoCur = -1; _locoName = null;
+            _locoFade = 0f; _locoFadeDur = Mathf.Max(0.0001f, fade);
+        }
+
+        // ------------------------------------------------------------ moves
+        /// <summary>Start (or swap to) a one-shot move clip. `loop` is for the
+        /// few held poses (ledge-grab-braced-idle, lying-back, midair).</summary>
         public void Play(Animator anim, AnimationClip clip, bool loop, float blendIn = 0.1f)
         {
             if (anim == null || clip == null) return;
-            if (IsPlaying && CurrentClip == clip.name && _loop == loop) return; // already playing this one — don't restart/snap it
-            EnsureGraph(anim);
-
-            _blendFrom = SnapshotBones(anim.transform);
-            if (_clipPlayable.IsValid()) _clipPlayable.Destroy();
-            _clipPlayable = AnimationClipPlayable.Create(_graph, clip);
-            _clipPlayable.SetApplyFootIK(false);
-            _clipPlayable.SetApplyPlayableIK(false);
-            _clipPlayable.SetTime(0);
-            _output.SetSourcePlayable(_clipPlayable);
+            if (_moveOn && _moveName == clip.name && _moveLoop == loop) return;
+            Build(anim);
+            bool nothingUnder = _locoCur < 0 && _moveW < 0.01f;
+            _blendFrom = nothingUnder ? SnapshotBones(anim.transform) : null;
+            _blendT = 0f; _blendDur = Mathf.Max(0.0001f, blendIn);
+            if (_move.IsValid()) { _graph.Disconnect(_base, 2); _move.Destroy(); }
+            _move = MakeClip(clip);
+            _graph.Connect(_move, 0, _base, 2);
+            _moveOn = true;
+            _moveName = clip.name;
+            _moveLoop = loop;
+            _moveLen = Mathf.Max(0.0001f, clip.length);
+            _moveBlend = Mathf.Max(0.0001f, blendIn);
+            _moveTarget = 1f;
+            if (nothingUnder) _moveW = 1f; // the snapshot blend does the easing — the mixer must not mix toward the bind pose
             if (!_graph.IsPlaying()) _graph.Play();
-
-            IsPlaying = true;
-            CurrentClip = clip.name;
-            _loop = loop;
-            _clipLen = Mathf.Max(0.0001f, clip.length);
-            _blendDur = Mathf.Max(0.0001f, blendIn);
-            _blendT = 0f;
         }
 
-        /// <summary>Hand the body back to the procedural pose system — see
-        /// class header's "the blend-out is deliberately not engineered
-        /// here".</summary>
+        /// <summary>Hand the body back (the move's weight fades out; the loop
+        /// underneath or the procedural stance takes over).</summary>
         public void Stop()
         {
-            if (!IsPlaying) return;
-            IsPlaying = false;
-            if (_graphBuilt && _graph.IsValid() && _graph.IsPlaying()) _graph.Stop();
+            if (!_moveOn) return;
+            _moveOn = false;
+            _moveTarget = 0f;
+            _blendFrom = null;
         }
 
-        /// <summary>Call once a frame (FootController.Update, which this
-        /// port's own rule already requires to run from LateUpdate — after
-        /// Unity's automatic Animator/Playables evaluation for this frame, so
-        /// the blend below reads the CLIP's just-sampled pose, not last
-        /// frame's). Advances the blend-in and auto-stops a non-looping clip
-        /// at its own end.</summary>
+        // ------------------------------------------------------------ overlay
+        /// <summary>Layer a masked clip (upper body: aim, shoot, reload, cover
+        /// peek) over the base. Weight fades to `weight`; `mask` may be null
+        /// for a whole-body override.</summary>
+        public void PlayOverlay(Animator anim, AnimationClip clip, AvatarMask mask, float weight = 1f, bool loop = true, float fade = 0.1f)
+        {
+            if (anim == null || clip == null) return;
+            Build(anim);
+            if (_overlayName != clip.name || !_overlay.IsValid())
+            {
+                if (_overlay.IsValid()) { _graph.Disconnect(_layers, 1); _overlay.Destroy(); }
+                _overlay = MakeClip(clip);
+                _graph.Connect(_overlay, 0, _layers, 1);
+                _overlayName = clip.name;
+                _overlayLoop = loop; _overlayLen = Mathf.Max(0.0001f, clip.length);
+            }
+            if (mask != null) _layers.SetLayerMaskFromAvatarMask(1, mask);
+            _layers.SetLayerAdditive(1, false);
+            _overlayTarget = Mathf.Clamp01(weight);
+            _overlayFade = Mathf.Max(0.0001f, fade);
+            if (!_graph.IsPlaying()) _graph.Play();
+        }
+
+        public void StopOverlay(float fade = 0.1f)
+        {
+            _overlayTarget = 0f; _overlayFade = Mathf.Max(0.0001f, fade);
+        }
+
+        /// <summary>Everything off at once (teleports, boarding, death).</summary>
+        public void StopAll()
+        {
+            Stop(); StopLoco(0.05f); StopOverlay(0.05f);
+        }
+
+        // ------------------------------------------------------------ per frame
+        /// <summary>Once a frame from FootController.Update (LateUpdate, after
+        /// the Animator evaluated): advance fades, wrap loops, auto-stop a
+        /// finished one-shot, and stop the graph when nothing plays.</summary>
         public void Tick(float dt)
         {
-            if (!IsPlaying || !_graphBuilt) return;
+            if (!_built) return;
 
+            // loco cross-fade
+            if (_locoFade < 1f) _locoFade = Mathf.Min(1f, _locoFade + dt / _locoFadeDur);
+            float k = Smooth01(_locoFade);
+            float wA = 0f, wB = 0f;
+            if (_locoCur == 0) wA = k; else if (_locoCur == 1) wB = k;
+            if (_locoPrev == 0 && _locoA.IsValid()) wA += 1f - k; else if (_locoPrev == 1 && _locoB.IsValid()) wB += 1f - k;
+            if (k >= 1f) _locoPrev = -1;
+
+            // move weight ramp
+            if (_moveTarget > _moveW) _moveW = Mathf.Min(_moveTarget, _moveW + dt / _moveBlend);
+            else if (_moveTarget < _moveW) _moveW = Mathf.Max(_moveTarget, _moveW - dt / Mathf.Max(0.05f, _moveBlend));
+            float mw = Smooth01(_moveW);
+            bool locoAlive = (wA + wB) > 0.001f;
+            // with a loop underneath the move takes its share; without one the
+            // move is the only thing writing (weight 1 the whole time — the
+            // bone snapshot below does the easing, never the mixer).
+            float lw = locoAlive ? (1f - mw) : 0f;
+            _base.SetInputWeight(0, wA * lw);
+            _base.SetInputWeight(1, wB * lw);
+            _base.SetInputWeight(2, locoAlive ? mw : (_moveOn || _moveW > 0.001f ? 1f : 0f));
+
+            // overlay fade
+            if (_overlayTarget > _overlayW) _overlayW = Mathf.Min(_overlayTarget, _overlayW + dt / _overlayFade);
+            else if (_overlayTarget < _overlayW) _overlayW = Mathf.Max(_overlayTarget, _overlayW - dt / _overlayFade);
+            _layers.SetInputWeight(1, Smooth01(_overlayW));
+
+            // loops: wrap by hand (a clip imported without loopTime just stops)
+            Wrap(ref _locoA, _locoLenA); Wrap(ref _locoB, _locoLenB);
+            if (_moveOn && _moveLoop) Wrap(ref _move, _moveLen);
+            if (_overlayLoop && _overlay.IsValid()) Wrap(ref _overlay, _overlayLen);
+
+            // snapshot blend-in for a move started over nothing
             if (_blendFrom != null)
             {
                 _blendT += dt;
-                float k = Smooth01(Mathf.Clamp01(_blendT / _blendDur));
+                float kb = Smooth01(Mathf.Clamp01(_blendT / _blendDur));
                 foreach (var kv in _blendFrom)
-                {
-                    if (kv.Key == null) continue;
-                    kv.Key.localRotation = Quaternion.Slerp(kv.Value, kv.Key.localRotation, k);
-                }
-                if (k >= 1f) _blendFrom = null;
+                    if (kv.Key != null) kv.Key.localRotation = Quaternion.Slerp(kv.Value, kv.Key.localRotation, kb);
+                if (kb >= 1f) _blendFrom = null;
             }
 
-            if (!_loop && _clipPlayable.IsValid())
-            {
-                double t = _clipPlayable.GetTime();
-                if (t >= _clipLen - 1.0 / 30.0) Stop(); // one frame's grace at 30fps-equivalent
-            }
+            // one-shot auto-stop
+            if (_moveOn && !_moveLoop && _move.IsValid() && _move.GetTime() >= _moveLen - 1.0 / 30.0) Stop();
+
+            bool anything = _locoCur >= 0 || locoAlive || _moveOn || _moveW > 0.001f || _overlayW > 0.001f || _overlayTarget > 0f;
+            if (!anything && _graph.IsPlaying()) _graph.Stop();
+            else if (anything && !_graph.IsPlaying()) _graph.Play();
+        }
+
+        static void Wrap(ref AnimationClipPlayable p, float len)
+        {
+            if (!p.IsValid() || len <= 0f) return;
+            double t = p.GetTime();
+            if (t >= len) p.SetTime(t % len);
         }
 
         /// <summary>Full teardown — GameLoop.OnDestroy's own PlayableGraph
         /// hygiene (a graph is a native handle, not GC-collected).</summary>
         public void Destroy()
         {
-            if (_graphBuilt && _graph.IsValid()) _graph.Destroy();
-            _graphBuilt = false;
-            IsPlaying = false;
+            if (_built && _graph.IsValid()) _graph.Destroy();
+            _built = false;
+            _moveOn = false; _locoCur = -1; _locoPrev = -1;
         }
 
         static Dictionary<Transform, Quaternion> SnapshotBones(Transform modelRoot)
