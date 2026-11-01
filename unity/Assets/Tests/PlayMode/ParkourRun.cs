@@ -474,6 +474,10 @@ namespace TbilisiFly.PlayModeTests
             ClearProps();
             Box("wall", origin + dir * 5f + Vector3.up * 2.5f, new Vector3(8f, 5f, 2f)).transform.rotation = Quaternion.LookRotation(dir);
             yield return Teleport(origin, dir);
+            {
+                var pw = ParkourMoves.Probe(origin + dir * 3.0f, dir);
+                Debug.Log($"PLAYMODE PARKOUR_WALLPROBE hit={pw.Hit.ToString().ToLowerInvariant()} dist={pw.Dist:0.##} height={pw.Height:0.##} depth={pw.Depth:0.##} wall={pw.Wall.ToString().ToLowerInvariant()} name={pw.HitName} layer={pw.HitLayer} ignoreRoot={(ParkourMoves.IgnoreRoot != null ? ParkourMoves.IgnoreRoot.name : "null")} armed={foot.Armed.ToString().ToLowerInvariant()} purchased={GameLoop.UsePurchasedShooter.ToString().ToLowerInvariant()}");
+            }
             p0 = foot.Pos; bones = 0f;
             yield return HoldUntilMove("wall-plant", 8f, "wallPlant", d => bones = d, Key.W, Key.LeftShift);
             string wp = foot.LastMove, wpc = foot.LastMoveClip;

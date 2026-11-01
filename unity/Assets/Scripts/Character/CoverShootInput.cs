@@ -31,6 +31,23 @@ namespace TbilisiFly.Character
     /// </summary>
     public static class CoverShootInput
     {
+        // Alt-toggles-aim latch (2026-11-01, coordinator): the JS build's
+        // own semantics is "Alt TOGGLES aim when armed" (game.js:508-513,
+        // kept alive in Tests/PlayMode/KeysRun.cs's key_Alt_armedToggles),
+        // but AimBehaviour.cs's own Update() drives `aim` purely off
+        // CS_Aim being HELD (RMB) — there is no toggle concept inside the
+        // pack at all. Rather than teach AimBehaviour a second input model,
+        // this latch makes CS_Aim read "held" independently of the mouse
+        // once Alt has toggled it on, so a tap behaves exactly like holding
+        // RMB from AimBehaviour's point of view (same mechanism, same
+        // ToggleAimOn/Off coroutines) — "route Alt to the pack's aim... same
+        // as holding RMB", per the coordinator's own wording. Toggled from
+        // Core/GameLoop.cs's key dispatch, gated there on _foot.Armed the
+        // same way the old HeldWeapon-path Alt binding was.
+        static bool _aimLatch;
+        public static void ToggleAimLatch() => _aimLatch = !_aimLatch;
+        public static void ClearAimLatch() => _aimLatch = false;
+
         public static float GetAxis(string name) => GetAxisRaw(name);
 
         public static float GetAxisRaw(string name)
@@ -92,7 +109,7 @@ namespace TbilisiFly.Character
             {
                 case "Jump": return kb != null && kb.spaceKey.isPressed;
                 case "CS_Sprint": return kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
-                case "CS_Aim": return ms != null && ms.rightButton.isPressed;
+                case "CS_Aim": return (ms != null && ms.rightButton.isPressed) || _aimLatch;
                 case "CS_AimShoulder": return ms != null && ms.middleButton.isPressed;
                 case "Fire1": return (ms != null && ms.leftButton.isPressed) || (kb != null && kb.leftCtrlKey.isPressed);
                 case "Fire2": return (ms != null && ms.rightButton.isPressed) || (kb != null && kb.leftAltKey.isPressed);

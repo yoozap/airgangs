@@ -36,6 +36,13 @@ public class InteractiveWeapon : MonoBehaviour
 	[SerializeField]
 	private int mag, totalBullets;                            // Current mag capacity and total amount of bullets being carried.
 	private int fullMag, maxBullets;                          // Default mag capacity and total bullets for reset purposes.
+	// Read-only, for Tests/PlayMode/FirstPlayModeRun.cs's purchased-path
+	// key_R check (2026-11-01) — mag/totalBullets have no public accessor
+	// otherwise, and WeaponUIManager.OnAmmoChanged is an event, not state
+	// a test can poll on demand after the fact.
+	public int Mag => mag;
+	public int TotalBullets => totalBullets;
+	public int FullMag => fullMag;
 	private GameObject player, gameController;                // References to the player and the game controller.
 	private ShootBehaviour playerInventory;                   // Player's inventory to store weapons.
 	private SphereCollider interactiveRadius;                 // In-game radius of interaction with player.

@@ -154,6 +154,24 @@ namespace TbilisiFly.PlayModeTests
             InputSystem.QueueStateEvent(_mouse, st);
         }
 
+        // Left+right mouse buttons without a delta (2026-11-01, purchased-path
+        // key_R test): AimBehaviour.cs reads RMB as "aim held" and
+        // ShootBehaviour.cs reads LMB as "fire" (Tests/PlayMode/
+        // CoverShootRun.cs's own PressMouse/HoldMouse do the same thing under
+        // a different name) — needed here to deplete the pack's real
+        // magazine by firing for real, rather than poking a private field.
+        void PressMouseLR(bool left, bool right)
+        {
+            var st = new MouseState { position = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f) };
+            if (left) st = st.WithButton(UnityEngine.InputSystem.LowLevel.MouseButton.Left, true);
+            if (right) st = st.WithButton(UnityEngine.InputSystem.LowLevel.MouseButton.Right, true);
+            InputSystem.QueueStateEvent(_mouse, st);
+        }
+        IEnumerator HoldMouseLR(int frames, bool left, bool right)
+        {
+            for (int i = 0; i < frames; i++) { PressMouseLR(left, right); yield return Idle(1); }
+        }
+
         /// <summary>Pull a `key=value` number out of one PlaneGroundRoll.Diag
         /// line (the taxi trace printed as PLAYMODE GROUNDROLL). float.NaN when
         /// the key is absent or unparseable, so a caller can skip the frame
@@ -1114,6 +1132,97 @@ namespace TbilisiFly.PlayModeTests
                 }
 
                 // ---- R: reload the magazine BY HAND (game.js:521-524)
+                // UsePurchasedShooter (2026-11-01, coordinator): HeldWeapon.Tick
+                // early-returns under the flag, so held.Gun.Ammo/Reloading can
+                // never move again regardless of what R does (the exact FAIL:
+                // "ammo 5 -> 5 of 8" — nothing changed). R under the flag is the
+                // PACK's own reload (ShootBehaviour.cs's Update() polls
+                // CoverShootInput.GetButtonUp("CS_Reload") completely on its
+                // own every frame, independent of GameLoop's key dispatch —
+                // see that file's own comment at the R binding above), so this
+                // branch arms through the pack's pickup flow, depletes the
+                // real magazine by actually firing (aim+LMB, same mechanism
+                // Tests/PlayMode/CoverShootRun.cs already proved), and reads
+                // InteractiveWeapon.Mag/TotalBullets/FullMag — ShootBehaviour's
+                // own IsReloading is the 1.6 s timer this session added
+                // (Core/CoverShootHero.cs's whole purchased-path wiring).
+                if (GameLoop.UsePurchasedShooter)
+                {
+                    // CoverShootInput._aimLatch is a static field that can
+                    // carry a stray toggle in from Tests/PlayMode/KeysRun.cs's
+                    // own Alt test running earlier in the same chain/domain
+                    // (found 2026-11-01 chasing an intermittent key_Alt
+                    // failure there) — clear it before relying on RMB-held
+                    // aim here too.
+                    TbilisiFly.Character.CoverShootInput.ClearAimLatch();
+                    var hero = CoverShootHero.Instance;
+                    var shootB = hero?.Shoot;
+                    var aimB = hero?.Aim;
+                    FactB("KEY_R_PACK_SHOOT_FOUND", shootB != null && aimB != null);
+                    if (shootB == null || aimB == null) Check("key_R", false, "no CoverShootHero.Shoot/Aim under the purchased path");
+                    else
+                    {
+                        if (!shootB.HasWeapon)
+                        {
+                            var pistolGo = GameObject.Find("pistol");
+                            FactB("KEY_R_PISTOL_FOUND", pistolGo != null);
+                            if (pistolGo != null)
+                            {
+                                game.Foot.Pos = pistolGo.transform.position + (game.Foot.Pos - pistolGo.transform.position).normalized * 0.6f;
+                                yield return Idle(15);
+                                yield return Tap(Key.F);
+                                yield return Idle(10);
+                            }
+                        }
+                        FactB("KEY_R_PACK_ARMED", shootB.HasWeapon);
+                        var pistolWeapon = GameObject.Find("pistol")?.GetComponent<InteractiveWeapon>();
+                        if (!shootB.HasWeapon || pistolWeapon == null)
+                            Check("key_R", false, "ShootBehaviour never armed with the \"pistol\" pickup (purchased path)");
+                        else
+                        {
+                            int mag = pistolWeapon.FullMag;
+                            Fact("KEY_R_MAG_SIZE", mag);
+                            Fact("KEY_R_AMMO_FULL", (float)pistolWeapon.Mag);
+
+                            // Deplete the magazine for real: aim (RMB) then fire
+                            // (LMB) a few times — ShootWeapon's own gate is
+                            // `!isAiming || isAimBlocked || _reloading`, same
+                            // sequence CoverShootRun.cs's dmg_hp_drops proved.
+                            yield return HoldMouseLR(20, false, true);
+                            yield return Idle(5);
+                            FactB("KEY_R_AIMING_BEFORE_SHOTS", aimB.IsAiming);
+                            for (int i = 0; i < 10 && pistolWeapon.Mag >= mag; i++)
+                            {
+                                yield return HoldMouseLR(3, true, true);
+                                yield return Idle(3);
+                            }
+                            PressMouseLR(false, false);
+                            yield return Idle(5);
+                            Fact("KEY_R_AMMO_AFTER_SHOTS", (float)pistolWeapon.Mag);
+                            float ammoSpent = pistolWeapon.Mag;
+
+                            int rEdges = _spy.AnyEdges;
+                            FactB("KEY_R_FOOT_ARMED", game.Foot.Armed);
+                            yield return Tap(Key.R);
+                            yield return Idle(2);
+                            Fact("KEYEDGE_R_EDGES", _spy.AnyEdges - rEdges);
+                            Check("keyEdge_R", _spy.AnyEdges > rEdges, "no R edge reached the game");
+                            bool reloadingNow = shootB.IsReloading;
+                            FactB("KEY_R_RELOADING", reloadingNow);
+                            // the pack's own reload timer (ShootBehaviour.cs's
+                            // _reloadTimer) is 1.6 s — give it real headroom.
+                            for (int i = 0; i < 180 && shootB.IsReloading; i++) yield return Idle(1);
+                            Fact("KEY_R_AMMO_AFTER_RELOAD", (float)pistolWeapon.Mag);
+                            Check("key_R", reloadingNow && mag > 0 && ammoSpent < mag && pistolWeapon.Mag == mag,
+                                $"ammo {ammoSpent} -> {pistolWeapon.Mag} of {mag}, reloading={reloadingNow} (purchased path)");
+
+                            // leave the rig as found
+                            PressMouseLR(false, false);
+                            yield return Idle(3);
+                        }
+                    }
+                }
+                else
                 {
                     var held = game.CombatSystems.OfType<HeldWeapon>().FirstOrDefault();
                     FactB("KEY_R_HELDWEAPON_FOUND", held != null);
@@ -1237,13 +1346,31 @@ namespace TbilisiFly.PlayModeTests
             var panelRoot = doc != null ? doc.rootVisualElement : null;
             var heldWeapon = game.CombatSystems.OfType<HeldWeapon>().FirstOrDefault();
             FactB("PICKUP_HELDWEAPON_LIVE", heldWeapon != null);
-            var pickupUi = heldWeapon?.PickupUi;
-            FactB("PICKUP_UI_FIELD_SET", pickupUi != null);
-            FactB("PICKUP_UI_IN_PANEL", pickupUi != null && pickupUi.panel != null);
-            Fact("PICKUP_UI_PARENT", pickupUi?.parent == null ? "<none>" : (pickupUi.parent == panelRoot ? "gameUiRoot" : pickupUi.parent.name));
-            Check("pickupUiInstalled", pickupUi != null && pickupUi.panel != null && pickupUi.parent != null,
-                  pickupUi == null ? "HeldWeapon.EnsurePickupUi never built the view"
-                                   : "the take-card stack exists but is not in a live panel");
+            // UsePurchasedShooter (2026-11-01, coordinator): HeldWeapon.Tick
+            // early-returns under the flag, so EnsurePickupUi (called from
+            // inside Tick) never runs and PickupUi stays null forever — not
+            // a bug, the pack's own pickup flow + Georgian ammo HUD
+            // (UI/Hud/CoverShootAmmoView.cs) is the real installed view now.
+            if (GameLoop.UsePurchasedShooter)
+            {
+                var ammoView = TbilisiFly.UI.Hud.CoverShootAmmoView.Instance;
+                FactB("PICKUP_UI_FIELD_SET", ammoView != null);
+                FactB("PICKUP_UI_IN_PANEL", ammoView != null && ammoView.panel != null);
+                Fact("PICKUP_UI_PARENT", ammoView?.parent == null ? "<none>" : (ammoView.parent == panelRoot ? "gameUiRoot" : ammoView.parent.name));
+                Check("pickupUiInstalled", ammoView != null && ammoView.panel != null && ammoView.parent != null,
+                      ammoView == null ? "UI/Hud/CoverShootAmmoView.EnsureInstalled never built the view (purchased path)"
+                                       : "the Georgian ammo HUD exists but is not in a live panel");
+            }
+            else
+            {
+                var pickupUi = heldWeapon?.PickupUi;
+                FactB("PICKUP_UI_FIELD_SET", pickupUi != null);
+                FactB("PICKUP_UI_IN_PANEL", pickupUi != null && pickupUi.panel != null);
+                Fact("PICKUP_UI_PARENT", pickupUi?.parent == null ? "<none>" : (pickupUi.parent == panelRoot ? "gameUiRoot" : pickupUi.parent.name));
+                Check("pickupUiInstalled", pickupUi != null && pickupUi.panel != null && pickupUi.parent != null,
+                      pickupUi == null ? "HeldWeapon.EnsurePickupUi never built the view"
+                                       : "the take-card stack exists but is not in a live panel");
+            }
             var reticleUi = heldWeapon?.ReticleUi;
             FactB("RETICLE_UI_IN_PANEL", reticleUi != null && reticleUi.panel != null);
 

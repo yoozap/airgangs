@@ -992,6 +992,7 @@ namespace TbilisiFly.Character
             // Update() runs (this port's own rule: Update() is called from
             // LateUpdate, after the Animator). See ParkourClipPlayer.Tick.
             Clips.Tick(dt);
+            ParkourMoves.IgnoreRoot = rig?.Root; // the hero's own colliders never count as obstacles
             if (TickOwnedFrame(dt, rig, ref m)) return;
 
             // src/foot.js:4746-4779 `_planeTargets()` — resolved ONCE per

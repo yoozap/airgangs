@@ -20,6 +20,11 @@ namespace TbilisiFly.UI.Hud
     public sealed class CoverShootAmmoView : VisualElement
     {
         static CoverShootAmmoView _instance;
+        // FirstPlayModeRun.cs's pickupUiInstalled check (purchased-path
+        // branch, 2026-11-01): this is the pack's own HUD surface, the thing
+        // that check now verifies exists in a live panel when
+        // UsePurchasedShooter is on, in place of HeldWeapon's PickupUi.
+        public static CoverShootAmmoView Instance => _instance;
 
         readonly Label _label;
         bool _armed;
@@ -27,7 +32,18 @@ namespace TbilisiFly.UI.Hud
 
         public static void EnsureInstalled()
         {
-            if (_instance != null) return;
+            // NOT just "already have an instance" (2026-11-01): the PlayMode
+            // test chain runs several fixtures in one domain, each rebooting
+            // its own scene/UIDocument — the FIRST fixture's panel gets torn
+            // down along with its scene, which detaches `_instance` from any
+            // panel (`.panel` goes null) but does not null out the static
+            // field itself, so every later fixture's EnsureInstalled() here
+            // returned early with a dead, parentless view (confirmed: the
+            // purchased-path pickupUiInstalled check read "the Georgian ammo
+            // HUD exists but is not in a live panel" — same bug shape as
+            // Character/CoverShootPickups.cs's own static-bool guard). Only
+            // skip when the existing instance is genuinely still attached.
+            if (_instance != null && _instance.panel != null) return;
             var panel = UiBootstrap.GameUiRoot();
             if (panel == null) return; // retried next spawn — CombatWorldAdapter.InstallUi() may not have run yet
             _instance = new CoverShootAmmoView();

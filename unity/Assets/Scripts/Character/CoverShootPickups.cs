@@ -18,12 +18,21 @@ namespace TbilisiFly.Character
     /// </summary>
     public static class CoverShootPickups
     {
-        static bool _spawned;
-
         public static void EnsureSpawned(Core.GameLoop game, CharacterRig rig)
         {
-            if (_spawned) return;
-            _spawned = true;
+            // NOT a one-shot static bool any more (2026-11-01): the PlayMode
+            // test chain runs several test fixtures in the SAME domain
+            // without a domain reload between them, and each one reboots
+            // its own fresh scene/hero — a static "already spawned" flag
+            // stayed true forever after the FIRST fixture's scene (and its
+            // "pistol" GameObject) was torn down, so every later fixture's
+            // CoverShootHero.Attach() call here silently did nothing
+            // (confirmed: Tests/PlayMode/FirstPlayModeRun.cs's and
+            // KeysRun.cs's purchased-path key_R/key_Alt_armedToggles checks
+            // both read KEY_R_PISTOL_FOUND=false / "ShootBehaviour never
+            // armed" despite the FIRST fixture's own pickup spawn having
+            // logged ok=true). Check for the real, live GameObject instead.
+            if (GameObject.Find("pistol") != null) return;
 
             Vector3 origin = rig.Root.position;
             Vector3 fwd = rig.Root.forward;

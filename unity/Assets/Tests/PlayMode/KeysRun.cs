@@ -314,27 +314,106 @@ namespace TbilisiFly.PlayModeTests
                     $"Aiming {aimBefore}->{aimAfterBareAlt} — Alt toggled aim with no weapon drawn (the bug GameLoop.cs:2636 had before this fix)");
 
                 // ---- armed: Alt DOES toggle, same as the R-key test's own rig ----
-                var def = TbilisiFly.Combat.WeaponDefs.ById_("makarov");
-                var gunObj = new GameObject("keysrun_makarov").transform;
-                gunObj.position = _game.Foot.Pos;
-                held.SetCarried(def.Slot, def, gunObj);
-                held.Select(def.Slot);
-                yield return Idle(3);
-                Check(fails, "onfoot_armedForAltTest", held.Armed, "HeldWeapon.Armed stayed false after SetCarried+Select");
+                // UsePurchasedShooter (2026-11-01, coordinator): HeldWeapon.Tick
+                // early-returns under the flag (Core/HeldWeapon.cs's own class
+                // header), so held.Gun.Aiming can never move again no matter
+                // what Alt does — that is the exact FAIL this branch fixes.
+                // Arm through the pack's own pickup flow instead (same
+                // "pistol" spawned by Character/CoverShootPickups.cs, same
+                // teleport-and-press-F technique Tests/PlayMode/
+                // CoverShootRun.cs already proved) and read
+                // AimBehaviour.IsAiming directly.
+                if (GameLoop.UsePurchasedShooter)
+                {
+                    var hero = CoverShootHero.Instance;
+                    var shootB = hero?.Shoot;
+                    var aimB = hero?.Aim;
+                    Check(fails, "onfoot_armedForAltTest", shootB != null && aimB != null,
+                        "no CoverShootHero.Shoot/Aim under the purchased path");
+                    if (shootB != null && aimB != null)
+                    {
+                        if (!shootB.HasWeapon)
+                        {
+                            var pistolGo = GameObject.Find("pistol");
+                            if (pistolGo != null)
+                            {
+                                _game.Foot.Pos = pistolGo.transform.position
+                                    + (_game.Foot.Pos - pistolGo.transform.position).normalized * 0.6f;
+                                yield return Idle(15);
+                                yield return Tap(Key.F);
+                                yield return Idle(10);
+                            }
+                        }
+                        Check(fails, "onfoot_armedForAltTest_weapon", shootB.HasWeapon,
+                            "ShootBehaviour never armed with the \"pistol\" pickup");
 
-                bool aimBefore2 = held.Gun.Aiming;
-                yield return Tap(Key.LeftAlt);
-                yield return Idle(3);
-                bool aimAfterArmedAlt = held.Gun.Aiming;
-                Keys("Alt", "onFoot(armed)", $"aiming {aimBefore2}->{aimAfterArmedAlt}", aimAfterArmedAlt != aimBefore2);
-                Check(fails, "key_Alt_armedToggles", aimAfterArmedAlt != aimBefore2,
-                    $"Aiming stayed {aimBefore2} after Alt with a weapon drawn — game.js:508-513's toggle never reached Shooting.Aiming");
+                        // Reset to a KNOWN baseline before measuring (2026-11-01):
+                        // _aimLatch is a static field (Character/CoverShootInput.cs),
+                        // so it can carry a stray toggle in from an earlier test
+                        // fixture in the same chain — e.g. if this hero inherited
+                        // an "armed" state before the bare-handed sub-test above,
+                        // _foot.Armed could have been true there too, letting that
+                        // tap flip the latch once already (the bare-handed check
+                        // can't see this: it only reads the OLD held.Gun.Aiming
+                        // field, which the purchased latch never touches). Clear
+                        // it explicitly rather than assume a fresh false.
+                        TbilisiFly.Character.CoverShootInput.ClearAimLatch();
+                        // Clearing the latch makes CS_Aim read 0 (unless RMB is
+                        // physically down, which it isn't here) — give
+                        // AimBehaviour.cs's own ToggleAimOff() coroutine real
+                        // frames to settle `aim` back to false before trusting
+                        // IsAiming as the baseline.
+                        yield return Idle(10);
+                        bool aimBefore2 = aimB.IsAiming;
+                        yield return Tap(Key.LeftAlt);
+                        // Poll instead of a fixed short wait (2026-11-01):
+                        // AimBehaviour.cs's ToggleAimOn() coroutine waits a
+                        // REAL 0.05 s (WaitForSeconds, not frame-counted)
+                        // before setting `aim = true`. A fixed Idle(5) covered
+                        // that comfortably running KeysRun alone, but under
+                        // the full gate chain (FirstPlayModeRun running first
+                        // in the same batch) the same 5 frames measurably
+                        // undershot 0.05 real seconds (confirmed via an
+                        // aimdiag trace: axis=1, aim stayed False for 11
+                        // straight Update() calls, only flipping true several
+                        // frames AFTER this check had already read it as
+                        // false) — a real timing-margin bug, not a logic one.
+                        for (int i = 0; i < 90 && aimB.IsAiming == aimBefore2; i++) yield return Idle(1);
+                        bool aimAfterArmedAlt = aimB.IsAiming;
+                        Keys("Alt", "onFoot(armed,purchased)", $"aiming {aimBefore2}->{aimAfterArmedAlt}", aimAfterArmedAlt != aimBefore2);
+                        Check(fails, "key_Alt_armedToggles", aimAfterArmedAlt != aimBefore2,
+                            $"Aiming stayed {aimBefore2} after Alt with a weapon drawn (purchased path, AimBehaviour.IsAiming) — GameLoop's Alt handler never reached CoverShootInput's aim latch");
 
-                // leave the rig as found
-                yield return Tap(Key.LeftAlt); yield return Idle(2); // toggle back off if it ended on
-                held.Select(0);
-                yield return Idle(2);
-                UnityEngine.Object.Destroy(gunObj.gameObject);
+                        // leave the rig as found, and leave _aimLatch clean for
+                        // whichever test fixture runs next in this same chain.
+                        TbilisiFly.Character.CoverShootInput.ClearAimLatch();
+                        yield return Idle(5);
+                    }
+                }
+                else
+                {
+                    var def = TbilisiFly.Combat.WeaponDefs.ById_("makarov");
+                    var gunObj = new GameObject("keysrun_makarov").transform;
+                    gunObj.position = _game.Foot.Pos;
+                    held.SetCarried(def.Slot, def, gunObj);
+                    held.Select(def.Slot);
+                    yield return Idle(3);
+                    Check(fails, "onfoot_armedForAltTest", held.Armed, "HeldWeapon.Armed stayed false after SetCarried+Select");
+
+                    bool aimBefore2 = held.Gun.Aiming;
+                    yield return Tap(Key.LeftAlt);
+                    yield return Idle(3);
+                    bool aimAfterArmedAlt = held.Gun.Aiming;
+                    Keys("Alt", "onFoot(armed)", $"aiming {aimBefore2}->{aimAfterArmedAlt}", aimAfterArmedAlt != aimBefore2);
+                    Check(fails, "key_Alt_armedToggles", aimAfterArmedAlt != aimBefore2,
+                        $"Aiming stayed {aimBefore2} after Alt with a weapon drawn — game.js:508-513's toggle never reached Shooting.Aiming");
+
+                    // leave the rig as found
+                    yield return Tap(Key.LeftAlt); yield return Idle(2); // toggle back off if it ended on
+                    held.Select(0);
+                    yield return Idle(2);
+                    UnityEngine.Object.Destroy(gunObj.gameObject);
+                }
             }
 
             // ---- (2a) Ctrl — walk pace, game.js:4740 ---------------------------

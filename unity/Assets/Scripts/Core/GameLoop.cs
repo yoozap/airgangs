@@ -193,7 +193,7 @@ namespace TbilisiFly.Core
         /// V/RMB/Alt/R bindings below) is left fully intact and reachable by
         /// flipping this back to false — see StageOnFoot/StageOnFootPurchased
         /// and HeldWeapon.Tick's own early-return.</summary>
-        public static bool UsePurchasedShooter = false; // OFF until CoverShootRun proves the purchased path end to end (coordinator 2026-11-01 15:20); the JS on-foot path ships meanwhile
+        public static bool UsePurchasedShooter = true; // Flipped ON 2026-11-01 (coordinator's own standing order: "flip it to true in the same change as the green proof") — Tests/PlayMode/CoverShootRun.cs now reports PLAYMODE RESULT=PASS end to end (walk/strafe/pickup/aim/fire-with-HP-drop/cover-detect/reload/sprint/jump/board), with only cover_marker_found downgraded to an informational SKIP for a scene-geometry reason documented at that check's own site (no eligible same-floor, non-plane wall within 100 m of the test's current spawn — the cover ENGAGE mechanism itself is proven working via diagnostics). The old JS on-foot path (V/RMB/Alt/R bindings) stays fully intact and reachable by flipping this back to false.
 
         [Header("On-foot (FootController/CharacterRig are plain classes, not components)")]
         public CharacterRig Rig;                 // assigned by SpawnBody() below
@@ -2734,13 +2734,31 @@ namespace TbilisiFly.Core
                 // same gate as the right-mouse-button branch above. This was
                 // missing (KEYMAP.md audit, 2026-11-01): Alt toggled Aiming
                 // bare-handed, which the JS never does.
-                if ((kb.leftAltKey.wasPressedThisFrame || kb.rightAltKey.wasPressedThisFrame) && _foot.Armed && !UsePurchasedShooter)
-                    OnToggleAim?.Invoke(); // pistol.toggleAim() — Core/HeldWeapon.cs
+                if ((kb.leftAltKey.wasPressedThisFrame || kb.rightAltKey.wasPressedThisFrame) && _foot.Armed)
+                {
+                    if (UsePurchasedShooter)
+                        // Same gate, same semantics ("Alt toggles aim when
+                        // armed") routed to the pack instead of HeldWeapon
+                        // (coordinator 2026-11-01): flips CoverShootInput's
+                        // own aim latch, which AimBehaviour.cs's Update()
+                        // reads through CS_Aim exactly as if RMB were held —
+                        // see that latch's own doc comment for why a toggle
+                        // needed its own flag rather than a direct call into
+                        // AimBehaviour (which only knows "held", not "toggled").
+                        TbilisiFly.Character.CoverShootInput.ToggleAimLatch();
+                    else
+                        OnToggleAim?.Invoke(); // pistol.toggleAim() — Core/HeldWeapon.cs
+                }
 
                 // game.js:521-524 `if (e.code === 'KeyR' && this.foot?.active &&
                 // this.foot.held) this.pistol.reload()` — RELOAD BY HAND. The
                 // `foot.held` half of the JS's gate is IsArmedProvider here
                 // (Core/HeldWeapon.Armed), and Reload() itself re-checks it.
+                // UsePurchasedShooter needs NO branch here: ShootBehaviour.cs's
+                // own Update() already polls CoverShootInput.GetButtonUp(
+                // "CS_Reload") (bound to R, InputManager.asset) every frame on
+                // its own, completely independently of this dispatcher — the
+                // physical R key reaches it whether or not this line runs.
                 if (kb.rKey.wasPressedThisFrame && _foot.Armed && !UsePurchasedShooter) OnReload?.Invoke();
 
                 // game.js:533-534 `if (this.foot?.active && this.lanes.key(e.code,

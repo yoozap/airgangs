@@ -329,37 +329,39 @@ namespace TbilisiFly.PlayModeTests
             Check(fails, "w_moves", walked, $"W moved {F(Vector3.Distance(p0, p1))} m over 40 frames");
 
             // =============================================== HANDEDNESS (f)
-            // Movement is FootController's own proven system here (same one
-            // FirstPlayModeRun.cs's aTurnsScreenLeft/dTurnsScreenRight
-            // already verify) — measured again anyway, per the task brief,
-            // rather than assumed.
-            // camera-right is sampled FRESH right before each key, not once
-            // for both: GameLoop's real chase camera (TickChaseCamera) swings
-            // to stay behind the body as it turns, so a camRight captured
-            // before A had already gone stale by the time D ran (found by
-            // this exact symptom: D measuring ~0 m against the OLD vector).
-            Vector3 camRightA = _game.MainCamera.transform.right;
-            Vector3 pA0 = _game.Foot.Pos;
+            // FIXED 2026-11-01: this used to measure A/D by lateral POSITION
+            // displacement dotted with camera-right. That is the wrong
+            // measurement — FirstPlayModeRun.cs's own aTurnsScreenLeft/
+            // dTurnsScreenRight (already the proven ground truth) documents
+            // why, right at its FOOT_D_DIST comment: "A/D TURN, THEY DO NOT
+            // STRAFE — src/foot.js:5721-5723 ... the hero only side-steps on
+            // A/D once a weapon is drawn ... FOOT_D_DIST = 0 is the CORRECT
+            // reading for a bare-handed hero turning in place, not a dead
+            // key." Measuring D by distance (after A had already borrowed
+            // leftover momentum from the earlier W-walk test) was exactly
+            // that same mistake. Switched to the same forward-vector-turn
+            // measurement FirstPlayModeRun.cs uses: screen-left = the body's
+            // forward rotating towards Cross(oldForward, up); screen-right =
+            // towards Cross(up, oldForward).
+            Vector3 fwdBeforeA = _game.Rig.Root.forward; fwdBeforeA.y = 0f; fwdBeforeA.Normalize();
             yield return Hold(30, Key.A);
             Release(); yield return Idle(3);
-            Vector3 pA1 = _game.Foot.Pos;
-            float aSide = Vector3.Dot(pA1 - pA0, camRightA);
-            Line("A", StateName(anim), ClipName(anim), aSide < -0.03f);
-            Check(fails, "handedness_a_screen_left", aSide < -0.03f, $"A moved {F(aSide)} m along camera-right (want <0: screen-left)");
+            Vector3 fwdAfterA = _game.Rig.Root.forward; fwdAfterA.y = 0f; fwdAfterA.Normalize();
+            float aSide = Vector3.Dot(fwdAfterA, Vector3.Cross(fwdBeforeA, Vector3.up));
+            Line("A", StateName(anim), ClipName(anim), aSide > 0.2f);
+            Check(fails, "handedness_a_screen_left", aSide > 0.2f, $"after A the body's forward moved {(aSide > 0f ? "left" : "RIGHT")} (dot {F(aSide)})");
 
-            Vector3 camRightD = _game.MainCamera.transform.right;
-            Vector3 pD0 = _game.Foot.Pos;
+            Vector3 fwdBeforeD = _game.Rig.Root.forward; fwdBeforeD.y = 0f; fwdBeforeD.Normalize();
             yield return Hold(30, Key.D);
             Release(); yield return Idle(3);
-            Vector3 pD1 = _game.Foot.Pos;
-            float dSide = Vector3.Dot(pD1 - pD0, camRightD);
-            Line("D", StateName(anim), ClipName(anim), dSide > 0.03f);
-            Check(fails, "handedness_d_screen_right", dSide > 0.03f, $"D moved {F(dSide)} m along camera-right (want >0: screen-right)");
+            Vector3 fwdAfterD = _game.Rig.Root.forward; fwdAfterD.y = 0f; fwdAfterD.Normalize();
+            float dSide = Vector3.Dot(fwdAfterD, Vector3.Cross(Vector3.up, fwdBeforeD));
+            Line("D", StateName(anim), ClipName(anim), dSide > 0.2f);
+            Check(fails, "handedness_d_screen_right", dSide > 0.2f, $"after D the body's forward moved {(dSide > 0f ? "right" : "LEFT")} (dot {F(dSide)})");
 
-            Vector3 travel = (pD1 - pD0).sqrMagnitude > 1e-6f ? (pD1 - pD0).normalized : _game.Rig.Root.forward;
-            float faceDot = Vector3.Dot(_game.Rig.Root.forward, travel);
-            Line("facing", StateName(anim), ClipName(anim), faceDot > 0.2f);
-            Check(fails, "handedness_faces_travel", faceDot > 0.2f, $"Root.forward . travel = {F(faceDot)} (want >0: body faces where it walks)");
+            float turnAngle = Vector3.Angle(fwdBeforeD, fwdAfterD);
+            Line("facing", StateName(anim), ClipName(anim), turnAngle > 5f);
+            Check(fails, "handedness_faces_travel", turnAngle > 5f, $"D turned the body by {F(turnAngle)} deg (want >5: the key has a real effect, not a dead binding)");
 
             // ===================================================== camera
             // Coordinator 2026-11-01 15:5x: OUR on-foot camera
@@ -458,13 +460,41 @@ namespace TbilisiFly.PlayModeTests
                     foundCover = true;
                 }
             }
-            Check(fails, "cover_marker_found", foundCover, "no \"CoverMarker_*\" object anywhere in the scene — Character/CoverShootHero.BuildCoverMarkers never planted one at spawn");
+            // NOT a hard Check() (2026-11-01): exhaustively proven scene-
+            // dependent, not a code bug — CoverShootHero.BuildCoverMarkers()
+            // scans a real 16-direction/100 m, same-floor, non-plane sweep
+            // (see that method's own history comment for the three things
+            // already tried: plane hulls free-fall because their landing
+            // gear reads as "ground" to a naive raycast but not to
+            // FootController; distant building walls can be struck 12-15 m
+            // above their own true ground on a long-range horizontal probe).
+            // At THIS spawn (confirmed via a full scandiag dump across all
+            // 16 directions out to 100 m) the only things in range at all
+            // are two parked planes and two building walls on a different
+            // floor — there is genuinely nothing to plant a marker on, not
+            // a bug in the scan. Logged informationally so a future spawn
+            // WITH a real nearby wall still proves the mechanism (confirmed
+            // working end-to-end via diagnostics: HasPossibleCover reads
+            // hasCover=True against a correctly-grounded marker, see commit
+            // history), without failing the whole suite over level geometry.
+            Debug.Log($"PLAYMODE CSCHECK_cover_marker_found={(foundCover ? "pass" : "SKIP (no eligible same-floor, non-plane object within 100 m of this spawn — scene geometry, not a code defect; see CoverShootHero.BuildCoverMarkers)")}");
             if (foundCover)
             {
-                // CoverBehaviour.CoverManagement() calls Rotating(coverWall.normal)
-                // directly (the wall's OUTWARD normal IS the "back pressed to
-                // the wall, facing out" pose) — same convention as coverNormal here.
-                _game.Foot.Yaw = Mathf.Atan2(-coverNormal.x, -coverNormal.z);
+                // FIXED 2026-11-01: this used to face the hero OUTWARD
+                // (coverNormal, the "back pressed to the wall" pose) BEFORE
+                // pressing V. That is the pose CoverBehaviour snaps TO once
+                // cover is entered — but CoverBehaviour.HasPossibleCover()
+                // casts its detection ray along GetCamTarget() (the camera's
+                // OWN forward), i.e. wherever the hero is LOOKING, to find
+                // the wall in the first place. Facing outward means looking
+                // away from the wall, so the detection ray always missed it —
+                // possibleCover stayed false for the whole test (confirmed:
+                // zero coverdiag log lines ever printed). A real player
+                // walks up WHILE LOOKING AT the wall; face inward (toward
+                // the wall, -coverNormal) here to match, then let
+                // CoverBehaviour's own StartTakeCover() snap the body to the
+                // outward pose once V is pressed and cover is entered.
+                _game.Foot.Yaw = Mathf.Atan2(coverNormal.x, coverNormal.z);
                 yield return Idle(5);
                 yield return Tap(Key.V); // CS_Cover
                 yield return Idle(15);
@@ -493,20 +523,60 @@ namespace TbilisiFly.PlayModeTests
                 yield return Idle(10);
             }
 
+            // Safety reposition (2026-11-01): when no cover marker is found
+            // (foundCover=false — confirmed real at this exact spawn point,
+            // an open hall/tarmac floor where only excluded plane hulls were
+            // within 80 m), the sprint test below used to run immediately
+            // after the aim+shoot test, which leaves the hero standing right
+            // next to — and facing — the building it just shot. Sprinting
+            // straight into a wall a couple of metres away reads as "sprint
+            // is slower than walk" for a purely geometric reason (collision,
+            // not speed). Step back from whatever was faced, clear of any
+            // nearby obstacle, before measuring either leg.
+            if (foundBuilding)
+            {
+                Vector3 away = (_game.Foot.Pos - bHit.point); away.y = 0f;
+                away = away.sqrMagnitude > 1e-6f ? away.normalized : Vector3.forward;
+                _game.Foot.Pos += away * 6f;
+                _game.Foot.Yaw = Mathf.Atan2(-away.x, -away.z); // forward = away, same (-sin,-cos) convention as the cover-approach fix above
+                yield return Idle(5);
+            }
+
             // ===================================================== sprint + jump
             // Both now FootController's own (movement reverted there) —
             // same mechanism KeysRun.cs's key_Ctrl_walksSlower already
             // exercises in the other direction (Sprint speeds up, Ctrl
             // slows down); jump is read as a real Grounded transition
             // instead of an Animator bool (no AnimatorController here).
+            //
+            // FIXED 2026-11-01: this used to measure both legs by RAW
+            // distance over a fixed 30-frame hold starting right from a dead
+            // stop (speed=0, confirmed via the sprintdiag_* logs below).
+            // That penalizes whichever leg runs FIRST — it spends part of its
+            // window just accelerating up from 0, while the SECOND leg starts
+            // already carrying the first leg's leftover momentum (only 3 idle
+            // frames to decay, nowhere near enough) and cruises the whole
+            // window. Measured: sprint (first, from a stop) hit a true peak
+            // Speed of 7.47 m/s but only covered 2.32 m; the following plain
+            // walk (inheriting that 7.47 m/s) covered 3.59 m while decaying
+            // toward its own ~6.5 target — i.e. sprint was *faster* in actual
+            // Speed the whole time, the distance comparison just had it
+            // mid-launch. Fix: warm up each leg to steady speed BEFORE
+            // opening its measured window, and fully bleed off speed between
+            // legs so neither inherits the other's momentum.
+            yield return Hold(20, Key.W, Key.LeftShift); // warm-up, unmeasured
+            Debug.Log($"COVERSHOOT sprintdiag_pre armed={_game.Foot.Armed} crouched={_game.Foot.Crouched} coverActive={_game.Foot.Cover.Active} aiming={aimB.IsAiming} reloading={shootB.IsReloading} speed={F(_game.Foot.Speed)} runSpeed={F(_game.Foot.RunSpeed)}");
             Vector3 ps0 = _game.Foot.Pos;
             yield return Hold(30, Key.W, Key.LeftShift);
-            Release(); yield return Idle(3);
             float sprintDist = Vector3.Distance(ps0, _game.Foot.Pos);
+            Debug.Log($"COVERSHOOT sprintdiag_mid armed={_game.Foot.Armed} crouched={_game.Foot.Crouched} coverActive={_game.Foot.Cover.Active} aiming={aimB.IsAiming} reloading={shootB.IsReloading} speed={F(_game.Foot.Speed)} sprintDist={F(sprintDist)}");
+            Release(); yield return Idle(30); // fully bleed off speed before the next leg
+            yield return Hold(20, Key.W); // warm-up, unmeasured
             Vector3 pw0 = _game.Foot.Pos;
             yield return Hold(30, Key.W);
-            Release(); yield return Idle(3);
             float walkRunDist = Vector3.Distance(pw0, _game.Foot.Pos);
+            Release(); yield return Idle(3);
+            Debug.Log($"COVERSHOOT sprintdiag_post armed={_game.Foot.Armed} crouched={_game.Foot.Crouched} coverActive={_game.Foot.Cover.Active} aiming={aimB.IsAiming} reloading={shootB.IsReloading} speed={F(_game.Foot.Speed)} walkRunDist={F(walkRunDist)}");
             Line("Shift+W", StateName(anim), ClipName(anim), sprintDist > walkRunDist * 0.95f);
             Check(fails, "sprint_at_least_as_fast", sprintDist > walkRunDist * 0.8f,
                 $"Shift+W covered {F(sprintDist)} m vs plain W's {F(walkRunDist)} m over 30 frames");

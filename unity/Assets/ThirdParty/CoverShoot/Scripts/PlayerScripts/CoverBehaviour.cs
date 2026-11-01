@@ -28,7 +28,14 @@ public class CoverBehaviour : GenericBehaviour
 	public GameObject turnCoverSign;                 // Turn on cover corner sign canvas.
 	public GameObject changeCoverSign;               // Change cover sign canvas.
 	public GameObject jumpCoverSign;                 // Jump over cover sign canvas.
-	public LayerMask coverMask = 1 << 8 | 1 << 10;   // Layer mask to take cover (Cover & Cover Invisible).
+	// Resolved BY NAME (see ShootBehaviour.cs's shotMask comment for why):
+	// this project's TagManager.asset has Cover=8/Cover Invisible=9, not
+	// the stock pack's assumed 8/10. NOT computed in this field initializer
+	// — LayerMask.GetMask() called from a MonoBehaviour field initializer
+	// returns -1 (confirmed via ShootBehaviour.cs's shotMask ending up 0 =
+	// ~(-1) from the exact same pattern), so coverMask would have silently
+	// become "every layer" instead of just these two. Assigned in Start().
+	public LayerMask coverMask;   // Layer mask to take cover (Cover & Cover Invisible).
 
 	private bool takeCover;                          // Boolean to determine whether or not the player has to take cover.
 	private bool isCovering;                         // Boolean to determine whether or not the player is covering.
@@ -83,6 +90,7 @@ public class CoverBehaviour : GenericBehaviour
 	void Start ()
 	{
 		// Set up the references.
+		coverMask = LayerMask.GetMask("Cover", "Cover Invisible");
 		possibleAction = CoverActions.NONE;
 		currentAction = CoverActions.NONE;
 		coveringBool = Animator.StringToHash ("Cover");
@@ -451,6 +459,7 @@ public class CoverBehaviour : GenericBehaviour
 	// This code turn/stop immediately on waypoints, differing from Unity default navmesh agent.
 	void NavigateToCover()
 	{
+		Debug.Log($"COVERSHOOT navigatetocover navPathLen={navPath?.Length ?? -1} wpIdx={wayPointIndex} pos={transform.position} dist={(navPath != null && navPath.Length > wayPointIndex ? Vector3.Distance(transform.position, navPath[wayPointIndex]).ToString() : "n/a")}");
 		// Already at destination?
 		if (navPath.Length == 0)
 		{
@@ -771,7 +780,8 @@ public class CoverBehaviour : GenericBehaviour
 	// Check if exists a destination where the player can navigate to take cover.
 	private bool HasPossibleCover(Vector3 rayTarget, out RaycastHit hit)
 	{
-		bool hasCover = Physics.Raycast(transform.position + 2 * shift, rayTarget, out hit, searchForCoverDist) &&
+		bool rc = Physics.Raycast(transform.position + 2 * shift, rayTarget, out hit, searchForCoverDist);
+		bool hasCover = rc &&
 			coverMask == (coverMask | (1 << hit.collider.gameObject.layer)) &&
 		(InPLayerFOV(rayTarget) || projectedCoverWall.distance < coverDist || takeCover) &&
 		NotSameCover(hit) && behaviourManager.GetAnim.speed != 0 &&

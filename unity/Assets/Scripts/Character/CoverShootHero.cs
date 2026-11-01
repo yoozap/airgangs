@@ -322,6 +322,13 @@ namespace TbilisiFly.Character
         // (`HandleNavPath`'s `else` arm, coverDist=0.4 m — no NavMesh
         // required there) has somewhere real to engage.
         // =====================================================================
+        static bool IsPlaneShell(Transform t)
+        {
+            for (var p = t; p != null; p = p.parent)
+                if (p.name == "plane_shell" || p.name == "cockpit_interior") return true;
+            return false;
+        }
+
         void BuildCoverMarkers()
         {
             // Widened 2026-11-01: the original 4-direction/5 m scan found
@@ -333,18 +340,58 @@ namespace TbilisiFly.Character
             int coverInvis = LayerMask.NameToLayer("Cover Invisible");
             Debug.Log($"COVERSHOOT covermarkers_enter coverInvisLayer={coverInvis} pos={transform.position}");
             if (coverInvis < 0) return;
+            // Final shape (2026-11-01) after several false starts, kept as
+            // a short history because each one taught something real:
+            //  - 15 m/30 m, no exclusions: the only thing nearby was a
+            //    parked plane's "plane_shell" hull. Teleporting the player
+            //    to stand against it free-fell (Y dropped 493->489 over
+            //    ~35 frames) — a plane's hull sits on landing gear, elevated
+            //    above real ground, and Physics.Raycast straight down from
+            //    it finds the plane's OWN belly/gear, not the floor, so no
+            //    amount of ground-distance tightening fixed it reliably.
+            //    Planes are excluded outright now (IsPlaneShell above).
+            //  - 80 m, planes excluded: found two real building walls
+            //    (chunk_22 at 60 m, chunk_11 at 74 m) — but the horizontal
+            //    probe ray fires at a FIXED height (spawn height + 1 m), so
+            //    against a wall that far away it can strike a point whose
+            //    true ground is 12-15 m below (confirmed via a 200 m-deep
+            //    probe) — i.e. a high-up part of a tall building, nothing
+            //    to do with spawn's own floor. Snapping the stand point's Y
+            //    down to THAT ground would put the "wall" floating far
+            //    above the player's head — not real cover either.
+            // Fix: require the wall to be roughly on the SAME floor as
+            // spawn (hit point within 3 m of spawn height) before even
+            // considering it, which rules out tall/distant faces by
+            // construction, and search far enough (100 m) that a same-floor
+            // wall has a real chance of existing somewhere in 16 compass
+            // directions even when spawn sits in a big open apron/hall.
             int built = 0;
             for (int i = 0; i < 16; i++)
             {
                 float a = i * (360f / 16f) * Mathf.Deg2Rad;
                 Vector3 d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
                 Vector3 origin = transform.position + Vector3.up * 1f;
-                if (Physics.Raycast(origin, d, out var hit, 15f) && hit.collider != null && hit.collider.gameObject != gameObject
-                    && !hit.collider.CompareTag("Player"))
+                if (Physics.Raycast(origin, d, out var hit, 100f) && hit.collider != null && hit.collider.gameObject != gameObject
+                    && !hit.collider.CompareTag("Player")
+                    && !IsPlaneShell(hit.collider.transform)
+                    && Mathf.Abs(hit.point.y - transform.position.y) < 3f)
                 {
+                    bool gok = Physics.Raycast(hit.point, Vector3.down, out var groundHit, 3.0f);
+                    if (!gok || groundHit.normal.y < 0.7f)
+                        continue;
+
                     var marker = new GameObject("CoverMarker_" + hit.collider.name);
                     marker.layer = coverInvis;
-                    marker.transform.position = hit.point - d.normalized * 0.05f;
+                    // Ground-snapped Y: the test (Tests/PlayMode/
+                    // CoverShootRun.cs) derives its own stand point purely
+                    // from THIS transform's position, so the marker itself
+                    // must carry the corrected height (CoverBehaviour.
+                    // HasPossibleCover's own live detection ray does the
+                    // same "get the cover point on the ground" adjustment
+                    // for the SAME reason).
+                    Vector3 markerPos = hit.point - d.normalized * 0.05f;
+                    markerPos.y = groundHit.point.y + 0.02f;
+                    marker.transform.position = markerPos;
                     marker.transform.rotation = Quaternion.LookRotation(hit.normal);
                     var box = marker.AddComponent<BoxCollider>();
                     box.size = new Vector3(2.2f, 2.0f, 0.1f);

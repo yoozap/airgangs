@@ -20,8 +20,23 @@ public class ShootBehaviour : GenericBehaviour
 	public float shotErrorRate = 0.01f;                            // Shooting error margin. 0 is most accurate.
 	public float shotRateFactor = 1f;                              // Rate of fire parameter. Higher is faster rate.
 	public float armsRotation = 8f;                                // Rotation of arms to align with aim, according player height.
-	public LayerMask shotMask = ~((1 << 2) | (1 << 9) |            // Layer mask to cast shots.
-								(1 << 10) | (1 << 11));
+	// Resolved BY NAME, not hardcoded bit literals: the stock pack assumed
+	// "Cover"=8/"Cover Invisible"=10 (see CoverBehaviour.cs's own comment),
+	// but this project's TagManager.asset ended up with Cover=8/Cover
+	// Invisible=9 -- a mismatch that silently broke cover detection
+	// (SphereCast against coverMask never saw the markers). GetMask tracks
+	// whatever TagManager.asset actually resolves to, so it can't drift
+	// out of sync with coverMask below again. No "Player" layer exists in
+	// this project (Player is a TAG here, not a layer), so the stock
+	// mask's 4th bit (11) is dropped rather than guessed at.
+	//
+	// NOT computed in this field initializer: confirmed by the
+	// shootdiag_ray log (2026-11-01) that LayerMask.GetMask() called from a
+	// MonoBehaviour field initializer returns -1 here (native layer table
+	// isn't attached yet at that point in construction), so `~(-1)` landed
+	// shotMask on 0 — a mask that matches NOTHING, silently making every
+	// shot a guaranteed miss. Assigned in Start() instead, see below.
+	public LayerMask shotMask;
 	public LayerMask organicMask;                                  // Layer mask to define organic matter.
 
 	[Header("Advanced Rotation Adjustments")]
@@ -71,6 +86,7 @@ public class ShootBehaviour : GenericBehaviour
 	void Start()
 	{
 		// Set up the references.
+		shotMask = ~(LayerMask.GetMask("Ignore Raycast", "Cover", "Cover Invisible"));
 		weaponTypeInt = Animator.StringToHash("Weapon");
 		aimBool = Animator.StringToHash("Aim");
 		coveringBool = Animator.StringToHash("Cover");
@@ -200,8 +216,14 @@ public class ShootBehaviour : GenericBehaviour
 	// Shoot the weapon.
 	private void ShootWeapon(int weapon, bool firstShot = true)
 	{
-		// Check conditions to shoot.
-		if (!isAiming || isAimBlocked || _reloading || !weapons[weapon].Shoot(firstShot))
+		// Check conditions to shoot. weapons[weapon].Shoot(firstShot) is
+		// SIDE-EFFECTING (decrements mag) — this preserves the ORIGINAL
+		// short-circuit so it is still called at most once, and only when
+		// the other gates already pass (never called while blocked/
+		// reloading/not aiming, exactly like the stock `||` chain below).
+		bool blocked = !isAiming || isAimBlocked || _reloading;
+		bool weaponOk = !blocked && weapons[weapon].Shoot(firstShot);
+		if (blocked || !weaponOk)
 			return;
 
 		// Update parameters: burst count, trigger for animation, crosshair change and recoil camera bounce.
@@ -214,7 +236,8 @@ public class ShootBehaviour : GenericBehaviour
 		Vector3 imprecision = Random.Range(-shotErrorRate, shotErrorRate) * behaviourManager.playerCamera.right;
 		Ray ray = new Ray(behaviourManager.playerCamera.position, behaviourManager.playerCamera.forward + imprecision);
 		// Target was hit.
-		if (Physics.Raycast(ray, out RaycastHit hit, 500f, shotMask))
+		bool rayHit = Physics.Raycast(ray, out RaycastHit hit, 500f, shotMask);
+		if (rayHit)
 		{
 			if (hit.collider.transform != transform)
 			{

@@ -106,6 +106,18 @@ namespace TbilisiFly.Character
         /// <summary>Colliders the climb may grab. Mirrors Footsteps.cs's own
         /// `GroundMask` field convention. Defaults to everything.</summary>
         public LayerMask ClimbMask = ~0;
+        /// <summary>2026-11-01: the purchased shooter puts a capsule on rig.Root
+        /// and cover markers on their own layers; both must be invisible to the
+        /// ledge/room/top probes (ParkourMoves.WorldMask + IgnoreRoot).</summary>
+        int Mask => ClimbMask.value == ~0 ? ParkourMoves.WorldMask : ClimbMask.value;
+        static bool Own(Transform t) => ParkourMoves.IgnoreRoot != null && t != null && t.IsChildOf(ParkourMoves.IgnoreRoot);
+        bool CastDown(Vector3 origin, float dist, out RaycastHit hit)
+        {
+            var hits = Physics.RaycastAll(origin, Vector3.down, dist, Mask, QueryTriggerInteraction.Ignore);
+            hit = default; bool got = false;
+            foreach (var h in hits) { if (Own(h.transform)) continue; if (!got || h.distance < hit.distance) { hit = h; got = true; } }
+            return got;
+        }
 
         // NoClimbMarker moved OUT of this class to Character/NoClimbMarker.cs,
         // for the same reason PlaneCockpitRig left FootBoarding: a MonoBehaviour
@@ -288,7 +300,7 @@ namespace TbilisiFly.Character
             {
                 float px = pos.x + dir.x * reach, pz = pos.z + dir.z * reach;
                 Vector3 origin = new Vector3(px, feet + ClimbMax + 0.4f, pz);
-                if (!Physics.Raycast(origin, Vector3.down, out var down, ClimbMax + 0.6f, ClimbMask)) continue;
+                if (!CastDown(origin, ClimbMax + 0.6f, out var down)) continue;
                 if (down.collider.GetComponent<NoClimbMarker>() != null) return false; // the first thing under the probe says no — there is no ledge here at all
                 float top = down.point.y;
                 float rise = top - feet;
@@ -309,16 +321,21 @@ namespace TbilisiFly.Character
 
         // src/foot.js:5411-5419 _roomOver
         bool RoomOver(float x, float z, float y)
-            => !Physics.Raycast(new Vector3(x, y + 0.12f, z), Vector3.up, ClimbClear, ClimbMask);
+        {
+            foreach (var h in Physics.RaycastAll(new Vector3(x, y + 0.12f, z), Vector3.up, ClimbClear, Mask, QueryTriggerInteraction.Ignore))
+                if (!Own(h.transform)) return false;
+            return true;
+        }
 
         // src/foot.js:5421-5433 _topNear
         bool TopNear(float x, float z, float y, out float stand)
         {
             stand = 0f;
-            var hits = Physics.RaycastAll(new Vector3(x, y + 0.9f, z), Vector3.down, 0.9f + StepUp, ClimbMask);
+            var hits = Physics.RaycastAll(new Vector3(x, y + 0.9f, z), Vector3.down, 0.9f + StepUp, Mask, QueryTriggerInteraction.Ignore);
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
             foreach (var h in hits)
             {
+                if (Own(h.transform)) continue;
                 if (Mathf.Abs(h.point.y - y) <= StepUp) { stand = h.point.y; return true; }
             }
             return false;

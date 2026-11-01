@@ -148,33 +148,71 @@ namespace TbilisiFly.Character
             public float Depth;       // how far the top runs before it drops (≥ 4 = long)
             public float Beyond;      // ground height beyond relative to the feet (negative = a drop on the far side)
             public Vector3 Point, Normal;
+            public string HitName; public int HitLayer;
             public bool Wall => Height >= MantleMax;
             public float Angle;       // degrees between the approach and the wall normal (0 = head-on)
+        }
+
+        /// <summary>The hero's own colliders (the purchased shooter's capsule on
+        /// rig.Root) are skipped by this root; the pack's cover-marker layers
+        /// ("Cover", "Cover Invisible") are left out of the mask so a marker in
+        /// front of a wall is not mistaken for a waist-high obstacle.</summary>
+        public static Transform IgnoreRoot;
+        static int _worldMask = -1;
+        public static int WorldMask
+        {
+            get
+            {
+                if (_worldMask != -1) return _worldMask;
+                int m = ~0;
+                foreach (var n in new[] { "Cover", "Cover Invisible", "Ignore Raycast", "UI" })
+                {
+                    int l = LayerMask.NameToLayer(n);
+                    if (l >= 0) m &= ~(1 << l);
+                }
+                _worldMask = m;
+                return m;
+            }
+        }
+        static bool Own(Transform t) => IgnoreRoot != null && t != null && t.IsChildOf(IgnoreRoot);
+
+        static bool Cast(Vector3 origin, Vector3 dir, float maxDist, int mask, out RaycastHit hit)
+        {
+            var hits = Physics.RaycastAll(origin, dir, maxDist, mask, QueryTriggerInteraction.Ignore);
+            hit = default; bool got = false;
+            foreach (var h in hits)
+            {
+                if (Own(h.transform)) continue;
+                if (!got || h.distance < hit.distance) { hit = h; got = true; }
+            }
+            return got;
         }
 
         /// <summary>What stands in front of the feet: a ladder of forward rays
         /// (0.25 … 2.4 m up) finds the face, a downward ray behind the face
         /// finds the top, and a march across the top finds its depth and the
-        /// ground beyond. Mask ~0 like FootClimb.</summary>
-        public static Obstacle Probe(Vector3 feet, Vector3 dir, float reach = 2.4f, int mask = ~0)
+        /// ground beyond.</summary>
+        public static Obstacle Probe(Vector3 feet, Vector3 dir, float reach = 2.4f, int mask = 0)
         {
+            if (mask == 0) mask = WorldMask;
             var o = new Obstacle();
             dir.y = 0f; if (dir.sqrMagnitude < 1e-6f) return o; dir.Normalize();
             float[] hs = { 0.25f, 0.55f, 0.9f, 1.3f, 1.7f, 2.1f, 2.4f };
             RaycastHit best = default; bool got = false;
             foreach (float h in hs)
             {
-                if (Physics.Raycast(feet + Vector3.up * h, dir, out var hit, reach, mask, QueryTriggerInteraction.Ignore))
+                if (Cast(feet + Vector3.up * h, dir, reach, mask, out var hit))
                 {
                     if (!got || hit.distance < best.distance) { best = hit; got = true; }
                 }
             }
             if (!got) return o;
             o.Hit = true; o.Dist = best.distance; o.Point = best.point; o.Normal = best.normal;
+            o.HitName = best.collider != null ? best.collider.name : "?"; o.HitLayer = best.collider != null ? best.collider.gameObject.layer : -1;
             o.Angle = Vector3.Angle(-new Vector3(best.normal.x, 0f, best.normal.z), dir);
             // the top: cast down from well above, just behind the face
             Vector3 over = new Vector3(best.point.x, feet.y + MantleMax + 1.5f, best.point.z) + dir * 0.25f;
-            if (Physics.Raycast(over, Vector3.down, out var top, MantleMax + 1.5f - 0.02f, mask, QueryTriggerInteraction.Ignore))
+            if (Cast(over, Vector3.down, MantleMax + 1.5f - 0.02f, mask, out var top))
                 o.Height = top.point.y - feet.y;
             else
                 o.Height = MantleMax + 1f; // nothing within reach above: a wall
@@ -186,7 +224,7 @@ namespace TbilisiFly.Character
                 for (float d = 0.5f; d <= 4.0f; d += 0.35f)
                 {
                     Vector3 p = new Vector3(best.point.x, topY + 0.4f, best.point.z) + dir * d;
-                    if (Physics.Raycast(p, Vector3.down, out var g, 8f, mask, QueryTriggerInteraction.Ignore))
+                    if (Cast(p, Vector3.down, 8f, mask, out var g))
                     {
                         if (g.point.y < topY - 0.45f) { o.Depth = d - 0.35f; o.Beyond = g.point.y - feet.y; break; }
                     }
@@ -197,7 +235,7 @@ namespace TbilisiFly.Character
         }
 
         /// <summary>Is there a wall at `reach` ahead with no top within MantleMax?</summary>
-        public static bool WallAhead(Vector3 feet, Vector3 dir, float reach, out Obstacle o, int mask = ~0)
+        public static bool WallAhead(Vector3 feet, Vector3 dir, float reach, out Obstacle o, int mask = 0)
         {
             o = Probe(feet, dir, reach, mask);
             return o.Hit && o.Wall;
