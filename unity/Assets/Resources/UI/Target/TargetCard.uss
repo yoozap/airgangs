@@ -1,0 +1,107 @@
+@import url("../Theme/CyberTheme.uss");
+/* ============================ NO em UNITS ============================
+ * USS has NO `em` unit. Every `letter-spacing: 0.06em` in this file was a
+ * literal transcription of src/style.css and Unity's USS importer REJECTS
+ * it — and it does not reject just that declaration, it fails the whole
+ * import and leaves an EMPTY StyleSheet with the asset still loading, still
+ * named, still attached to the view. The screen then renders with every
+ * element present and NOTHING styled: full-width stacked rows, default grey
+ * buttons, no panels, no columns, no padding. Measured 2026-10-30 by
+ * Editor/Probes/UiShotProbe.cs (UISTYLE arm=character sheets=1 [Character]
+ * with .hangar's own `padding: 74px 44px 44px` resolving to padTop=0) and
+ * visible in the first ui_character.png.
+ *
+ * The em values are converted to the px they meant: CSS `em` is the
+ * element's own font-size, so 0.06em at font-size:15px is 0.9px. If a rule
+ * here gains or changes a font-size, convert again — do not reintroduce em.
+ * ===================================================================== */
+
+/* Ported from src/style.css:321-423 — the WoW-style target frame.
+ * Gradients on #tf-fill (the hull bar) have no USS equivalent; TargetCardView.cs
+ * sets a flat backgroundColor per threshold instead of the two-stop gradient
+ * (green/orange/red — style.css:240-244 in the JS, same three bands here).
+ * clip-path is painted by AngledPanel.cs (magenta-left-edge notch card). */
+
+.tf-root {
+  position: absolute;
+  top: 96px;
+  left: 252px;
+  width: 330px;
+  flex-direction: row;
+}
+.tf-root.hidden { display: none; }
+
+.tf-portrait {
+  width: 62px;
+  height: 46px;
+  background-color: rgba(63, 214, 255, 0.06);
+  border-width: 1px;
+  border-color: rgba(63, 214, 255, 0.22);
+  margin-right: 10px;
+}
+
+.tf-body { flex-grow: 1; }
+.tf-head { flex-direction: row; }
+.tf-name {
+  font-size: 13px;
+  -unity-font-style: bold;
+  letter-spacing: 0.78px;
+  color: #eaffff;
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: rgba(63, 214, 255, 0.45);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tf-role {
+  font-size: 9px;
+  -unity-font-style: bold;
+  letter-spacing: 0.72px;
+  color: var(--bg0);
+  background-color: var(--mag);
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+.tf-role.tank { background-color: var(--gold); }
+
+.tf-sub-row {
+  flex-direction: row;
+  margin: 3px 0 4px;
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  color: var(--dim);
+}
+.tf-sub-row .tf-sub-text { margin-left: 6px; overflow: hidden; white-space: nowrap; }
+
+.tf-track {
+  height: 9px;
+  background-color: rgba(63, 214, 255, 0.08);
+  border-width: 1px;
+  border-color: rgba(63, 214, 255, 0.18);
+}
+.tf-fill { height: 100%; width: 100%; background-color: #4af09a; }
+
+.tf-foot {
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--cyan2);
+}
+.tf-foot .tf-dist { color: var(--dim); }
+
+.tf-stats {
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top-width: 1px;
+  border-top-color: var(--line-dim);
+  font-size: 9px;
+  color: var(--dim);
+}
+.tf-stats Label.tf-stat-v { -unity-font-style: bold; color: var(--cyan2); }
+
+.tf-root.hit { border-left-width: 2px; border-left-color: rgba(255, 106, 90, 0.75); }
+.tf-root.dead { opacity: 0.72; }
+.tf-root.dead .tf-hp { color: #ff6a5a; }

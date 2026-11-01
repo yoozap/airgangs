@@ -1,0 +1,58 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/ArtAssets.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "THE LOADER SEAM: Load<T>/LoadAllAt/LoadText/LoadModelReadable/Instantiate/UnpackCompletely/IsPersistent/ShaderHasError - AssetDatabase/PrefabUtility in the editor, Resources in a player; call sites keep real project paths and the seam derives the Resources key. Assets/Art (459 MB), Audio, UI and DefaultVolumeProfile moved under Assets/Resources by AssetDatabase.MoveAsset (GUIDs + Library artifacts kept: 196/196 isReadable:1 survived, liveries 35/35 untouched). 45 runtime files routed; grep for AssetDatabase./PrefabUtility./EditorUtility. in Assets/Scripts outside the seam = 0; 97 #if UNITY_EDITOR gone. Resources chosen over Addressables with evidence (resources.assets 111 MB + .resS 233 MB vs the 4 GB ceiling; zero extension-dropped key collisions)."
+ },
+ {
+  "cs": "Assets/Editor/BuildPlayerHeadless.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION INFRASTRUCTURE: BuildPipeline.BuildPlayer (Game.unity only, StandaloneOSX, Development, $TF_PLAYER_OUT) + EnsureAlwaysIncludedShaders (18 project shaders are reached only by Shader.Find and were NOT in the build - 145,959 trees and 28,599 rocks silently absent; now in GraphicsSettings m_AlwaysIncludedShaders, 28 total). PLAYERBUILD lines: build 115.9 s, 828 MB, counts_equal=true over 56 count lines editor-vs-player. The exe is named after productName ('unity')."
+ },
+ {
+  "cs": "Assets/Editor/StripGeneratedSceneryOnBuild.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: BuildPlayer LOADS each scene, every [ExecuteAlways] renderer's OnEnable regenerates during that load, and the loaded state is serialised (level0 had 649 grass_ chunks; runtime rebuilt on top: GRASS children 1340 vs 670). IProcessSceneWithReport strips the 14 regenerating roots' children at build time (16,947 objects, 71 MB); skipped when report==null so play mode is untouched."
+ },
+ {
+  "cs": "Assets/Scripts/Flight/PlanePropellers.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: OnEnable => EnsureBuilt() self-build removed. Outside play mode AddComponent never delivers OnEnable (both creators configure-then-EnsureBuilt by hand), but in a PLAYER and in play mode it is delivered synchronously inside AddComponent, one line before PlaneId is set, and PlaneId's initialiser is 'p51' - every parked plane built its propellers as a P-51 (PROPELLERS propellers=15, how=? on 14 lines). No scene serialises the component. Now propellers=31 with how=hubs/named/search/make identical to the editor."
+ },
+ {
+  "cs": "Assets/Scripts/Combat/PlaneShellTag.cs + Assets/Scripts/Character/PlaneCockpitRig.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: two MonoBehaviours serialised into Game.unity with m_Script {fileID} and NO guid (PlaneShellTag declared in Ballistics.cs; PlaneCockpitRig nested in FootBoarding) - in a player: 'Data/level0 is corrupted! [Position out of bounds!]', the whole scene failed to load with nothing naming the cause. Moved/un-nested to their own files, the two m_Script lines patched to real guid references by text edit (scene not re-saved). New guard tools/_test_scene_scripts_have_guid.py."
+ },
+ {
+  "cs": "Assets/Scripts/City/PhotoFacades.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: facades.json / pb/manifest.json / walls.json / roofs.json / credits.json were read off the filesystem via Application.dataPath (project folder only in the editor) - now ArtAssets.LoadText TextAssets. Also fixed the EDITOR, which had been reading a stale path since the folder move: PHOTOFACADES manifest=609 buildings=609 photosUsed=609 on both sides, CITYFACADE batches 2755->2661 because 609 buildings win a real photo facade over kit layers."
+ },
+ {
+  "cs": "Assets/Editor/BuildPanelSettingsAsset.cs + Assets/Scripts/UI/Common/UiBootstrap.cs",
+  "js": "style.css",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: a PanelSettings made with ScriptableObject.CreateInstance gets the default theme only in the editor; a player logged 'No Theme Style Sheet set' + 'ICU Data not available' and the Georgian UI had no theme. Assets/Resources/UI/TbilisiFlyPanelSettings.asset carries the theme, the 6-face Georgian font chain and the same three numbers; UiBootstrap.Apply loads it through the seam."
+ },
+ {
+  "cs": "Assets/Scripts/Core/AudioFx.cs",
+  "js": "audiofx.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (orphan the guard missed - a static method named only in a doc comment): FxAudio.LoadAllBanks() had NO caller, so all 204 real CC0 recordings fell through to the synthesised stand-ins, in the editor too. SampleBank.Pick now triggers the idempotent load on first use."
+ }
+]

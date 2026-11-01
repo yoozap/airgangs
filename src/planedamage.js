@@ -52,10 +52,15 @@ import { surfaceFit } from './impactfx.js';
 // the classic way to bring an aeroplane down; shooting its tyres is not.
 const PART_MUL = { canopy: 1.6, engine: 1.9, tyre: 0.45, skin: 1 };
 const CANOPY_HITS = 4;     // rounds a canopy takes before the sheet gives up
-const HOLE_MAX = 640;      // holes held across the whole fleet (ring buffer)
-const EXIT_MAX = 320;
-const SCRAPE_MAX = 220;
-const CRAZE_MAX = 260;
+// HOW MANY MARKS THE FLEET HOLDS AT ONCE, per kind, in a ring: the oldest goes
+// when the newest needs its slot. "i need see every dot that i shoot on plane
+// with big array" -- so these are big. A quad is 16 floats of instance matrix
+// and nothing else, there is still one draw call per kind however many are
+// live, and eight thousand of them together cost about half a megabyte.
+const HOLE_MAX = 3200;     // holes held across the whole fleet (ring buffer)
+const EXIT_MAX = 1600;
+const SCRAPE_MAX = 800;
+const CRAZE_MAX = 800;
 // How far a decal stands off the skin. It has to be enough that a flat quad
 // laid on a curved fuselage does not z-fight through it, and no more -- a
 // mark that stands too far off its panel reads as hovering in the air at a
@@ -124,8 +129,8 @@ const BRIDGE_HOT = 18;     // ...plus this many more, by how hard it arrived
 const BRIDGE_E = 4000;     // J at which that second term is all paid
 const BRIDGE_MIN = 0.07;   // m — ...never less than this
 const MERGE_CAL = 3.5;     // bullet diameters: this close and it is the SAME hole
-const TEARS_MAX = 90;      // openings held per part of the aeroplane
-const TEAR_MAX = 360;      // ragged openings drawn across the whole fleet
+const TEARS_MAX = 480;     // openings held per part of the aeroplane
+const TEAR_MAX = 1600;     // ragged openings drawn across the whole fleet
 // How much material may be left unperforated beyond either end of the run, as
 // a FRACTION of what it crosses -- so it is the same ask on a 1.3 m Spitfire
 // chord as on a 4 m An-225 one. A flat 32 cm was a sixth of the Spitfire's
@@ -136,6 +141,13 @@ const CUT_EDGE_MIN = 0.28; // m — ...but never a tighter ask than this
 const CUT_HULL = 0.4;      // of max hull a wing taken off at the root costs
 const CUT_MIN_LEN = 0.6;   // m — a run shorter than this is a cluster, not a cut
 const CUT_PIECES = 10;     // severed pieces left lying about before the oldest go
+
+// Does this mesh turn under its own power inside the airframe? src/propeller.js
+// tags the pivot it spins, and everything below it goes round with it.
+function spins(o) {
+  for (let q = o; q; q = q.parent) if (q.userData?.isPropeller) return true;
+  return false;
+}
 
 const TYRE_RX = /tyre|tire|wheel|lastik|rueda|roue|reifen|gomme|tekerlek|llanta/i;
 const ENGINE_RX =
@@ -174,7 +186,35 @@ const ENGINE_RX =
 // The decals stay -- they are the torn lip, the flaked paint and the soot
 // AROUND the hole, which the shader cannot draw. Their middles are punched
 // out so the void shows through them.
-const HOLE_SLOTS = 48;     // openings a single airframe can show at once
+//
+// ---------------------------------------------------------------------------
+// HOW MANY OPENINGS ONE AIRFRAME CAN CARRY
+// ---------------------------------------------------------------------------
+// "u must to show me all shoot dots, sometimes they are hidding, and i dont
+//  need u to hide it, i need see every dot that i shoot on plane with big
+//  array"
+//
+// It was 48, and every one of those 48 was a vec4 of UNIFORM in every material
+// of the machine -- which is a big slice of the fragment uniform budget and
+// cannot simply be raised. So past 48 the smallest openings were given up,
+// mark and all: shoot a machine long enough and the dots you put in it earlier
+// quietly went away.
+//
+// The openings live in a TEXTURE now, one texel each, which costs one sampler
+// however many there are -- so the array is as big as the ask. And because a
+// fragment that walks a thousand openings is a fragment that costs a thousand
+// distance tests, each PANEL only walks the openings that are actually on it:
+// the map is laid out in per-mesh runs and each material is told its own
+// stretch of it, so a hole in the tail costs a wing's pixels nothing. Nothing
+// is dropped any more.
+//
+// 2048 of them per airframe, which is 32 KB of texture and more than two
+// hundred pistol magazines into one machine: tools/_probe_holecost.mjs puts
+// 240 rounds into the slung Mustang at arm's length, fills 697 of the map,
+// and the frame goes from 3.8 to 4.9 ms for the lot.
+const TEAR_W = 64;                    // texels across the opening map
+const TEAR_H = 32;                    // ...and down
+const HOLE_SLOTS = TEAR_W * TEAR_H;
 // Of the tear's radius that is actually missing. The decal punches its own
 // middle out at the SAME fraction, so the two agree: no painted pixel is ever
 // left hanging over the void, and no sliver of skin shows through the gap in
@@ -199,27 +239,66 @@ const F_HOOKS = [
 
 class HoleSet {
   constructor() {
-    this.tears = [];
-    for (let i = 0; i < HOLE_SLOTS; i++) this.tears.push(new THREE.Vector4(0, 0, 0, 0));
+    // One texel per opening: xyz where it is in the airframe's own frame, w
+    // how much of the skin is missing there.
+    this.data = new Float32Array(HOLE_SLOTS * 4);
+    this.tex = new THREE.DataTexture(this.data, TEAR_W, TEAR_H, THREE.RGBAFormat, THREE.FloatType);
+    this.tex.minFilter = THREE.NearestFilter;
+    this.tex.magFilter = THREE.NearestFilter;
+    this.tex.generateMipmaps = false;
+    this.tex.needsUpdate = true;
     this.uniforms = {
-      uTears: { value: this.tears },
+      uTearTex: { value: this.tex },
+      // openings every panel has to test: a severed piece's, which are held
+      // in the piece's own frame and belong to no panel of the machine
+      uTearAll: { value: 0 },
+      // ...and the tally, for the probes (tools/_probe_allplanes.mjs)
       uTearCount: { value: 0 },
       uTearInv: { value: new THREE.Matrix4() },
     };
     this.mats = new Set();
+    // mesh -> the stretch of the map that is ITS openings. Shared by every
+    // material that mesh wears, so a multi-material panel is one range.
+    this.ranges = new Map();
+    this._seq = 0;
+    this._box = new THREE.Box3();
+    this._m = new THREE.Matrix4();
+    this._p = new THREE.Vector3();
+  }
+
+  rangeFor(mesh) {
+    if (!mesh) return { lo: { value: 0 }, hi: { value: 0 } };
+    let r = this.ranges.get(mesh);
+    if (!r) {
+      r = { lo: { value: 0 }, hi: { value: 0 } };
+      this.ranges.set(mesh, r);
+    }
+    return r;
+  }
+
+  // The airframe has changed shape: a wing is off and its meshes are on a
+  // piece now. Anything that is no longer part of the machine stops being
+  // walked for openings.
+  keepOnly(meshes) {
+    const live = new Set(meshes);
+    for (const mesh of [...this.ranges.keys()]) if (!live.has(mesh)) this.ranges.delete(mesh);
   }
 
   // Patch one material so it can lose pixels. Called once per material; the
-  // uniforms are shared, so after this every hole in the set shows in every
-  // panel of the aeroplane without another compile.
-  patch(mat) {
+  // map and the frame are shared, and only the range is the panel's own -- so
+  // after this every opening in the set shows in the panel it is in without
+  // another compile.
+  patch(mat, mesh = null) {
     if (!mat || this.mats.has(mat)) return;
     this.mats.add(mat);
     const u = this.uniforms;
+    const range = this.rangeFor(mesh);
     mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uTears = u.uTears;
-      sh.uniforms.uTearCount = u.uTearCount;
+      sh.uniforms.uTearTex = u.uTearTex;
+      sh.uniforms.uTearAll = u.uTearAll;
       sh.uniforms.uTearInv = u.uTearInv;
+      sh.uniforms.uTearLo = range.lo;
+      sh.uniforms.uTearHi = range.hi;
       // WHERE THE HOOKS GO. These thirty-six aeroplanes are not all built the
       // same -- two of them are rigged, and a material compiled without
       // skinning has no `skinning_vertex` chunk at all. A replace that silently
@@ -238,14 +317,23 @@ class HoleSet {
       }
       sh.vertexShader = `uniform mat4 uTearInv;\nvarying vec3 vTearPos;\n${sh.vertexShader}`
         .replace(vAt, `${vAt}\n\tvTearPos = ( uTearInv * modelMatrix * vec4( transformed, 1.0 ) ).xyz;`);
-      sh.fragmentShader = `uniform vec4 uTears[ ${HOLE_SLOTS} ];\nuniform int uTearCount;\n`
-        + `varying vec3 vTearPos;\n${sh.fragmentShader}`
+      // The map is read with texelFetch, so there is no filtering and no
+      // uniform array: `i` is a texel. Two runs -- the machine's own openings
+      // for this panel, and whatever belongs to no panel at all.
+      const fetch = (v) => `vec4 ${v} = texelFetch( uTearTex, `
+        + `ivec2( i % ${TEAR_W}, i / ${TEAR_W} ), 0 );`;
+      sh.fragmentShader = 'uniform sampler2D uTearTex;\nuniform int uTearAll;\n'
+        + `uniform int uTearLo;\nuniform int uTearHi;\nvarying vec3 vTearPos;\n${sh.fragmentShader}`
           .replace(
             fAt,
             `${fAt}\n`
-            + `\tfor ( int i = 0; i < ${HOLE_SLOTS}; i ++ ) {\n`
-            + '\t\tif ( i >= uTearCount ) break;\n'
-            + '\t\tif ( distance( vTearPos, uTears[ i ].xyz ) < uTears[ i ].w ) discard;\n'
+            + '\tfor ( int i = 0; i < uTearAll; i ++ ) {\n'
+            + `\t\t${fetch('t')}\n`
+            + '\t\tif ( distance( vTearPos, t.xyz ) < t.w ) discard;\n'
+            + '\t}\n'
+            + '\tfor ( int i = uTearLo; i < uTearHi; i ++ ) {\n'
+            + `\t\t${fetch('t2')}\n`
+            + '\t\tif ( distance( vTearPos, t2.xyz ) < t2.w ) discard;\n'
             + '\t}'
           );
       this.done = (this.done ?? 0) + 1;
@@ -254,19 +342,75 @@ class HoleSet {
     mat.needsUpdate = true;
   }
 
-  // The openings, newest and biggest first -- an airframe can carry more
-  // tears than the shader has room for, and the ones worth seeing through
-  // are the big ones.
-  set(list, inv) {
-    const take = list.length > HOLE_SLOTS
-      ? [...list].sort((a, b) => b.r - a.r).slice(0, HOLE_SLOTS)
-      : list;
-    for (let i = 0; i < take.length; i++) {
-      const t = take[i];
-      this.tears[i].set(t.x, t.y, t.z, t.r * VOID);
-    }
-    this.uniforms.uTearCount.value = take.length;
+  // EVERY OPENING THE MACHINE CARRIES, written into the map. Each panel gets
+  // the ones that reach it -- which is the ones stamped on it plus any that
+  // overlap it from the panel next door, so an opening that straddles a seam
+  // is cut through both -- and the biggest go in first, so if an airframe ever
+  // does run past a thousand it is the small ones that go without a void and
+  // not the gashes. The mark is never touched either way: a dot the player put
+  // on an aeroplane stays on it.
+  write(list, inv) {
     if (inv) this.uniforms.uTearInv.value.copy(inv);
+    const d = this.data;
+    const seq = ++this._seq;
+    let n = 0;
+    const put = (t) => {
+      if (n >= HOLE_SLOTS) return;
+      const k = n++ * 4;
+      d[k] = t.x; d[k + 1] = t.y; d[k + 2] = t.z; d[k + 3] = t.r * VOID;
+      if (t._seq !== seq) { t._seq = seq; this.lit = (this.lit ?? 0) + 1; }
+    };
+    this.lit = 0;
+    // biggest first, so a cap that is never reached in play is fair if it is
+    const all = list.length > 1 ? [...list].sort((a, b) => b.r - a.r) : list;
+    // A SEVERED PIECE has no panel ranges of its own: its openings are held in
+    // its frame and every one of its materials tests all of them.
+    if (!this.ranges.size) {
+      for (const t of all) put(t);
+      this.uniforms.uTearAll.value = n;
+    } else {
+      this.uniforms.uTearAll.value = 0;
+      // which openings reach which panel, measured first and written after --
+      // because a run in the map has to be contiguous, and a panel that was
+      // walked last would otherwise be the one left with nothing if the map
+      // ever did fill up. Every panel keeps the same FRACTION of its own
+      // instead, and since the list is biggest-first it keeps its worst.
+      const per = [];
+      let want = 0;
+      for (const [mesh, range] of this.ranges) {
+        const box = this._meshBox(mesh, inv);
+        const mine = [];
+        for (const t of all) {
+          if (box && box.distanceToPoint(this._p.set(t.x, t.y, t.z)) > t.r) continue;
+          mine.push(t);
+        }
+        per.push([range, mine]);
+        want += mine.length;
+      }
+      const share = want > HOLE_SLOTS ? HOLE_SLOTS / want : 1;
+      for (const [range, mine] of per) {
+        range.lo.value = n;
+        const take = share < 1 ? Math.max(1, Math.floor(mine.length * share)) : mine.length;
+        for (let i = 0; i < take; i++) put(mine[i]);
+        range.hi.value = n;
+      }
+    }
+    this.uniforms.uTearCount.value = this.lit;
+    this.tex.needsUpdate = true;
+  }
+
+  // One panel's reach, in the AIRFRAME's frame -- which is the frame the
+  // openings are in. Re-measured every time: a propeller turns, a control
+  // surface moves, and a machine that has been shot is a machine that is being
+  // flown. A skinned panel is not measurable this way at all (its bounds are
+  // in bind space and the bones are what move it), so it is handed everything.
+  _meshBox(mesh, inv) {
+    if (!mesh || mesh.isSkinnedMesh || !inv) return null;
+    const g = mesh.geometry;
+    if (!g?.attributes?.position) return null;
+    if (!g.boundingBox) g.computeBoundingBox();
+    return this._box.copy(g.boundingBox)
+      .applyMatrix4(this._m.multiplyMatrices(inv, mesh.matrixWorld));
   }
 }
 
@@ -466,6 +610,14 @@ export class PlaneDamage {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       const clear = mats.some((m) => m && m.transparent && (m.opacity ?? 1) < 0.95);
       const nm = `${o.name} ${o.parent?.name ?? ''}`;
+      // A PROPELLER IS THE ONE PART THAT MOVES INSIDE THE AIRFRAME. Marks ride
+      // the wrapper, so a hole stamped on a blade is a hole that stays where
+      // the blade was and the blade goes on turning without it -- a dot
+      // hanging in the air in front of the nose, which on the crane's Mustang
+      // (its prop turns in the fans' stream) is exactly what the player saw.
+      // A round through a blade at 2 000 rpm leaves a nick nobody can see
+      // anyway, so it gets the sparks and the damage and no mark.
+      o.userData.planeSpin = spins(o);
       o.userData.surface = clear ? 'perspex' : TYRE_RX.test(nm) ? 'rubber' : 'skin';
       o.userData.planePart = clear
         ? 'canopy'
@@ -504,7 +656,8 @@ export class PlaneDamage {
     const cal = info.cart.bullet / 1000;
     const dist = this.game.camera.position.distanceTo(info.point);
     const vol = this.game.sound?.volume ?? 0.7;
-    if (part === 'canopy') this._canopy(info, rec, cal, dist, vol);
+    if (info.hit.object?.userData?.planeSpin) this._spinner(info, dist, vol);
+    else if (part === 'canopy') this._canopy(info, rec, cal, dist, vol);
     else if (part === 'tyre') this._tyre(info, rec, cal, dist, vol);
     else this._skin(info, rec, cal, dist, vol);
     return true;
@@ -623,6 +776,22 @@ export class PlaneDamage {
     hitSoft(dist, vol);
   }
 
+  // A TURNING BLADE. Sparks, swarf and the noise, and nothing that stays: see
+  // `spins` above for why a mark here would hang in the air.
+  _spinner(info, dist, vol) {
+    const fx = this.game.impacts;
+    const cal = info.cart.bullet / 1000;
+    fx?.sparks.emit(info.point, 16, {
+      tint: 0xffd089, dir: this._z.copy(info.dir).reflect(info.normal), cone: 1.9,
+      speed: 11, size: 0.012, life: 0.32, grav: 16, drag: 1,
+    });
+    fx?.debris.emit(info.point, 6, {
+      tint: 0xb6b9bd, dir: info.normal, cone: 1.4, speed: 5, size: cal * 1.6,
+      up: 0.5, life: 0.5, grav: 9, spread: cal * 2.5,
+    });
+    hitSkin(dist, vol);
+  }
+
   // WHERE IT CAME OUT. The simulation puts the exit a millimetre behind the
   // entry, which is true of the panel and useless on an aeroplane: the round
   // crosses the bay and leaves through the FAR skin, half a metre away. So
@@ -639,6 +808,7 @@ export class PlaneDamage {
     // the far panel's own normal, turned to face the way the round left
     this._n.copy(h.face.normal).transformDirection(h.object.matrixWorld);
     if (this._n.dot(dir) < 0) this._n.negate();
+    if (h.object.userData?.planeSpin) return;   // ...and not onto a turning blade
     const fx = this.game.impacts;
     if (h.object.userData?.surface === 'perspex') {
       const web = cal * (11 + Math.random() * 5);
@@ -812,8 +982,11 @@ export class PlaneDamage {
     for (const o of parts.skin) {
       if (Array.isArray(o.material)) o.material = o.material.map((m) => m?.clone() ?? m);
       else if (o.material) o.material = o.material.clone();
-      for (const m of (Array.isArray(o.material) ? o.material : [o.material])) set.patch(m);
+      // ...and each panel is told which stretch of the opening map is its own
+      for (const m of (Array.isArray(o.material) ? o.material : [o.material])) set.patch(m, o);
     }
+    // a wing that has come off is not a panel of this machine any more
+    set.keepOnly(parts.skin);
     rec._holeSet = set;
     return set;
   }
@@ -821,42 +994,21 @@ export class PlaneDamage {
   // ...and the openings, refreshed. Entries and exits both: a round that went
   // through leaves the far skin as open as the near one.
   //
-  // EVERY HOLE THAT IS DRAWN IS A REAL HOLE. The shader has room for a fixed
-  // number of them, and an airframe can collect far more than that -- so what
-  // used to happen past the limit was that the newest tears kept getting
-  // their torn-metal ring painted on while the metal behind them stayed put:
-  // "sometimes its pictures of holes, not hole from whole body". The budget
-  // is enforced here instead. When an aeroplane runs out of slots the
-  // SMALLEST openings are given up -- mark and all -- so what is left on it
-  // is always both drawn and cut.
+  // NOTHING IS GIVEN UP HERE ANY MORE. The old rule was that an airframe past
+  // its budget of shader slots surrendered its SMALLEST openings, mark and
+  // all, so that every hole drawn was a hole cut -- and the player watched the
+  // dots he had put in a machine disappear as he kept shooting it: "sometimes
+  // they are hidding, and i dont need u to hide it". The map holds a thousand
+  // of them per machine now and is walked per panel (see HoleSet), so the
+  // choice does not come up in play; if it ever did, the small ones would go
+  // without a VOID behind them and keep their mark.
   _syncHoles(rec) {
     const set = this._holes(rec);
-    const lists = [];
-    for (const list of Object.values(rec._tears ?? {})) if (list) lists.push(list);
-    if (rec._exits) lists.push(rec._exits);
-    let all = [];
-    for (const list of lists) for (const t of list) all.push(t);
-    if (all.length > HOLE_SLOTS) {
-      all.sort((a, b) => a.r - b.r);
-      const drop = all.length - HOLE_SLOTS;
-      for (let i = 0; i < drop; i++) {
-        const t = all[i];
-        t.gone = true;
-        if (t.mark && !t.mark.dropped) {
-          t.mark.dropped = true;
-          t.mark.layer.clear(t.mark.i);
-          t.mark = null;
-        }
-      }
-      for (const list of lists) {
-        let n = 0;
-        for (const t of list) if (!t.gone) list[n++] = t;
-        list.length = n;
-      }
-      all = all.slice(drop);
-    }
+    const all = [];
+    for (const list of Object.values(rec._tears ?? {})) if (list) for (const t of list) all.push(t);
+    if (rec._exits) for (const t of rec._exits) all.push(t);
     this._mw.copy(rec.wrapper.matrixWorld).invert();
-    set.set(all, this._mw);
+    set.write(all, this._mw);
   }
 
   _drawTear(rec, t, info, tint) {
@@ -1158,7 +1310,7 @@ export class PlaneDamage {
       else o.material = o.material.clone();
       for (const m of (Array.isArray(o.material) ? o.material : [o.material])) set.patch(m);
     });
-    set.set(mine, inv);
+    set.write(mine, inv);
     group.userData.holeSet = set;
     return set;
   }

@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/Character/FootBoarding.cs",
+  "js": "characters.js",
+  "covers": 24,
+  "note": "characters.js:1339-1351 `_localBox` and :1358-1368 `lookSeated`, ported verbatim-named as LocalBox (FootBoarding.cs:1026 region) and LookSeated (:1026). This is a SECOND claim on a file whose other claim is tagged js=foot.js — the same cross-attribution artifact that made roads.js read 31% while BridgeBuilder.cs covered it under js=bridges.js. The manifest could not express it until the merge key became (cs, js). The work was done; only the credit was missing.",
+  "verified": "Confirmed present by grep in the shipped file before claiming: FootBoarding.cs calls LocalBox at :909 and :915 and declares LookSeated at :1026, called from :1009. Not separately probed — these are the seat-fit box and the seated look clamp, which need a loaded rig; FootBoardingProbe already PASSES at 52 values on that file's pure maths."
+ }
+]

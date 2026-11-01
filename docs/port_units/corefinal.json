@@ -1,0 +1,30 @@
+[
+  {
+    "cs": "Assets/Scripts/Core/GameLoop.cs (corefinal — _precompileShaders)",
+    "js": "game.js",
+    "covers": 9,
+    "verified": null,
+    "note": "src/game.js:1436-1444 _precompileShaders, the one REAL gap the game.js walk found that was not already ported under another name. Three passes at the JS's own measured times (immediately, +20 s, +45 s) driven by a coroutine off BeginSession(); `?nocompile` becomes a `-nocompile` command-line argument. Shader.WarmupAllShaders() stands in for renderer.compileAsync(scene, camera) — and the difference is written into the code comment rather than hidden: compileAsync is non-blocking (KHR_parallel_shader_compile) while WarmupAllShaders is synchronous, so each pass costs one long frame instead of none. That is why it runs the JS's three passes and no more. NOT claimed here and reported in prose instead, because the C# files that own those JS lines already claim them: the RangeLaneView feed (`var laneHud = RangeBootstrap.TickAll(...)` + `RangeLaneUi?.Tick(laneHud)`, rangelane.js:342-411, 0 free), the paper-score sink/reset (papertargets.js:393-396/474, 6 free), and GameLoop.cs's own existing 916-line game.js unit."
+  },
+  {
+    "cs": "Assets/Scripts/Core/CombatWorldAdapter.cs (corefinal — impact fence + shed slab ground probe)",
+    "js": "game.js",
+    "covers": 15,
+    "verified": null,
+    "note": "Two REAL game.js gaps found by the cluster walk. (1) game.js:183-192, THE IMPACT FENCE — `bullets.OnImpact = info => impactFx.Resolve(info)` had no try/catch, and the JS comment on those exact lines says what that costs: a throw inside any impact handler 'used to abandon the rest of that frame's rounds mid-flight: they were never stepped and never retired, so they piled up against the live cap and every frame after did more work than the last. That is what a stutter while shooting turned out to be.' Resolve() is called from inside BulletSim's own step loop (Ballistics.cs:598/620/625) and runs decals, glass, building damage and the range's scoring faces, so the exposure is identical. Now fenced, one error logged exactly once (game.js:187-190). (2) game.js:902-906, _parkInShed's ground probe — was reading Terrain.HeightAt(at.x, at.z), the ground UNDER the shed, where the JS probes from INSIDE the shed just over the slab (`this._groundAt(at.x, at.z, slab + 1.5, 2) ?? slab`) precisely so the ray does not start above the building and read the ROOF as the floor; the 2 m maxAbove is what rejects the roof. Ported onto the existing, cited PlaneGroundProbe.GroundAt (game.js:1362-1381), so nothing new was derived."
+  },
+  {
+    "cs": "Assets/Scripts/Core/CombatWorldAdapter.cs (corefinal — plane TANK/DPS role on the target card)",
+    "js": "target.js",
+    "covers": 2,
+    "verified": null,
+    "note": "src/target.js:212-213 `const tank = planeRole(def) === 'TANK'` -> `🛡 TANK` / `⚔ DPS`. The target-registry Entry hardcoded RoleIsTank = false for every plane, so all 15 TANK machines showed as DPS on the plane card (TANK/DPS is the deliberate, CORRECT label on plane UI — it is the hero/personage screen it is banned from, src/characters.js:23-25). Now Planes.IsTankPlane(gameObject.name): Flight/PlaneHallFill.cs:149 sets `go.name = def.Id` for every parked machine, and an unknown name falls through Planes.PlaneById to All[0] (spitfire, DPS), which is the JS's own `planeById(id) ?? PLANES[0]`. Counts cross-checked: 15 `Role = PlaneRole.TANK` in PlaneCatalog.cs vs 15 `role: 'TANK'` in src/planes.js, and the scene bake's own `tanks=15 dps=20`."
+  },
+  {
+    "cs": "Assets/Scripts/Core/CombatBuildingChunk.cs (corefinal — real HP table + _stageOf)",
+    "js": "citymap.js",
+    "covers": 0,
+    "verified": null,
+    "note": "NO HEADROOM — citymap.js is at 8445/8445 claimed, 0 free, so this is filed at covers=0 and reported in prose rather than billed (docs/port_units/README.md's own rule). Two measured divergences fixed, both in a file that carried no unit at all. (1) src/citymap.js:5344 `maxHp = Math.round(clamp(180 + h*14 + area*0.35, 280, 3200))`, where `area` is citymap.js:4649's `Math.abs(THREE.ShapeUtils.area(contour))` over the same footprint ring FootprintRingGameOf returns. This file had `220f + h*26f` — no footprint term, no clamp, no rounding; neither the current JS table nor the pre-migration one City/BuildingDamage.OldMaxHp records (`clamp(60+h*8+area*0.1,100,800)`, citymap.js:2925), so it was not a stale-table artefact. Shoelace summed in double (the RiverSheet lesson), JsMath.Round, and |area| is frame-invariant so the game-frame ring is correct to use. (2) src/citymap.js:1498-1501 `_stageOf` is `hp<=0 ? 9 : Math.min(8, Math.floor((1-hp/maxHp)*9))` — nine, capped at eight. ApplyDamage had `Clamp(FloorToInt((1-frac)*Stages), 0, Stages-1)`, i.e. *10 capped at 9, so a building with 5% hull left came out at floor(9.5)=9 and COLLAPSED with HP remaining, and every stage above ~6 ran one step ahead of the JS. No probe asserted either number (checked: only CityMapRestProbe touches OldMaxHp, GlassHoleProbe builds a chunk and asserts no HP), and GlassHoleProbe re-run clean afterwards. STILL DIVERGENT, reported not fixed: PaintStage uses a linear `t = stage/(Stages-1)` sink where the JS drops the roofline by the measured CityMap.STAGE_H table [1,.97,.94,.9,.85,.79,.72,.63,.52,.12] (citymap.js:1350) — a geometry change with more surface area than one formula, left for whoever owns the crumble visuals."
+  }
+]

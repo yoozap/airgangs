@@ -1,0 +1,198 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/AudioFx.cs",
+  "js": "audiofx.js",
+  "covers": 908,
+  "note": "structural estimate: 43/47 of the JS file's functions have a counterpart; 908 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Data/GeoFrame.cs, Assets/Scripts/Flight/PlaneCatalog.cs, Assets/Scripts/Flight/PlaneController.cs",
+  "js": "planes.js",
+  "covers": 668,
+  "note": "structural estimate: 12/29 of the JS file's functions have a counterpart; 875 lines of C# across 3 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Flight/PropellerSystem.cs",
+  "js": "propeller.js",
+  "covers": 613,
+  "note": "structural estimate: 12/22 of the JS file's functions have a counterpart; 993 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/ImpactFx.cs",
+  "js": "impactfx.js",
+  "covers": 501,
+  "note": "structural estimate: 11/18 of the JS file's functions have a counterpart; 501 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Core/EngineSound.cs",
+  "js": "sound.js",
+  "covers": 476,
+  "note": "structural estimate: 20/21 of the JS file's functions have a counterpart; 479 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/City/BridgeBuilder.cs",
+  "js": "bridges.js",
+  "covers": 360,
+  "note": "structural estimate: 2/2 of the JS file's functions have a counterpart; 653 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/AirframeBreakup.cs",
+  "js": "breakup.js",
+  "covers": 351,
+  "note": "structural estimate: 12/14 of the JS file's functions have a counterpart; 537 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/Ballistics.cs",
+  "js": "ballistics.js",
+  "covers": 348,
+  "note": "structural estimate: 7/14 of the JS file's functions have a counterpart; 629 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/UI/SkillBar/SkillBarView.cs, Assets/Scripts/UI/SkillBar/WeaponBarView.cs",
+  "js": "skillbar.js",
+  "covers": 328,
+  "note": "structural estimate: 7/8 of the JS file's functions have a counterpart; 353 lines of C# across 2 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/Shooting.cs",
+  "js": "shooting.js",
+  "covers": 273,
+  "note": "structural estimate: 7/15 of the JS file's functions have a counterpart; 341 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/Blast.cs",
+  "js": "blast.js",
+  "covers": 267,
+  "note": "structural estimate: 6/10 of the JS file's functions have a counterpart; 267 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Flight/FlightModel.cs",
+  "js": "aero.js",
+  "covers": 248,
+  "note": "structural estimate: 4/4 of the JS file's functions have a counterpart; 314 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/UI/Common/CyberTheme.cs, Assets/Scripts/UI/Common/LabelPool.cs, Assets/Scripts/UI/Common/UiBootstrap.cs, Assets/Scripts/UI/Common/VectorDraw.cs, Assets/Scripts/UI/Hud/HudData.cs, Assets/Scripts/UI/Hud/HudView.cs",
+  "js": "hud.js",
+  "covers": 223,
+  "note": "structural estimate: 10/15 of the JS file's functions have a counterpart; 763 lines of C# across 6 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Core/HeroLink.cs",
+  "js": "net.js",
+  "covers": 215,
+  "note": "structural estimate: 12/13 of the JS file's functions have a counterpart; 358 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/UI/Settings/SettingsState.cs, Assets/Scripts/UI/Settings/SettingsView.cs",
+  "js": "settings.js",
+  "covers": 195,
+  "note": "structural estimate: 11/13 of the JS file's functions have a counterpart; 301 lines of C# across 2 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/CombatWorldHooks.cs, Assets/Scripts/Combat/Rockets.cs",
+  "js": "rockets.js",
+  "covers": 189,
+  "note": "structural estimate: 5/9 of the JS file's functions have a counterpart; 274 lines of C# across 2 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/Guns.cs",
+  "js": "guns.js",
+  "covers": 157,
+  "note": "structural estimate: 5/13 of the JS file's functions have a counterpart; 157 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/UI/Target/TargetCardView.cs, Assets/Scripts/UI/Target/TargetSnapshot.cs",
+  "js": "target.js",
+  "covers": 137,
+  "note": "structural estimate: 6/17 of the JS file's functions have a counterpart; 165 lines of C# across 2 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Character/CharacterRoster.cs",
+  "js": "characters.js",
+  "covers": 134,
+  "note": "structural estimate: 4/86 of the JS file's functions have a counterpart; 191 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/City/RoadBuilder.cs",
+  "js": "roads.js",
+  "covers": 133,
+  "note": "structural estimate: 2/7 of the JS file's functions have a counterpart; 654 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Character/MoveLibrary.cs",
+  "js": "anims.js",
+  "covers": 111,
+  "note": "structural estimate: 3/11 of the JS file's functions have a counterpart; 155 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Core/NetClient.cs",
+  "js": "main.js",
+  "covers": 88,
+  "note": "structural estimate: 4/39 of the JS file's functions have a counterpart; 337 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Core/PlacementEditor.cs",
+  "js": "placement.js",
+  "covers": 82,
+  "note": "structural estimate: 5/8 of the JS file's functions have a counterpart; 186 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/City/BuildingBuilder.cs, Assets/Scripts/City/BuildingFacts.cs, Assets/Scripts/Data/CityData.cs, Assets/Scripts/Data/TerrainSampler.cs",
+  "js": "citymap.js",
+  "covers": 62,
+  "note": "structural estimate: 1/138 of the JS file's functions have a counterpart; 669 lines of C# across 4 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Core/Wind.cs",
+  "js": "wind.js",
+  "covers": 56,
+  "note": "structural estimate: 1/2 of the JS file's functions have a counterpart; 124 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Flight/FlightCamera.cs, Assets/Scripts/Flight/FlightInput.cs",
+  "js": "game.js",
+  "covers": 43,
+  "note": "structural estimate: 1/64 of the JS file's functions have a counterpart; 136 lines of C# across 2 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/UI/Map/MapMarkers.cs, Assets/Scripts/UI/Map/MapMeta.cs, Assets/Scripts/UI/Map/MercatorProjection.cs",
+  "js": "mapui.js",
+  "covers": 0,
+  "note": "structural estimate: 0/28 of the JS file's functions have a counterpart; 180 lines of C# across 3 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Combat/PlaneDamageRecord.cs",
+  "js": "planedamage.js",
+  "covers": 0,
+  "note": "structural estimate: 0/58 of the JS file's functions have a counterpart; 77 lines of C# across 1 file(s). Agent stalled before declaring coverage.",
+  "verified": null
+ }
+]

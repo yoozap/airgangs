@@ -1,0 +1,9 @@
+[
+  {
+    "cs": "Assets/Scripts/UI/Shell/ShellUi.cs, Assets/Scripts/UI/Shell/ShellView.cs",
+    "js": "main.js",
+    "covers": 0,
+    "verified": "Editor/Probes/HeroScreenProbe.cs",
+    "note": "ZERO ON PURPOSE. These two new files build index.html:50-104's #chrome and #screen-login and own the shell's UIDocument, and they wire the already-claimed Core/Boot.cs (564) + UI/Character/CharacterView.cs (168) + Core/CharacterPreviewRig.cs (96) into it -- the first time any of the three was constructed outside Editor/Probes/*. But main.js's budget is 856 lines with 855 already claimed: 1 free. Wiring that makes an existing claim TRUE adds no coverage (docs/port_units/README.md), and the markup half lives in index.html/style.css, which are not in the manifest's budget at all. Filed at 0 so the files are on the record without inflating the ledger."
+  }
+]

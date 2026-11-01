@@ -1,0 +1,184 @@
+[
+  {
+    "cs": "Assets/Scripts/UI/Hud/HudView.cs",
+    "js": "hud.js",
+    "covers": 225,
+    "note": "CombatHUD's own control flow: constructor/fields (hud.js:21-43, minus the _vp/_s1-4 scratch Vector3 fields -- Vector3 is a C# struct, not a heap object, so there is nothing for those to avoid allocating; kept only where the name helps diff against the JS), setVisible (48-51), _proj via Camera.WorldToViewportPoint (54-58), update()/Tick+OnGenerateVisualContent (124-171, minus 136-147's canvas backing-size sync, which has no UI Toolkit analogue -- see the class header's PANEL-SCALE TRAP note), _ladder (174-201, with the pitch-ladder 'east' cross product operands swapped per the documented handedness rule), _reticle minus the raycast body (204-240), _bankScale (243-263), _fpm (266-276), _headingTape (279-294, heading formula re-derived for Unity's X=east frame), _airdata (297-329), dispose (331-333). The _line/_circle/_rect/_poly helpers (62-122) and _text (99-109) are NOT re-counted here -- see VectorDraw.cs/LabelPool.cs, which own those lines instead so hud.js's 334-line budget is not double-claimed.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Hud/HudData.cs",
+    "js": "hud.js",
+    "covers": 8,
+    "note": "Not a line-for-line port -- a plain-data snapshot struct standing in for the live `g` (Game) reference hud.js:126-329 reads from. Core does not exist yet in this parallel port (4 agents, independent phases; see the class doc comment), so HudView takes a snapshot instead of a God-object reference. The 8 lines credited are the handful of distinct `g.*` reads this struct's fields collectively replace.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/VectorDraw.cs",
+    "js": "hud.js",
+    "covers": 55,
+    "note": "The two-pass (halo + color) line/circle/rect/poly primitives, hud.js:62-97,111-122 (_line/_circle/_rect/_poly), consolidated into one shared class so HudView and the reimplemented Map views draw through the same primitives -- the JS never shared these across hud.js/mapui.js either (each drew into its own 2D context), so this is a deliberate consolidation, not a transliteration. Also adds FillRings/StrokeRings (multi-ring fill with holes, FillRule.NonZero) with no hud.js counterpart, for mapui.js's district/subzone polygons -- not counted against either file's budget since it is new shared infrastructure, not a 1:1 port of specific lines.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/LabelPool.cs",
+    "js": "hud.js",
+    "covers": 11,
+    "note": "hud.js:99-109 _text(). Canvas2D's fillText/strokeText has no UI Toolkit equivalent (Painter2D draws vectors only); this pools reusable Label children instead of allocating a new one per mark per frame, which in C# (unlike a scratch Vector3) is a real GC/layout cost. Used by HudView, MiniMapView and BigMapView alike.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/CyberTheme.cs",
+    "js": "src/style.css",
+    "covers": 14,
+    "note": "The :root palette (style.css:4-15) plus the Share Tech Mono constant (:1328) and the hud.js:18 HALO literal, as C# fallback constants for code with no live USS panel to resolve against (e.g. Editor/Probes/UiProbe.cs). Not JS, so counted against style.css instead.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/ThemeColors.cs",
+    "js": null,
+    "covers": 0,
+    "note": "Runtime bridge that reads the SAME palette back out of a live USS panel via CustomStyleProperty, so Assets/UI/Theme/CyberTheme.uss stays the single source of truth instead of the C# constants. No direct source-line counterpart in either the JS or the CSS -- this pattern (USS custom properties read back into C# for Painter2D drawing) does not exist on the JS side at all.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/AngledPanel.cs",
+    "js": "src/style.css",
+    "covers": 0,
+    "note": "Replaces clip-path: polygon(...) (style.css:250,278,336,522,540,560,576,627,801,1070,762 -- 11 call sites across the ported systems' panels) with a Painter2D-filled polygon, since USS has no clip-path. Counted as 0 covered lines deliberately: a CSS clip-path declaration and a polygon-fill function are not countable 1:1 the way a JS method's body is.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/UiBootstrap.cs",
+    "js": null,
+    "covers": 0,
+    "note": "Pins PanelSettings to ConstantPixelSize/scale=1 -- this port's answer to the panel-scale trap (see the class doc comment). Has no JS counterpart: the JS never had a panel-scale concept, only the canvas backing-size bug hud.js:138-144 guards against by hand.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Common/UiPulse.cs",
+    "js": "src/style.css",
+    "covers": 12,
+    "note": "Replaces the CSS @keyframes USS cannot express: cc-shake (style.css:1137 reference + the keyframe block near it), ab-fire (:1150-1154), ab-ready (:1157-1161). Invoked from SkillBarView.Select/SetCooldown/Pulse and WeaponBarView, but credited against style.css's keyframe definitions rather than skillbar.js's calling lines, so skillbar.js's budget is not double-claimed.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/SkillBar/ActionSlot.cs",
+    "js": "skillbar.js",
+    "covers": 138,
+    "note": "Data model: SkillSlot.Gun/Rocket (skillbar.js:137-138, 20 lines incl. Georgian tooltips), WEAPON_SLOTS as WeaponCategory.All (250-259, with Georgian names+emoji), CarriedWeapon (330-346's shape). Includes the two SVG ability icons (GUN_ICON/ROCKET_ICON, skillbar.js:9-126, 118 lines) transcribed byte-for-byte into Assets/UI/Icons/gun_icon.svg and rocket_icon.svg -- separate asset files, but credited here since ActionSlot.cs is the C# anchor (SkillSlot.Icon) for that data. NOT YET WIRED: importing the .svg as a Unity Sprite needs the com.unity.vectorgraphics package, not in manifest.json -- SkillBarView falls back to no icon texture until that exists (see the handback report).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/SkillBar/CooldownSweep.cs",
+    "js": "skillbar.js",
+    "covers": 19,
+    "note": "skillbar.js:198-217 setCooldown's intent (the WoW radial wipe), repainted as a Painter2D pie wedge standing in for style.css:1140-1147's conic-gradient, which USS cannot express.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/SkillBar/SkillBarView.cs",
+    "js": "skillbar.js",
+    "covers": 90,
+    "note": "The exported SkillBar class: constructor (133-169), select (175-188), selectByCode->SelectByDigit (190-196), setCooldown orchestration (198-217, the sweep math itself is CooldownSweep.cs), pulse (220-226), current getter (171-173), setVisible/dispose (231-237).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/SkillBar/WeaponBarView.cs",
+    "js": "skillbar.js",
+    "covers": 98,
+    "note": "The exported WeaponSlots class: constructor (261-285), select incl. the REPRESS_MS debounce (248,291-319), selectByCode (321-325), setCarried (330-346), setAmmo (353-366), setVisible/dispose (368-375). Drawn/Holstered/Hint are C# events standing in for skillbar.js:309-316's direct `game.foot.*`/`game._setHint` calls -- Character/foot.js does not exist yet in this parallel port (see HudData.cs's note on the same decoupling).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Settings/SettingsState.cs",
+    "js": "settings.js",
+    "covers": 25,
+    "note": "QUALITY map as QualityPreset (settings.js:6-11), DEFAULTS (13-22), load/save (32-35,73-77) via PlayerPrefs under the same 'tf-settings' key, and the one-time sound-forced-off migration (49).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Settings/SettingsView.cs",
+    "js": "settings.js",
+    "covers": 165,
+    "note": "The exported SettingsUI class almost whole: constructor/attach/open/close (24-71), _bind (79-137, every tab/toggle/segmented-button/slider), _applyAll/_applyQuality/_applyEngine/_applyVolume/_applyHudBits (150-202) as C# events instead of direct `game.renderer`/`game.sound` calls (Flight/Core do not exist yet in this parallel port), setEngine (191-197), _sync (206-230). The ONLY thing not ported is the actual rendering/audio EFFECT of a setting, which is Core/Flight's job to apply from the raised events.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Target/TargetSnapshot.cs",
+    "js": "target.js",
+    "covers": 15,
+    "note": "Plain-data snapshot of what _paint() (target.js:186-250) reads off a plane record -- Combat/City's registry and raycasting own the live record (see TargetCardView.cs's note on scope).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Target/TargetCardView.cs",
+    "js": "target.js",
+    "covers": 85,
+    "note": "Only the CARD's visual state machine: set/clear (169-182), _paint (186-250) incl. the fresh-vs-cheap-update key and the hp-bar color thresholds. Deliberately NOT ported (Combat/City territory, ~215 lines): register/unregister (68-85), pickAt/cycle/_recOf (102-165), _ensureRing/_ringY (256-298), damagePlane/_kill (333-376). The '\\ud83d\\udee1 TANK'/'\\u2694 DPS' role chip (212-214) is kept in ENGLISH exactly as the JS has it -- the one deliberate exception to this whole project's Georgian-only rule.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MercatorProjection.cs",
+    "js": "mapui.js",
+    "covers": 27,
+    "note": "_latlon (80-83), _px/_pxLL (85-96), _llFromPx (98-104), _metersPerPx (123-126) -- the slippy-map tile math for the SATELLITE MOSAIC IMAGE only. Does NOT replace GeoFrame.cs's lat/lon<->Unity-world conversion (a different, local-metric projection); the two share an origin but are otherwise unrelated, per the class doc comment.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MapMeta.cs",
+    "js": "mapui.js",
+    "covers": 30,
+    "note": "The fetch('tbilisi/mapmeta.json')/districts.json/subzones.json loads (49-72), read via Newtonsoft straight off StreamingAssets the same way CityData.cs/BuildingFacts.cs do -- no new data pipeline needed.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MapPin.cs",
+    "js": "mapui.js",
+    "covers": 28,
+    "note": "Pin load (36-46), _savePins (116-121), pinsWorld (107-114 -- routed through GeoFrame.FromLatLon instead of re-deriving the local metric projection a second time), the 30-pin cap (494). Persisted via PlayerPrefs under the same 'tf-pins' key. NOT wired to public/tbilisi/named.json -- that file is src/shopfronts.js's shop-signage data (confirmed by grep: named.json has zero references in mapui.js), unrelated to this pin feature.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MapMarkers.cs",
+    "js": "mapui.js",
+    "covers": 38,
+    "note": "STATUE_MARKERS (741-752, 10 Georgian labels) and METRO_MARKERS (754-778, 23 coordinate pairs), transcribed verbatim.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MiniMapView.cs",
+    "js": "mapui.js",
+    "covers": 90,
+    "note": "REIMPLEMENTED per the task brief, not transliterated: update() (137-241). The satellite bitmap is a transform-positioned child layer (native rotate/scale/translate) instead of hud.js-style manual ctx.save/rotate/drawImage/restore every frame; the player arrow, waypoint pins and 'N' rim marker stay in the same explicit cos/sin(-heading) math the JS used for them (164-180,183-229,232-238), since the JS never let the canvas transform carry those either.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/BigMapView.cs",
+    "js": "mapui.js",
+    "covers": 340,
+    "note": "REIMPLEMENTED per the task brief: _toPx (354-368), _distCache/_subCache (370-378), _fitScale/_scale/_clampCenter (380-399), _centerOnPlayer (402-409), wheel-zoom-toward-cursor/pan/click-pin/right-click-remove (411-459), _pinScreen/_pinAt/_clickPin (461-500), and the whole of _drawBig (502-737: satellite layer, holo tint, dashed city boundary, subzone+district fill/stroke/labels, statue+metro markers, waypoint pins, player blip). NOT PORTED: the street-statue/bust dot layer's DATA (614-637 reads landmarks.js's STREET_STATUE_POINTS/BUST_POINTS, City/Core territory) -- the drawing code is present and wired to two empty public lists a City-side agent can populate. Gradients, box-shadow glow and the resize-handle's diagonal hatch are flattened/dropped per CyberTheme.uss's documented CSS-token gaps. Drag/zoom pixel-for-pixel behavior is unverified -- no editor run.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MapWindowView.cs",
+    "js": "mapui.js",
+    "covers": 90,
+    "note": "toggle (245-257), _defaultRect/_clampRect/_applyRect (259-285), _bindWindowControls' drag+resize+fullscreen (292-336), the window-resize re-clamp (338-344). _resizeCanvas (287-290) has no port: BigMapView is a flex-grow VisualElement UI Toolkit lays out itself, so there is no canvas backing buffer to manually resize (a genuine simplification, noted in the class header) -- NOT counted as a gap.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MapUiRoot.cs",
+    "js": "mapui.js",
+    "covers": 20,
+    "note": "Composition root matching the single exported `MapUI` class's shape (11,137,245: one object, one update(x,z,heading), one toggle()). LoadDefault() reads StreamingAssets directly (mapmeta.json/districts.json/subzones.json/satellite.jpg/georgia-sat.jpg) the same way CityData.cs does; the Android StreamingAssets caveat that file already carries applies here too and is not a new gap.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Editor/Probes/UiProbe.cs",
+    "js": null,
+    "covers": 0,
+    "note": "Proof-of-parse + id/string/token dump for every UXML/USS this phase published, in the same KEY=value shape tools/_probe_ui.mjs prints from the JS/CSS source. NOT RUN (editor lock rule: this phase may not launch the Unity editor) -- the paired tools/_probe_ui.mjs WAS run with node and confirmed: 113 ids, 155 Georgian strings, 14 :root tokens across index.html + the 5 ported JS files + style.css.",
+    "verified": "tools/_probe_ui.mjs run via node, confirmed; UiProbe.cs itself not run -- batch pass owed to whoever holds the editor lock"
+  }
+]

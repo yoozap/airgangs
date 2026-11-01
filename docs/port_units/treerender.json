@@ -1,0 +1,16 @@
+[
+  {
+    "cs": "Assets/Scripts/City/VegetationRenderer.cs",
+    "js": "citymap.js",
+    "covers": 0,
+    "note": "citymap.js has ZERO free headroom (8552 lines - 107 excluded = 8445 budget, already 8445 claimed) — checked via docs/port_units/README.md's own formula before writing this file, so this claims 0 lines on purpose rather than feeding the clamp. This file is the RENDERED half of the three scenery stages docs/QUALITY_BAR.md's 'THE BIGGEST REAL GAP' section names as having no Unity builder at all (CityLoader.UnportedStages: trees, rocks, groves). The PLACEMENT math (citymap.js:7756-7825 _buildTrees, :8186-8207 _buildGroves, :8211-8262 _buildRocks, the three hashes, the keep-out filtering) was already ported in City/VegetationLoader.cs and City/GroveRockScatter.cs and is NOT re-claimed here — both files are unedited by this pass. What this file adds that did not exist anywhere before: resolving the real chestnut.glb/chestnut_hero.glb/rock-0..7.glb models (converted to FBX via tools/glb_batch_fbx.py into Assets/Art/Vegetation/, the same Blender bridge every other kit in this port uses) into renderable Mesh/Material parts (bark-vs-leaf classification by source-GLB material name, matching citymap.js:7847's alphaMode-driven cutout rule), chunking every instance through the already-ported, unedited ChunkedInstancer.Place and CityCulling, and actually calling Graphics.RenderMeshInstanced every Tick() — none of which is JS line-for-line logic (it is the Unity-side instancing/draw-call layer CityRenderer.cs's own class doc describes as having 'no Three.js equivalent'). The one genuinely new FORMULA (ComposeGroveMatrix) is a straight transcription of VegetationLoader.ComposeTreeMatrix with GroveRockScatter.GroveRnd substituted for VegetationLoader.Rnd — functionally a restatement of code already claimed elsewhere, not new ported lines, so it is not billed either.",
+    "verified": "tools/_probe_treerender.mjs (real public/tbilisi/city.json.gz + roadnet.json.gz, the REAL src/roads.js mergeRoadNet and src/planehall.js planeHallKeepOut imported directly rather than re-typed) paired with Assets/Editor/Probes/TreeRenderProbe.cs via python3 tools/unity_port_check.py. See the final report for the actual run output and PASS/FAIL lines; this note is filed at write time, before that run completed, so treat the probe pair itself as the source of truth over this sentence if they ever disagree."
+  },
+  {
+    "cs": "Assets/Editor/Probes/TreeRenderProbe.cs",
+    "js": "citymap.js",
+    "covers": 0,
+    "note": "Probe/orchestration only (instantiates the real VegetationRenderer MonoBehaviour and calls Tick() from two camera positions to prove Graphics.RenderMeshInstanced submission, plus prints the real-data scatter counts/sample positions) — no JS line-for-line logic of its own, so 0 lines claimed, same convention as this project's other *_Probe.cs / Build*.cs orchestration files (e.g. docs/port_units/airport_detail.json's BuildAirportDetail.cs entry).",
+    "verified": "See the VegetationRenderer.cs entry above — this file IS the verification harness, not a separate claim."
+  }
+]

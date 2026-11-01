@@ -1,0 +1,23 @@
+[
+ {
+  "cs": "Assets/Scripts/City/StreetFurnitureRenderer.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-11-01",
+  "note": "FIX: ResolveSignModel composes mf.transform.localToWorldMatrix (mesh on the prefab root - the root-relative idiom is identity here), SignScale from the upright bounds (citymap.js:62-68 extractModel bakes matrixWorld before :8429 scale = 5/height). 4,002 signs 0.66x5.0x4.1 on their backs -> 0.805x5.0x6.08 upright; counts unchanged."
+ },
+ {
+  "cs": "Assets/Scripts/City/ShopfrontRenderer.cs + ShopSignTextures.cs + MallRenderer.cs + MetroRenderer.cs + LandmarkSignage.cs",
+  "js": "shopfronts.js",
+  "covers": 0,
+  "verified": "2026-11-01",
+  "note": "FIX: sign quads read backwards in Unity's left-handed frame (u -> 1-u, four renderers) and shop/mall plates were uploaded upside down (canvas row 0 = top vs SetPixels index 0 = bottom; flip at upload like metro/landmark already did). SHOPSIGN lines byte-identical to the Node oracle; frames read forwards."
+ },
+ {
+  "cs": "Assets/Editor/Probes/CitySignsProbe.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-11-01",
+  "note": "VERIFICATION ONLY: SIGNROOT/SIGNSCALE/SIGNWORLD, RFFLOAT/RFFLOATBY/RFWALLFLOAT (relief-to-wall rays per layer, kit-footprint test), SSAXIS (quad u direction vs viewer right), before/after arms via TF_SIGN_NOMODEL / TF_SIGN_NOFLIP in separate processes."
+ }
+]

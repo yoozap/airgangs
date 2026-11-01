@@ -1,0 +1,37 @@
+[
+ {
+  "cs": "Assets/Scripts/Data/CityData.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (perf): a parse cache - 16 runtime call sites each re-read the 15 MB city.json.gz (~650 ms); 11 fired on one scene load. Shares only the two immutable payloads (193,146 footprints + terrain arrays) and hands EVERY caller its own fresh TerrainSampler (CityGroundData's GroundCut hook must belong to exactly one consumer). cityParseCount 11 -> 1, cityParseMs 6487 -> 588; scene open 26.5 s -> 19.8 s."
+ },
+ {
+  "cs": "Assets/Scripts/City/ChunkedSurfaceBuilder.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (perf): the ribbon tiler (citymap.js:6553-6595, same algorithm, same output) - per-tile Dictionary remap hit ~14.5 M times replaced by one reusable int[] + counted int[] buckets; 2,244 -> 1,298 ms; bucket key unchanged (FloorToInt(P[a].x/tileSize) on the same float) so no triangle changes tile; ROADS counts byte-identical."
+ },
+ {
+  "cs": "Assets/Scripts/City/BuildingBuilder.cs",
+  "js": "citymap.js",
+  "covers": 40,
+  "verified": "2026-10-31",
+  "note": "FacadeProps wired where the pitched flag lives (citymap.js:5356 `!pitched && h >= 10` roof gate; pitched = StyleForcesPitch overridden by OSM roof:shape, :4818-4821) - the old CityLoader.BuildFacadePropsForEveryBuilding approximation with pitchedFinal=false deleted. roofOnly for photo-facade buildings (roof block is NOT inside the pb branch, the entrance/AC pushes are). CITYFACADE 6 -> 12 layers: ac 10852 dish 30000 drainpipe 36414 entrance 21070 parapet 70021 roof_prop 50003; roofClutterSkippedPitched=2675; the 70000/50000 overshoots match the JS's once-per-building guards."
+ },
+ {
+  "cs": "Assets/Scripts/Core/CombatWorldAdapter.cs",
+  "js": "ballistics.js",
+  "covers": 2,
+  "verified": "2026-10-31",
+  "note": "FIX: IsRoadSurface was hardcoded => false; now material identity against GroundMaterials.Asphalt() exactly as ballistics.js:420 (mat === world.roadMat) - true for asphalt deck, junction aprons, bridge decks, tunnel floors (the one shared asphalt, citymap.js:6806). CollidableHash<T> is redundant: every JS collidablesNear consumer's Unity counterpart goes through Physics.Raycast with mask ~0 against MeshColliders + CombatTerrainTag, and the three non-collidable layers get no collider."
+ },
+ {
+  "cs": "Assets/Editor/Probes/GroundLoadProbe.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: scene open with a stopwatch (GROUNDLOAD per-phase ms), the facade-prop layer counts, and one assertion per JS collidables consumer driven through the REAL methods (FootController.ProbeGround by reflection lands 2 cm over the deck; plane ground probe; bullets; boresight; terrain/road flags; non-collidable layers have no collider)."
+ }
+]

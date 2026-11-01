@@ -1,0 +1,72 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of index.html:106-148 (#screen-character) — the WoW-style
+       character create/roster screen. Static shell only: the race columns'
+       body tiles, the roster list rows and the info panel's per-hero text
+       are built in Scripts/UI/Character/CharacterView.cs from
+       Character/CharacterRoster.cs + Core/Boot.cs data, exactly the way
+       src/main.js builds them with el.innerHTML/createElement calls rather
+       than markup (renderRaceColumn main.js:390-412, renderCharList
+       main.js:428-458, renderCharInfo main.js:460-504).
+
+       #race-list is REUSED for two different jobs depending on mode — the
+       create-mode race-column AND the roster-mode hero list — exactly as
+       index.html:120 reuses the single div `$('race-list')` for both
+       (renderCharList, main.js:432-436 vs :437-457). Kept identical here. -->
+  <Style src="Character.uss" />
+  <ui:VisualElement name="hangar" class="hangar">
+
+    <ui:VisualElement name="hangar-head" class="hangar-head">
+      <ui:Button name="btn-char-back" class="hback hidden" text="◄ უკან" tooltip="დაბრუნება შენს გმირებზე" />
+      <ui:Button name="btn-char-settings" class="hback" text="⚙ პარამეტრები" />
+      <ui:VisualElement name="hangar-title-row" class="hangar-title-row">
+        <ui:Label name="hangar-title" class="hangar-title" text="PERSONAGE" />
+        <ui:Label name="hangar-title-slash" class="hangar-title-slash" text=" //" />
+      </ui:VisualElement>
+      <ui:Label name="char-sub" class="hangar-sub" text="შექმენი შენი გმირი — აირჩიე რასა და დაარქვი სახელი" />
+    </ui:VisualElement>
+
+    <ui:VisualElement name="hangar-cols" class="hangar-cols">
+
+      <!-- create mode: RACES[0]'s column. roster mode: the hero list. -->
+      <ui:ScrollView name="race-list" class="side-list" />
+
+      <ui:VisualElement name="hangar-mid" class="hangar-mid">
+        <ui:VisualElement name="hangar-preview" class="hangar-preview">
+          <ui:Image name="char-preview" class="char-preview" />
+          <ui:Label name="hp-tag" class="hp-tag" text="HERO PREVIEW // 1:1 HOLO SCAN" />
+        </ui:VisualElement>
+        <ui:VisualElement name="create-bar" class="create-bar hidden">
+          <ui:Label name="cb-line" class="cb-line" />
+        </ui:VisualElement>
+      </ui:VisualElement>
+
+      <!-- create mode only: RACES[1]'s column. -->
+      <ui:ScrollView name="race-list-2" class="side-list hidden" />
+
+      <ui:ScrollView name="hangar-info" class="hangar-info">
+        <ui:Label name="ci-code" class="hi-code" text="RACE //" />
+        <ui:Label name="ci-name" class="hi-name" text="" />
+        <ui:Label name="ci-role" class="hi-class" text="" />
+        <ui:Label name="ci-spot" class="hi-spot hidden" />
+        <ui:Label name="ci-desc" class="hi-desc" text="" />
+        <ui:VisualElement name="ci-stats" class="hi-stats" />
+
+        <ui:VisualElement name="char-name-fld" class="fld char-name-fld">
+          <ui:Label class="char-name-caption" text="გმირის სახელი" />
+          <ui:VisualElement name="char-name-wrap" class="char-name-wrap">
+            <ui:TextField name="char-name" class="char-name-input" max-length="16" />
+            <!-- UI Toolkit's TextField has no native placeholder — simulated
+                 with a sibling label, hidden once the field has any value
+                 (see CharacterView.UpdateNamePlaceholder). -->
+            <ui:Label name="char-name-placeholder" class="fld-placeholder" text="მაგ: ვეფხია" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="hi-spacer" class="hi-spacer" />
+        <ui:Button name="btn-char-delete" class="char-delete hidden" text="✕ გმირის წაშლა" />
+        <ui:Button name="btn-char-create" class="hi-select" text="შექმნა" />
+      </ui:ScrollView>
+    </ui:VisualElement>
+
+  </ui:VisualElement>
+</ui:UXML>

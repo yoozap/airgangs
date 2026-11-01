@@ -1,0 +1,16 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/CombatWorldAdapter.cs",
+  "js": "game.js",
+  "covers": 0,
+  "note": "SUPERSEDED: its +4 is folded into gameadapter.json's consolidated 66 \u2014 see that entry. Left at covers 0 so this key has exactly one claimant.",
+  "verified": "unity -batchmode -quit -executeMethod TbilisiFly.Probes.CoreGameProbe.Run : PASS parkinshed_airborne_false, PASS parkinshed_speed_zero, PASS parkinshed_vel_zero, PASS parkinshed_rates_zero, PASS parkinshed_refuses_oversize, PASS parkinshed_refusal_leaves_airborne, PASS parkinshed_refusal_leaves_speed, PASS goairport_outside_airborne_false, PASS goairport_outside_speed_zero (9/9 on this file's slice; full probe is 14/14 PASS, see CORE_GAME_PROBE_ALL_PASS)."
+ },
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "game.js",
+  "covers": 803,
+  "note": "RESTATES the previous pass's 800 (corerest.json/defects.json, unchanged line-coverage otherwise) plus 3 new lines this pass closed: game.js:1391 (`this.ui.hud.classList.remove('hidden')` -- the #hud box's one-time reveal) and game.js:2337-2338 (`this.ui.speed/alt.textContent = ...`), the flying-mode half of the always-on speed/altitude tiles. These three lines were genuinely uncited before this pass (confirmed: 0/2769 game.js lines covered in the 205-340/357-407/560-627/676-696/899-984-residual gaps this pass's own coverage-map audit found; these three specific lines sat inside a larger already-credited block and were the only truly new citations this change adds -- see the coverage-map delta in this pass's handback report). New GameLoop.cs field `HudChips` (a UI.Hud.HudChipsView instance, built by CombatWorldAdapter.InstallUi) and a new block inside StageHudAndTargets() compute SpeedKmh/AltM for both the flying branch (game.js:2337-2338, this file) and the on-foot branch (foot.js:6242-6244, NOT claimed here -- foot.js is a different module/budget, left for whoever owns that file's ledger) and call HudChips.Tick() every frame. Closes the 'HudData has no Speed/Alt field' gap named in this pass's own brief -- deliberately as a SEPARATE HudChipsView.Data struct rather than adding fields to UI/Hud/HudData.cs, because the #hud box's visibility rule (game.js:1391, never re-hidden) is independent of HudView/HudData's own Started&&!Crashed gate (hud.js:131), and mixing the two shapes is exactly the 'extra field changes the line's shape' trap docs/.claude/skills/unity/SKILL.md's probe-pairing section warns about. REACHED: StageHudAndTargets runs every frame via the real RunStage('hudAndTargets', ...) dispatch in Update(), not probe-only; HudChips is assigned a real instance by CombatWorldAdapter.Install() (same two real Boot.cs/PlayableSceneBoot.cs callers as above), not left null.",
+  "verified": "unity -batchmode -quit -executeMethod TbilisiFly.Probes.CoreGameProbe.Run : PASS chips_hidden_before_start, PASS chips_visible_after_start, PASS chips_speed_rounds, PASS chips_alt_rounds (chips_speed_text=194 chips_alt_text=78, i.e. Mathf.RoundToInt(194.4)=194 and Mathf.RoundToInt(77.6)=78 read back off the real HudChipsView.Tick()-filled Labels, not recomputed separately)."
+ }
+]

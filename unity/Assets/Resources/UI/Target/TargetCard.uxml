@@ -1,0 +1,48 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of index.html:177-196 (#targetframe) + src/target.js. The
+       "🛡 TANK" / "⚔ DPS" role chip is THE ONE deliberate exception to this
+       whole project's Georgian-only rule (target.js:212-214) — preserved
+       here exactly, in English, on purpose. Do not translate it. -->
+  <Style src="TargetCard.uss" />
+  <ui:VisualElement name="targetframe" class="tf-root hidden">
+    <ui:VisualElement name="tf-portrait-wrap" class="tf-portrait">
+      <ui:Image name="tf-portrait" style="width: 100%; height: 100%;" />
+    </ui:VisualElement>
+    <ui:VisualElement class="tf-body">
+      <ui:VisualElement class="tf-head">
+        <ui:Label name="tf-name" class="tf-name" text="—" />
+        <!-- tf-role: EXACTLY "🛡 TANK" / "⚔ DPS" — see note above, target.js:213 -->
+        <ui:Label name="tf-role" class="tf-role" text="⚔ DPS" />
+      </ui:VisualElement>
+      <ui:VisualElement class="tf-sub-row">
+        <ui:Label name="tf-sub" class="tf-sub-text" text="" />
+      </ui:VisualElement>
+      <ui:VisualElement class="tf-track">
+        <ui:VisualElement name="tf-fill" class="tf-fill" />
+      </ui:VisualElement>
+      <ui:VisualElement class="tf-foot">
+        <ui:Label name="tf-hp" text="0 / 0" />
+        <ui:Label name="tf-dist" class="tf-dist" text="0 მ" />
+      </ui:VisualElement>
+      <!-- stamina / speed / ram / mass — target.js:189-194, 216-229 -->
+      <ui:VisualElement class="tf-stats">
+        <ui:VisualElement style="flex-direction: row;" tooltip="გამძლეობა (კორპუსი)">
+          <ui:Label text="🛡" />
+          <ui:Label name="tf-stam" class="tf-stat-v" text="—" />
+        </ui:VisualElement>
+        <ui:VisualElement style="flex-direction: row;" tooltip="მაქსიმალური სიჩქარე">
+          <ui:Label text="⚡" />
+          <ui:Label name="tf-speed" class="tf-stat-v" text="—" />
+        </ui:VisualElement>
+        <ui:VisualElement style="flex-direction: row;" tooltip="დარტყმის ძალა შეჯახებისას">
+          <ui:Label text="💥" />
+          <ui:Label name="tf-ram" class="tf-stat-v" text="—" />
+        </ui:VisualElement>
+        <ui:VisualElement style="flex-direction: row;" tooltip="მასა">
+          <ui:Label text="⚖" />
+          <ui:Label name="tf-mass" class="tf-stat-v" text="—" />
+        </ui:VisualElement>
+      </ui:VisualElement>
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>

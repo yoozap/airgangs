@@ -1,0 +1,53 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="ri-bg" cx="0.62" cy="0.32" r="0.9">
+      <stop offset="0" stop-color="#3a1638"/>
+      <stop offset="0.5" stop-color="#141026"/>
+      <stop offset="1" stop-color="#04070f"/>
+    </radialGradient>
+    <linearGradient id="ri-body" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#aeeaff"/>
+      <stop offset="0.5" stop-color="#4aa8d6"/>
+      <stop offset="1" stop-color="#123a54"/>
+    </linearGradient>
+    <linearGradient id="ri-nose" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9ec4"/>
+      <stop offset="1" stop-color="#ff3e8a"/>
+    </linearGradient>
+    <linearGradient id="ri-flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffbe8"/>
+      <stop offset="0.35" stop-color="#ffd257"/>
+      <stop offset="0.75" stop-color="#ff3e8a"/>
+      <stop offset="1" stop-color="#ff3e8a" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="ri-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.8"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" fill="url(#ri-bg)"/>
+  <!-- speed streaks -->
+  <g stroke="#7ceaff" stroke-linecap="round" opacity="0.55">
+    <line x1="8" y1="52" x2="20" y2="40" stroke-width="1.4"/>
+    <line x1="5" y1="42" x2="13" y2="34" stroke-width="1.1"/>
+    <line x1="16" y1="59" x2="26" y2="49" stroke-width="1.1"/>
+  </g>
+  <g transform="rotate(45 32 32)">
+    <!-- exhaust flame -->
+    <path d="M32 42 C 28.4 48 28.8 54 32 61 C 35.2 54 35.6 48 32 42 Z" fill="url(#ri-flame)" filter="url(#ri-glow)"/>
+    <path d="M32 42 C 30.4 46.5 30.6 50.5 32 55 C 33.4 50.5 33.6 46.5 32 42 Z" fill="#fff6d8"/>
+    <!-- fins -->
+    <path d="M28 33 L21.5 42.5 L28 40.5 Z" fill="url(#ri-nose)" stroke="#ff9ec4" stroke-opacity="0.5" stroke-width="0.6"/>
+    <path d="M36 33 L42.5 42.5 L36 40.5 Z" fill="url(#ri-nose)" stroke="#ff9ec4" stroke-opacity="0.5" stroke-width="0.6"/>
+    <!-- body -->
+    <rect x="28" y="13" width="8" height="29" rx="3.6" fill="url(#ri-body)" stroke="#9fe8ff" stroke-opacity="0.5" stroke-width="0.7"/>
+    <!-- nose cone -->
+    <path d="M28 16 Q32 2.5 36 16 L36 19 L28 19 Z" fill="url(#ri-nose)"/>
+    <!-- gold band + porthole -->
+    <rect x="28" y="20.5" width="8" height="2" fill="#ffd257" opacity="0.95"/>
+    <circle cx="32" cy="27.5" r="1.9" fill="#0a1626" stroke="#9fe8ff" stroke-width="0.8"/>
+    <!-- body highlight -->
+    <line x1="30" y1="15" x2="30" y2="40" stroke="#e6faff" stroke-opacity="0.75" stroke-width="0.9"/>
+    <!-- nozzle -->
+    <path d="M29 42 L28.2 44.5 L35.8 44.5 L35 42 Z" fill="#0c1e30" stroke="#7ceaff" stroke-opacity="0.5" stroke-width="0.6"/>
+  </g>
+</svg>

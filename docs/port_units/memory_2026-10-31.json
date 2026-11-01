@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Scripts/Tools/MemoryCensus.cs + MemoryCensusRunner.cs + Assets/Editor/Probes/MemoryCensusProbe.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION INFRASTRUCTURE: MEMORY key=value census (native allocated/reserved, graphics driver, managed, per-type top-30 + GROUPED mesh table that exposes the 13,339 surftile meshes, readable counts, PhysX collider verts, texture growth startup->t60, frozen-collider overlap check), in the player under TF_MEMCENSUS=1 via RuntimeInitializeOnLoadMethod (no scene edit) and in the editor; per-stage allocator profile. Lesson recorded: phys_footprint ~ native_reserved + driver and Unity never returns reserved pages, so only the PEAK moves the footprint; single footprint samples swing +-300 MB on a swapping machine."
+ },
+ {
+  "cs": "Assets/Scripts/City/CityGroundData.cs + ChunkedSurfaceBuilder.cs + RoadNetworkRenderer.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (memory): the four whole-city road ribbons (667 MB, 19.5 M verts) were pinned alive beside the 13,339 tiles cut from them; Split(releaseWhole) destroys each ribbon after reading its arrays; non-collidable tiles and (player-only, after PhysX cooking) the asphalt tiles are UploadMeshData(true). Counts byte-identical, frames identical, PLAYMODE PASS."
+ },
+ {
+  "cs": "Assets/Scripts/City/ShopfrontRenderer.cs",
+  "js": "shopfronts.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (leak): ApplySignPoolChanges never destroyed the replaced sign texture - +0.8 GB/hour of flying. Steady at 192 live textures now."
+ },
+ {
+  "cs": "Assets/Scripts/City/MetroSignage.cs + LandmarkSignage.cs + ParkCourtTextures.cs + MallRenderer.cs + ShopSignTextures.cs",
+  "js": "n/a",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "Sign/plate bakes non-readable in a player (readable in the editor so the Georgian-text pixel probes keep working): readable textures 426/182 MB -> 39/28 MB."
+ }
+]

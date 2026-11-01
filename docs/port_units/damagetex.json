@@ -1,0 +1,51 @@
+[
+  {
+    "cs": "Assets/Scripts/Combat/DamageTextures.cs",
+    "js": "planedamage.js",
+    "covers": 0,
+    "note": "Shared pixel-painting primitive library — NOT a line-for-line port of any one source file, so counted at 0 to avoid double-claiming (same precedent as PlaneDamageRecord.cs in damage.json). Holds the compositing/geometry toolkit every procedural damage-decal texture in Combat now draws from: Over/Rgba/Lerp3 (source-over blend + gradient-stop evaluation), Jag/RadialPoly/PointInPolygon (closed jagged polygons), DistToSegment/DistToPolyline/DistToPolylineClosed (stroke tests), OnArc/OnRing (arc/circle strokes), InCircle/InEllipse (filled circle/rotated ellipse membership), QuadraticPoint/SampleQuadratic (quadraticCurveTo), ToTexture (Color[]->Texture2D bake), and Rng32 (a seeded mulberry32 PRNG, bit-identical to tools/_probe_damagetex.mjs's own reimplementation) plus Analyze/AnalyzeBuffer (the per-pixel fact extraction DamageTextureProbe.cs prints). Extracted from Combat/DamageDecals.cs's own private helpers (that file's first, smaller version of this toolkit, built for src/planedamage.js's 8 shapes) and extended with the primitives Combat/ImpactDecalTextures.cs and Combat/GunDecalTextures.cs additionally need (ellipses, full-circle rings, Bezier sampling, the cross-language-reproducible RNG) so neither of those two files — nor any future one — re-derives point-in-polygon or a radial gradient a second or third time.",
+    "verified": "Indirectly, by every DAMAGETEX line Assets/Editor/Probes/DamageTextureProbe.cs prints (each one runs through Analyze/Over/Lerp3/PointInPolygon/etc.) and by tools/_probe_damagetex.mjs's independent from-scratch reimplementation of the same formulas producing non-degenerate stats (ink present, sane bbox, centre-opaque/edge-transparent) for all 7 textures — see that file's own run output. The NullBreakupWorld-style unit-level exactness (e.g. Lerp3 against a hand-picked t) was not separately probed."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/DamageDecals.cs",
+    "js": "planedamage.js",
+    "covers": 339,
+    "note": "RESTATED (unchanged) from docs/port_units/charcombat.json's original claim — jag/punch/atlasTexture/drawSkinHole/drawSkinTear/drawSkinExit/skinScrapeTexture/drawCraze (src/planedamage.js:1660-1998) are untouched by this pass. What changed: this pass extracted the file's own private Over/Rgba/Lerp3/Jag/PointInPolygon/DistToSegment/DistToPolyline/DistToPolylineClosed/OnArc/ToTexture into the new shared Combat/DamageTextures.cs (pure code motion — same formulas, same per-pixel behaviour) so Combat/ImpactDecalTextures.cs and Combat/GunDecalTextures.cs could reuse them instead of re-deriving their own copies. The one call-shape change is Jag's RNG argument: callers now pass `rng.NextDouble` (a method-group `Func<double>`) instead of the `System.Random` instance itself, consuming the exact same draws in the exact same order — behaviourally a no-op.",
+    "verified": "Assets/Editor/Probes/CharCombatProbe.cs's existing DECAL lines (hole/tear/exit/craze/scrape/broken-pane non-transparent-fraction) are unaffected by this refactor, since BuildHoleAtlas/BuildTearAtlas/BuildExitAtlas/BuildCrazeAtlas/BuildScrapeTexture/BuildBrokenPaneTexture's public signatures and per-pixel output are unchanged. Not re-run this pass (no editor access, per this port's standing rule)."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/DamageDecals.cs",
+    "js": "glass.js",
+    "covers": 67,
+    "note": "RESTATED (unchanged) from charcombat.json's original claim — makeShardGeo/makeBrokenPaneTexture (src/glass.js:19-85) are untouched beyond the same shared-helper extraction described in this file's planedamage.js entry above.",
+    "verified": "Same as the planedamage.js entry above (BuildBrokenPaneTexture/BuildShardMesh unaffected). Not re-run."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/ImpactDecalTextures.cs",
+    "js": "impactfx.js",
+    "covers": 251,
+    "note": "Port of src/impactfx.js:168-418's 5 procedural decal textures (pitTexture/spallTexture/exitTexture/scuffTexture/starTexture) — the gap Combat/ImpactFx.cs's own header names. Each is a faithful per-pixel re-expression of the canvas drawing calls (same shapes, same RNG draw ORDER — verified by hand against the source line-by-line, see this file's own per-draw `:NNN` citations), using Combat/DamageTextures.cs's shared primitives and a seeded Rng32 instead of Math.random(). DOCUMENTED SIMPLIFICATIONS (beyond DamageTextures.cs's own general ones): (1) pitTexture's `pit` gradient has a two-centre offset (:195, `createRadialGradient(-R*0.1,-R*0.1,0, 0,0,R)`) approximated concentric on the outer circle; (2) pitTexture's rim stroke (:202-205) correctly reuses the PIT polygon's own jagged path (no new beginPath between fill and stroke in the source) via DistToPolylineClosed, NOT a plain circle — this was caught and fixed during authoring, not assumed; (3) drawStar interleaves main-crack and lateral-crack compositing per-k instead of the source's two separate sequential loops (all mains, then all laterals) — changes blend order only where two low-alpha (0.16-0.63) sub-pixel-width strokes cross, and tools/_probe_damagetex.mjs's drawStar mirrors the SAME interleaving so the two sides still match exactly. RadialPoly's lip/pit/outline/hole rings use n-1 unique samples where the JS loop is `k<=N` (closing-duplicate-vertex loops), same shape, one fewer wasted draw.",
+    "verified": "node tools/_probe_damagetex.mjs run by this agent — prints DAMAGETEX id=pit/spall/exit/scuff/star lines (opaqueFrac, alphaZeroFrac, normalized bbox, centre/edge alpha, mean RGB), all non-degenerate (ink present, bbox sane, centre mostly opaque, edges transparent). Assets/Editor/Probes/DamageTextureProbe.cs prints the SAME key names computed from the actual C# ImpactDecalTextures.BuildPit/Spall/Exit/Scuff/Star output via Combat/DamageTextures.Analyze — NOT run (no Unity editor access in this agent's scope); the verifier holds the editor lock and will run it and diff against this entry's Node output."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/GunDecalTextures.cs",
+    "js": "guns.js",
+    "covers": 82,
+    "note": "Port of src/guns.js:90-171's 2 procedural decal textures (makeHoleTexture, makeCrackTexture) — the gap Combat/Guns.cs's own header names ('the painted canvas hole/crack textures ... art, same category Combat/ImpactFx.cs's own 5 canvas textures were deferred under'). Same per-pixel technique and Rng32 convention as Combat/ImpactDecalTextures.cs. Notable exactness points verified during authoring: makeCrackTexture's branch stroke (:146-150) reuses the SAME strokeStyle as its ray (the source never resets strokeStyle before the branch, only lineWidth) — ported as the same `rayColor[k]` for both; the ray's two lineTo segments (:139-143) are two separate DistToSegment tests on one open path, matching the source's single stroke() call over a 2-segment path. DOCUMENTED SIMPLIFICATION: neither function sets a non-default lineCap, and both strokes are ported as the project's usual hard distance-threshold test, which is inherently round-capped rather than canvas's default 'butt' cap — invisible at these 0.8-2.2px line widths on a 64-96px texture.",
+    "verified": "node tools/_probe_damagetex.mjs run by this agent — prints DAMAGETEX id=gunhole/guncrack lines, both non-degenerate. Assets/Editor/Probes/DamageTextureProbe.cs prints the same key names from the actual C# GunDecalTextures.BuildHole/BuildCrack output — NOT run (no editor access); verifier to run and diff."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/ImpactFx.cs",
+    "js": "impactfx.js",
+    "covers": 580,
+    "note": "RESTATED (unchanged) from docs/port_units/combat.json's original claim — this pass made exactly one documentation edit, to DecalStamp's XML doc comment, replacing the 'rendering ... is a Unity VFX concern' phrasing's reference to 'the pit/spall/exit/scuff/star textures' (which read as still-missing) with a pointer to the new Combat/ImpactDecalTextures.cs now providing them. No functional/line-coverage change; SurfaceFit/DecalGeometry/DecalLayer/DecalStamp/ParticleCloud/Casings/ImpactFx's Resolve/MarkHit/Strike/Ricochet/Glass/Water logic is untouched.",
+    "verified": "N/A (doc-comment-only edit; behaviour unchanged from combat.json's own verification state)."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Guns.cs",
+    "js": "guns.js",
+    "covers": 145,
+    "note": "RESTATED (unchanged) from combat.json's original claim — this pass made exactly one documentation edit, to MachineGun's class-level XML doc comment, replacing the 'painted canvas hole/crack textures ... deferred' phrasing with a pointer to the new Combat/GunDecalTextures.cs now providing them. No functional/line-coverage change; Fire/UpdateTracers/Impact and the Cracks/Holes DecalLayer fields are untouched.",
+    "verified": "N/A (doc-comment-only edit; behaviour unchanged from combat.json's own verification state)."
+  }
+]

@@ -1,0 +1,58 @@
+[
+ {
+  "cs": "unity/Assets/Scripts/City/FacadeKitLoader.cs",
+  "js": "citymap.js",
+  "covers": 41,
+  "note": "citymap.js:6078-6118, the facade_kit.glb part-merge glue at the top of _buildFacadeProps: groups an already-instantiated kit hierarchy's meshes by base name (regex strip [._]\\d+$) and merges multi-mesh variants via Mesh.CombineMeshes(mergeSubMeshes:false) — the direct equivalent of three.js mergeGeometries(geos,true)'s useGroups mode, so each merged part keeps one submesh per source mesh/material. No runtime GLB fetch (this port imports GLBs as editor-time assets, not a network load) — takes an already-instantiated Transform where the JS takes a freshly-loaded gltf.scene, same substitution RoadBuilder.cs's own class doc describes for kit pieces.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/FacadeKitBuilder.cs",
+  "js": "citymap.js",
+  "covers": 116,
+  "note": "citymap.js:6119-6234, the actual GEOMETRY PLACEMENT half of _buildFacadeProps (the `put`/`byVariant` helpers and all twelve call sites: balconies, windows, cornices, grilles, ACs, dishes, drainpipes, entrances, parapets, roof props, glass mullions, glass bands). Wires FacadeRelief.Items/FacadeProps.Items (already-ported DECISION data, not edited) through FacadeKitLoader's merged kit parts or a FacadeBoxBuilder fallback box into ChunkedInstancer.Place (already-ported PARTITION logic, not edited), computing the same lodable/tris>60/250+chunkM*0.72 LOD budget the JS does. RenderSpec constants for balcony/window/cornice/grille/glassMullion/glassBand are NEW here (FacadeProps.cs's own RenderSpec only covers its own six kinds: ac/dish/drainpipe/entrance/parapet/roof_vent) — this intentionally re-reads the same citymap.js:6124-6224 source lines FacadeProps.cs's doc also cites, for a DIFFERENT aspect (control-flow/instancing vs declared box-fallback data), matching this manifest's existing precedent of multiple units covering the same lines for different aspects (e.g. FacadeRelief/FacadeProps/WallMaterials on 4990-5407). Fallback Material shader is threaded in by the caller (no hardcoded Shader.Find), matching RoadBuilder.cs's own litShader convention. Formula-checked: LOD threshold/base-dist/chunk-frac constants verified via tools/_probe_citygeo.mjs + CityGeoProbe.cs (LOD_* keys).",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/FacadeBoxBuilder.cs",
+  "js": "citymap.js",
+  "covers": 12,
+  "note": "Shared procedural box-mesh primitive (24 verts/36 indices, THREE.BoxGeometry's own +X,-X,+Y,-Y,+Z,-Z face order) replacing the repeated `new THREE.BoxGeometry(...).translate(...)` pattern at citymap.js:6151-6156/6162-6165/6174-6177/6179-6182/6185-6188/6190-6193/6196-6198/6201-6204/6206-6210 and 8515. Counted modestly (12 lines) since FacadeKitBuilder.cs and RoadSignsStreetlights.cs already count the call-site ranges that USE this builder — this entry is only this file's own distinct contribution (the shared box-construction routine itself, plus RawFaces() for ImposterBaker's kit-imposter face reorder, which needs the pre-flip/pre-translate raw vertex+index arrays).",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/SpawnFinder.cs",
+  "js": "citymap.js",
+  "covers": 47,
+  "note": "citymap.js:6485-6531 `_computeSpawn` in full: snaps the spawn point onto the nearest avenue (search(8) first, any street as a fallback), matching the hand-authored legacy heading (yaw -1.24) to pick which end of the road to face. Pure GAME-frame math, no GeoFrame dependency of its own (the caller mirrors/negates at the point it actually places the hero/plane). Formula-checked end-to-end against a synthetic 2-road network (one sloped avenue, one narrow side street) via tools/_probe_citygeo.mjs's SPAWN_RESULT line, run through the real SpawnFinder.Compute in CityGeoProbe.cs — pending the coordinator's diff of the two probe outputs.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/ChunkedSurfaceBuilder.cs",
+  "js": "citymap.js",
+  "covers": 55,
+  "note": "citymap.js:6542-6596 `_addChunkedSurface` in full: the generic whole-mesh-to-culling-tiles splitter every ribbon surface (road asphalt/sidewalk/verge/markings, the only four call sites) goes through, so none of them draw as one city-spanning mesh. This was the genuinely unported half of 'roads.js's own mesh building' — RoadBuilder.BuildRoadDeck (already ported, not edited here) already does the per-segment ribbon math and returns one whole Mesh per layer; this file is the missing tiling step. Normals recomputed on the WHOLE mesh before bucketing (matching the JS's own seam-avoidance comment) and carried per-vertex into each tile rather than being recomputed per-tile. Formula-checked via tools/_probe_citygeo.mjs's SURF_BUCKET_CENTRES line, which builds a real 3-triangle synthetic mesh and runs it through the actual ChunkedSurfaceBuilder.Split in CityGeoProbe.cs.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/VegetationLoader.cs",
+  "js": "citymap.js",
+  "covers": 185,
+  "note": "citymap.js:7756-7940: `_buildTrees` (street + forest point placement, both distance-culled layers), `_loadTree`/`_loadProp` (GLB-to-instanceable-parts glue, reworked as a Transform-hierarchy bake since this port imports GLBs at editor time rather than fetching them at runtime — verified against a synthetic runtime-built hierarchy, not a real chestnut.glb) and `_instanceTrees` (per-instance transform composition, mirrored into Unity space once at the ChunkedInstancer.Place boundary). The citymap.js:7758 fract-hash (`rnd(i,s)`) is computed in DOUBLE throughout per the project's fract-hash rule — formula-checked at a world-scale argument via tools/_probe_citygeo.mjs's RND2_* lines against VegetationLoader.Rnd in CityGeoProbe.cs. Also exposes ExcludeKeepOut, a thin wrapper around CollidableHash.cs's own already-ported KeepOut/KeepOutBox (not edited) for citymap.js:7822's `!this.inKeepOut(...)` filter.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/ImposterBaker.cs",
+  "js": "citymap.js",
+  "covers": 146,
+  "note": "citymap.js:8041-8186, the four imposter-baking functions (`_bakeViews`, `_facadeImposter`, `_kitImposter`, `_treeImposter`). SPLIT: the camera-framing math (ComputeViewCamera) and the three imposter GEOMETRIES (FacadeImposterQuad/KitImposterBox/TreeImposterGeometry — box reorder into a 2-submesh walls/roof split, tree cross-billboard + canopy quad) are pure and formula-checked via tools/_probe_citygeo.mjs's VIEWCAM_*/KITIMPOSTER_* lines against the real methods in CityGeoProbe.cs. RenderView (the actual GPU orthographic-camera capture to a RenderTexture) is written to the same ComputeViewCamera contract but is explicitly UNVERIFIED this session — it needs a live render pipeline, which this port session was not allowed to run; reported honestly rather than assumed correct. Uses a temporary one-off GameObject per bake call (not per building/instance) since URP does not honour the legacy CommandBuffer/CameraEvent hook the Built-in-RP idiom would have used.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/City/RoadSignsStreetlights.cs",
+  "js": "citymap.js",
+  "covers": 105,
+  "note": "citymap.js:8424-8528, `_buildRoadSigns` + `_buildStreetlights` in full: city-wide highway-sign and streetlight placement (both chunked through ChunkedInstancer.Place, already ported, not edited, for the same frustum-culling reason the JS comment at :8456-8464 documents) plus the two procedural geometries (pole cylinder, lamp box). The citymap.js:8479 fract-hash (`rnd(x)=fract(sin(x*12.9898)*43758.5453)`) is computed in DOUBLE and formula-checked at a world-scale (~2.6e5) argument via tools/_probe_citygeo.mjs's RND1_WORLDSCALE line against RoadSignsStreetlights.Rnd12_9898 in CityGeoProbe.cs — this is exactly the catastrophic float32 case the project's fract-hash warning describes. Pole/lamp dimension constants (CylinderGeometry(0.16,0.22,8.5,6), BoxGeometry(1.1,0.5,0.7)) are regex-extracted and checked as POLE_DIMS/LAMP_DIMS.",
+  "verified": null
+ }
+]

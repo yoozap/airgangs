@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/CombatWorldAdapter.cs (belt auto-equip), Assets/Scripts/Core/GameLoop.cs (OnBodySpawned), Assets/Scripts/Core/Boot.cs (body fallback + hint)",
+  "js": "foot.js",
+  "covers": 21,
+  "note": "The two gaps every one of the five audit forks independently reported as GENUINELY unported in foot.js (the rest of its headline '1275 left' they all agreed is citation granularity). (1) foot.js:628-635 the standard-issue belt: NOTHING in the port equipped it \u2014 Combat/Pickups.cs:309-318 only wears ids already in the saved kit, and GameLoop.SaveState does not write `gear` yet, so EVERY hero had no holster and stowing a pistol put it nowhere. Needed a new GameLoop.OnBodySpawned seam because Boot spawns the body while HeldWeapon (which dresses it) is built by the adapter. (2) foot.js:1041-1048 resume()'s retry: ported as a fallback ladder (saved id -> race default -> banana) because a literal re-lookup of a wired prefab reference cannot change answer, plus the Georgian failure hint verbatim, with Mode left in the aeroplane.",
+  "verified": null
+ }
+]

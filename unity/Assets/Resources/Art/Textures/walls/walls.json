@@ -1,0 +1,122 @@
+{
+ "brick_red": {
+  "file": "brick_red.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "brick_dark": {
+  "file": "brick_dark.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "plaster_decay": {
+  "file": "plaster_decay.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "plaster_yellow": {
+  "file": "plaster_yellow.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "plaster_pink": {
+  "file": "plaster_pink.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "panel_concrete": {
+  "file": "panel_concrete.jpg",
+  "scale_m": 6.0,
+  "family": "panel"
+ },
+ "brick_orange": {
+  "file": "brick_orange.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "brick_painted": {
+  "file": "brick_painted.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "brick_buff": {
+  "file": "brick_buff.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "plaster_grey": {
+  "file": "plaster_grey.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "plaster_cream": {
+  "file": "plaster_cream.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "plaster_cement": {
+  "file": "plaster_cement.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "stone_rubble": {
+  "file": "stone_rubble.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ },
+ "stone_tuff": {
+  "file": "stone_tuff.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ },
+ "stone_flag": {
+  "file": "stone_flag.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ },
+ "panel_pebble": {
+  "file": "panel_pebble.jpg",
+  "scale_m": 6.0,
+  "family": "panel"
+ },
+ "panel_ribbed": {
+  "file": "panel_ribbed.jpg",
+  "scale_m": 6.0,
+  "family": "panel"
+ },
+ "panel_white": {
+  "file": "panel_white.jpg",
+  "scale_m": 6.0,
+  "family": "panel"
+ },
+ "stone_ashlar": {
+  "file": "stone_ashlar.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ },
+ "plaster_teal": {
+  "file": "plaster_teal.jpg",
+  "scale_m": 6.0,
+  "family": "plaster"
+ },
+ "stone_basalt": {
+  "file": "stone_basalt.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ },
+ "panel_boardform": {
+  "file": "panel_boardform.jpg",
+  "scale_m": 6.0,
+  "family": "panel"
+ },
+ "brick_thin_salmon": {
+  "file": "brick_thin_salmon.jpg",
+  "scale_m": 6.0,
+  "family": "brick"
+ },
+ "stone_flagstone": {
+  "file": "stone_flagstone.jpg",
+  "scale_m": 6.0,
+  "family": "stone"
+ }
+}

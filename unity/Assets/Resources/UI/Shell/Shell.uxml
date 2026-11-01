@@ -1,0 +1,109 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of index.html:50-104 — everything the WoW-style shell shows that is
+       NOT the personage screen itself (that is Assets/UI/Character/Character.uxml):
+
+         #chrome          index.html:50-68   top status + pilot badge + version bar
+         #screen-login    index.html:71-104  the login / register panel
+
+       The flow is login -> personages -> the world, and nothing between: the
+       start menu and the map page were DELETED 2026-10-19 ("i dont need this
+       intro page"), so there is no #screen-start and no #screen-plane here and
+       there must not be one added back.
+
+       `shell-screens` is an empty slot the UI/Character/CharacterView is added
+       into at runtime (UI/Shell/ShellUi.cs), which keeps the paint order the
+       JS's z-indexes give: body background, the screens, then #chrome on top
+       (src/style.css:1337 `#chrome { z-index: 40 }` over `.login-wrap,
+       .hangar { z-index: 2 }`).
+
+       Every Georgian string below is copied byte-for-byte out of index.html.
+       The two English display lines ("AERIAL BATTLE ROYALE", "AIR GANGS" /
+       "OF GEORGIA") are the game's own LOGO, index.html:74-76 — not UI copy,
+       and not role tags; no DPS/TANK string appears anywhere on this screen
+       or on the personage screen (src/characters.js:23-25). -->
+  <Style src="Shell.uss" />
+  <ui:VisualElement name="shell-root" class="shell-root">
+
+    <!-- html,body gets the opaque bg0 background in src/style.css:21-28. A browser
+         page has an opaque body behind the screens; a UI Toolkit panel is
+         transparent by default, so the city would show through the menu. -->
+    <ui:VisualElement name="shell-backdrop" class="shell-backdrop" />
+
+    <!-- the personage screen is parented here at runtime -->
+    <ui:VisualElement name="shell-screens" class="shell-screens" />
+
+    <!-- ============ #screen-login (index.html:71-104) ============ -->
+    <ui:VisualElement name="screen-login" class="screen-login">
+      <ui:VisualElement name="login-wrap" class="login-wrap">
+        <ui:Label name="ag-kicker" class="ag-kicker" text="AERIAL BATTLE ROYALE" />
+        <ui:Label name="ag-title" class="ag-title" text="AIR GANGS" />
+        <ui:Label name="ag-outline" class="ag-outline" text="OF GEORGIA" />
+        <ui:Label name="ag-tagline" class="ag-tagline" text="საჰაერო ბანდები • თბილისი 2026 • 100 პილოტი, გადარჩება ერთი" />
+
+        <ui:VisualElement name="login-panel" class="login-panel">
+          <ui:VisualElement name="login-tabs" class="login-tabs">
+            <ui:Button name="tab-login" class="ltab active" text="შესვლა" />
+            <ui:Button name="tab-register" class="ltab" text="რეგისტრაცია" />
+          </ui:VisualElement>
+
+          <ui:VisualElement name="fld-user" class="fld">
+            <ui:Label class="fld-caption" text="პილოტის სახელი" />
+            <ui:VisualElement class="fld-wrap">
+              <ui:TextField name="auth-user" class="fld-input" max-length="20" />
+              <!-- UI Toolkit's TextField has no native placeholder — simulated
+                   with a sibling label, same convention Character.uxml already
+                   uses for #char-name (see CharacterView.UpdateNamePlaceholder). -->
+              <ui:Label name="auth-user-placeholder" class="fld-placeholder" text="CALLSIGN_01" />
+            </ui:VisualElement>
+          </ui:VisualElement>
+
+          <ui:VisualElement name="fld-pass" class="fld">
+            <ui:Label class="fld-caption" text="პაროლი" />
+            <ui:VisualElement class="fld-wrap">
+              <ui:TextField name="auth-pass" class="fld-input" password="true" mask-character="•" />
+              <ui:Label name="auth-pass-placeholder" class="fld-placeholder" text="••••••••" />
+            </ui:VisualElement>
+          </ui:VisualElement>
+
+          <ui:VisualElement name="fld-pass2" class="fld hidden">
+            <ui:Label class="fld-caption" text="გაიმეორე პაროლი" />
+            <ui:VisualElement class="fld-wrap">
+              <ui:TextField name="auth-pass2" class="fld-input" password="true" mask-character="•" />
+              <ui:Label name="auth-pass2-placeholder" class="fld-placeholder" text="••••••••" />
+            </ui:VisualElement>
+          </ui:VisualElement>
+
+          <ui:Toggle name="auth-remember" class="fld-check" label="დამიმახსოვრე — შესვლა აღარ დამჭირდება" value="true" />
+
+          <ui:Label name="auth-error" class="auth-error hidden" />
+          <ui:Button name="btn-auth" class="cta-btn" text="▶ შესვლა" />
+          <ui:Label name="login-note" class="login-note" text="ანგარიში ინახება ლოკალურ MongoDB ბაზაში" />
+        </ui:VisualElement>
+      </ui:VisualElement>
+    </ui:VisualElement>
+
+    <!-- ============ #chrome (index.html:50-68) ============ -->
+    <ui:VisualElement name="chrome" class="chrome">
+      <ui:VisualElement name="chrome-top" class="chrome-top">
+        <ui:Label name="ch-status" class="ch-status" text="TBILISI // 2026 // GRID-41.72N" />
+        <ui:VisualElement name="pilot-badge" class="pilot-badge hidden">
+          <ui:Label name="pb-avatar" class="pb-avatar" text="✈" />
+          <ui:VisualElement name="pb-text" class="pb-text">
+            <ui:Label name="pb-name" class="pb-name" text="PILOT" />
+            <ui:Label name="pb-sub" class="pb-sub" text="LVL 1 • 0 ★" />
+          </ui:VisualElement>
+          <!-- Logout lives INSIDE the badge: the badge is shown exactly when
+               someone is logged in, so the button needs no state of its own.
+               (index.html:59-62, comment and all.) -->
+          <ui:Button name="btn-logout-top" class="pb-out" text="გასვლა ⎋"
+                     tooltip="ანგარიშიდან გასვლა — გმირი და ადგილი შეინახება" />
+        </ui:VisualElement>
+      </ui:VisualElement>
+      <ui:VisualElement name="chrome-bottom" class="chrome-bottom">
+        <ui:Label name="ch-version" class="ch-ver" text="ვერსია 0.9.2-ბეტა" />
+        <ui:Label name="ch-server" class="ch-ver" text="სერვერი: თბილისი-01 • ონლაინ: 4 218" />
+      </ui:VisualElement>
+    </ui:VisualElement>
+
+  </ui:VisualElement>
+</ui:UXML>

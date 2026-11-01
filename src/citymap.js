@@ -262,6 +262,21 @@ const SHADOW_DIST = 500;
 // are chunked at 700-800 m, so a chunk at this distance has its near edge
 // around 450 m — a block there is a hundred pixels tall and its windows are
 // already a texel.
+//
+// FINER TILES WERE TRIED AND ARE A LOSS (2026-10-20). A chunk flips to its
+// imposter as one tile, on the distance to its CENTRE, so a 700-800 m tile has
+// to stay in full detail out to 700 m to protect the nearest block in it.
+// Quartering the tile to 400 m and bringing the switch in to 490 does exactly
+// what it promises to the geometry — 23.7M triangles over the centre down to
+// 16.2M — and the frame still went 4.8 ms -> 12 ms, measured both ways twice
+// (tools/_shot_kitlod.mjs renders one pinned frame over and over, so none of
+// this is the usual streaming noise). The kit tiles went 17k -> 34k records
+// and ~570 more of them hang off the scene at any moment; that costs several
+// times what their triangles are worth. 700 m tiles with the switch at 490 is
+// faster than either (3.9 ms, 13.4M) but puts imposters a few metres from the
+// camera in a tile's corner, which is the one thing the switch distance exists
+// to prevent. This is the shape of the renderer: per-object cost dominates,
+// and the 2026-08 lesson — scene-graph SIZE, not triangles — still holds.
 const KIT_LOD_DIST = 700;
 const HOUSE_STYLES = 21; // number of Kenney house models in public/models/houses/
 const APT_STYLES = 14; // Kenney commercial building models for apartment blocks
@@ -2622,6 +2637,19 @@ export class CityMap {
       d.layer.instanceMatrix.needsUpdate = true;
       if (settled) this._debris.splice(i, 1); // final matrix stays in the layer
     }
+    // A piece in flight leaves the bounds the pool was last measured at, and a
+    // stale sphere would cull it out of the air. Re-measuring every frame is
+    // not the way to fix that: computeBoundingSphere walks all 4,000 slots of
+    // all six layers, which is tens of thousands of matrix reads a frame in
+    // the exact moment — a blast — that must not hitch. The pool simply stops
+    // being culled while anything is moving, and is measured once when the
+    // last piece lands.
+    if (this._debris.length) {
+      for (const l of this._rubbleLayers ?? []) l.frustumCulled = false;
+    } else {
+      for (const l of this._rubbleLayers ?? []) l.frustumCulled = true;
+      this._rubbleGrew();
+    }
   }
 
   _moundAnchors(rec) {
@@ -2662,7 +2690,13 @@ export class CityMap {
             const inst = new THREE.InstancedMesh(geo, mat, 4000);
             inst.count = 0;
             inst.receiveShadow = true;
-            inst.frustumCulled = false; // grows city-wide; tri cost stays tiny
+            // The pool fills up as buildings come down, and at 225 triangles a
+            // piece a full one is 0.9M triangles. It used to be exempt from
+            // frustum culling ("tri cost stays tiny" -- it isn't, once you have
+            // flattened a district), so a session's worth of rubble was drawn
+            // from everywhere, facing away included. Culled against its own
+            // bounds instead, recomputed as it grows (_rubbleGrew).
+            inst.boundingSphere = new THREE.Sphere();
             this.group.add(inst);
             layers.push(inst);
           });
@@ -2677,6 +2711,18 @@ export class CityMap {
       );
     });
     return this._rubblePromise;
+  }
+
+  // An InstancedMesh caches the bounds three culls it by, so a pool that grows
+  // at runtime has to be told. Debounced: a collapsing building adds up to 46
+  // pieces in one go and a blast can take a row of them.
+  _rubbleGrew() {
+    if (this._rubbleBoundsDue) return;
+    this._rubbleBoundsDue = true;
+    Promise.resolve().then(() => {
+      this._rubbleBoundsDue = false;
+      for (const l of this._rubbleLayers ?? []) if (l.count) l.computeBoundingSphere();
+    });
   }
 
   async _spawnRubble(rec) {
@@ -2710,6 +2756,7 @@ export class CityMap {
       layer.instanceMatrix.addUpdateRange(id * 16, 16);
       layer.instanceMatrix.needsUpdate = true;
     }
+    this._rubbleGrew();
   }
 
   // Heavy damage (stages 6-8): chunks spall off the walls onto the pavement.
@@ -2743,6 +2790,7 @@ export class CityMap {
         layer.instanceMatrix.addUpdateRange(id * 16, 16);
         layer.instanceMatrix.needsUpdate = true;
       }
+      this._rubbleGrew();
     });
   }
 
@@ -5460,6 +5508,35 @@ export class CityMap {
       mesh.userData.buildings = ch.bld; // sorted by v0 — see buildingFromFace
       this.buildingMeshes.push(mesh);
       this.collidables.push(mesh);
+      // THE BIGGEST THING LEFT IN THIS FRAME IS THESE GROUPS — AND THE FIX
+      // DOES NOT PAY. A chunk is one mesh with a material ARRAY (a group per
+      // wall bucket, per roof bucket, one per photo-cut facade) and three
+      // issues a draw per group: ~380 over the centre for 0.12M triangles.
+      // Collapsing that to one material is worth 17.0 ms -> 4.4 in isolation
+      // (tools/perf_cliff2.mjs), and it is the group draws and nothing else:
+      // unbinding every map (17.2), one shared texture (16.9), every array
+      // slot pointing at one shared material (17.0), FrontSide (16.9) and a
+      // sixteenth of the pixels (16.2) all change nothing.
+      //
+      // BUILT TWICE AND REVERTED BOTH TIMES (2026-10-20), see
+      // tools/perf_bldfar.mjs, which switches the twin at runtime so both arms
+      // share one session:
+      //   1. One shared material. Fast, but the wall colour lives in the MAP,
+      //      so every glass tower past the switch turned white.
+      //   2. The same twin with each group's map averaged down to a colour and
+      //      multiplied into a far-ONLY vertex-colour attribute. The colour
+      //      came back correctly — towers stay blue — but the window banding
+      //      still goes, 2.7-3.8% of the frame at the distant views, and it
+      //      measured a REGRESSION at old town: 6.0 -> 11.5 ms plain frame,
+      //      6.4 -> 10.9 shadow frame, repeated interleaved.
+      //
+      // Before trying a third time, fix the instrument: this renderer has a
+      // bimodal slow mode that flips the same content between ~5 ms and ~20 ms
+      // across sessions, and until that is explained no A/B here can be
+      // trusted. Half of it was the bench itself — the game refreshes the
+      // shadow map every OTHER frame, so a median over a mixed sample lands
+      // wherever the parity falls (perf_bldfar now splits the two populations)
+      // — but splitting them did not account for all of it.
       // record chunk center for distance culling ("only show what's near me");
       // update() attaches in-range chunks to the scene (raycasts don't need
       // scene membership — chunk transforms are identity, world coords baked)
@@ -6196,7 +6273,7 @@ export class CityMap {
         apply(roofFlatMat, 'roof_flat');
         apply(roofMetalMat, 'roof_metal');
       }
-      this.attribution += ' · facades: Wikimedia Commons (S. Arunoprayote CC BY 4.0, V. Argenberg CC BY 4.0, Kober CC BY-SA 4.0, Yuriy75 CC BY-SA 4.0, M. Benidze CC BY-SA 2.0, D. Delso CC BY-SA 4.0, A. Milligan CC BY 2.0, Andriabenia CC0), ambientCG CC0 · statue scans: Gorgasali & Saakadze monuments by Badri Gogia CC BY 4.0 (sketchfab.com/BadriGogia), threedscans.com (no restrictions), noe-3d.at CC0 · airport warehouse by Nicholas-3D CC BY 4.0 (sketchfab.com/Nicholas01) · wooden table by Prateek.Sharma CC BY 4.0 (sketchfab.com/Prateek.Sharma) · Rustaveli metro photo: Wikimedia Commons CC BY-SA 2.0';
+      this.attribution += ' · facades: Wikimedia Commons (S. Arunoprayote CC BY 4.0, V. Argenberg CC BY 4.0, Kober CC BY-SA 4.0, Yuriy75 CC BY-SA 4.0, M. Benidze CC BY-SA 2.0, D. Delso CC BY-SA 4.0, A. Milligan CC BY 2.0, Andriabenia CC0), ambientCG CC0 · statue scans: Gorgasali & Saakadze monuments by Badri Gogia CC BY 4.0 (sketchfab.com/BadriGogia), threedscans.com (no restrictions), noe-3d.at CC0 · airport warehouse by Nicholas-3D CC BY 4.0 (sketchfab.com/Nicholas01) · wooden table by Prateek.Sharma CC BY 4.0 (sketchfab.com/Prateek.Sharma) · harbour crane by assetfactory, Sketchfab Standard (sketchfab.com/assetfactory) · industrial fan by CCB 3D MODEL CC BY-NC 4.0 (sketchfab.com/christianbarber777) · Rustaveli metro photo: Wikimedia Commons CC BY-SA 2.0';
     } catch {
       /* offline — procedural facades remain */
     }
@@ -7861,6 +7938,21 @@ export class CityMap {
   // counts) the chunk swaps to the baked imposter mesh — same silhouette and
   // colors at a few triangles — or simply hides if no imposter geo is given.
   _placeChunkedInstanced(geometry, material, items, makeMatrix, chunkM = 2000, castShadow = false, maxDist = 0, makeColor = null, destr = null, lod = null) {
+    // WHICH LAYER IS THIS? Every instanced layer in the city — trees, windows,
+    // balconies, air conditioners, kerbs, signs, all five building kits —
+    // arrives through this one function, so an attribution rig
+    // (tools/_probe_drawcalls.mjs) reads them as one anonymous
+    // "inst:MeshLambertMaterial" line of 19M triangles and cannot say which to
+    // work on. One stack capture per CALL — a few hundred over the whole load,
+    // not one per chunk — names the builder that asked.
+    // Two frames, not one: half the city arrives through a local helper that
+    // every builder happens to call `place` or `put`, and a tag of "place" is
+    // no more use than no tag at all (it cost a measurement run -- an A/B keyed
+    // on /place$/ caught the infrastructure kit's layers as well as the
+    // streetlights'). The caller's caller disambiguates them.
+    const frames = (new Error().stack || '').split('\n').slice(2, 4)
+      .map((f) => f.trim().replace(/^at\s+/, '').split(' ')[0]).filter(Boolean);
+    const layer = frames.join('<');
     const buckets = new Map();
     for (const it of items) {
       const key = `${Math.floor(it.x / chunkM)}_${Math.floor(it.z / chunkM)}`;
@@ -7874,6 +7966,7 @@ export class CityMap {
       const mesh = new THREE.InstancedMesh(geometry, material, arr.length);
       mesh.castShadow = castShadow;
       mesh.matrixAutoUpdate = false;
+      mesh.userData.layer = layer;
       arr.forEach((it, k) => {
         makeMatrix(m, it);
         mesh.setMatrixAt(k, m);
@@ -7911,6 +8004,7 @@ export class CityMap {
           // imposter shares the SAME instanceMatrix attribute — one buffer,
           // and per-instance strips (collapsed buildings) hit both for free
           const lodMesh = new THREE.InstancedMesh(lod.geo, lod.mat, arr.length);
+          lodMesh.userData.layer = `${layer} (imposter)`;
           lodMesh.instanceMatrix = mesh.instanceMatrix;
           if (mesh.instanceColor) lodMesh.instanceColor = mesh.instanceColor;
           lodMesh.castShadow = false;
@@ -8359,21 +8453,23 @@ export class CityMap {
       if (placements.length > 4000) break; // bound the count
     }
     if (!placements.length) return;
-    const mesh = new THREE.InstancedMesh(model.geometry, model.material, placements.length);
-    mesh.castShadow = true;
-    mesh.frustumCulled = false;
-    const m = new THREE.Matrix4();
+    // ONE CITY-WIDE InstancedMesh IS DRAWN EVERYWHERE, ALWAYS. These 4,001
+    // signs used to be a single mesh added straight to the group with
+    // `frustumCulled = false` -- and even without that flag an instanced mesh
+    // spanning Tbilisi has a bounding sphere the size of Tbilisi, so three can
+    // never cull it. Measured: 1.02M triangles rasterised every frame, plus
+    // the shadow pass, from anywhere in the country, including the ones behind
+    // the camera (tools/_probe_attached.mjs). Chunked, they get the same
+    // distance + per-chunk frustum culling as the rest of the city and look
+    // identical inside the draw radius.
+    const sv = new THREE.Vector3(scale, scale, scale);
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
-    const sv = new THREE.Vector3(scale, scale, scale);
-    placements.forEach((p, k) => {
+    this._placeChunkedInstanced(model.geometry, model.material, placements, (m, p) => {
       e.set(0, p.yaw, 0);
       q.setFromEuler(e);
       m.compose(new THREE.Vector3(p.x, p.y, p.z), q, sv);
-      mesh.setMatrixAt(k, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    this.group.add(mesh);
+    }, 1000, true);
   }
 
   // Streetlights along the main avenues: a pole with a glowing lamp head.
@@ -8411,38 +8507,30 @@ export class CityMap {
       }
     }
     if (!poles.length) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
     const one = new THREE.Vector3(1, 1, 1);
     // pole
     const poleGeo = new THREE.CylinderGeometry(0.16, 0.22, 8.5, 6);
     poleGeo.translate(0, 4.25, 0);
-    const poleMesh = new THREE.InstancedMesh(poleGeo, new THREE.MeshLambertMaterial({ color: 0x3a3d42 }), poles.length);
-    poleMesh.castShadow = true;
     // arm + lamp head (glowing)
     const lampGeo = new THREE.BoxGeometry(1.1, 0.5, 0.7);
-    const lampMesh = new THREE.InstancedMesh(
-      lampGeo,
-      new THREE.MeshStandardMaterial({ color: 0xfff2c4, emissive: 0xffd070, emissiveIntensity: 1.4 }),
-      lamps.length
-    );
-    poles.forEach((p, k) => {
-      m.compose(new THREE.Vector3(p.x, p.y, p.z), q, one);
-      poleMesh.setMatrixAt(k, m);
-    });
-    lamps.forEach((l, k) => {
-      m.compose(new THREE.Vector3(l.x, l.y, l.z), q, one);
-      lampMesh.setMatrixAt(k, m);
-    });
-    poleMesh.instanceMatrix.needsUpdate = true;
-    lampMesh.instanceMatrix.needsUpdate = true;
-    this.group.add(poleMesh);
-    this.group.add(lampMesh);
+    // Chunked, for the same reason as the road signs above: as two city-wide
+    // instanced meshes these 14,000 poles and 14,000 lamp heads were ~0.5M
+    // triangles drawn from anywhere in Georgia, every frame, the poles into
+    // the shadow map as well. The avenues they stand on are unchanged.
+    const place = (geo, mat, list, shadow) =>
+      this._placeChunkedInstanced(geo, mat, list, (m, p) => {
+        m.compose(new THREE.Vector3(p.x, p.y, p.z), ZERO_Q, one);
+      }, 1000, shadow);
+    place(poleGeo, new THREE.MeshLambertMaterial({ color: 0x3a3d42 }), poles, true);
+    place(lampGeo, new THREE.MeshStandardMaterial({
+      color: 0xfff2c4, emissive: 0xffd070, emissiveIntensity: 1.4,
+    }), lamps, false);
   }
 }
 
 // ---- helpers ---------------------------------------------------------------
 
+const ZERO_Q = new THREE.Quaternion();   // upright, for the axis-aligned scatter layers
 const fract = (x) => x - Math.floor(x);
 // rAF freezes in a hidden tab — fall back to a MessageChannel macrotask
 // (immune to background timer throttling) so the city keeps building at

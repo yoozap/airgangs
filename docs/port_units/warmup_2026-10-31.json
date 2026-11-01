@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/SceneShaderWarmup.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (replaces Shader.WarmupAllShaders, the source of every remaining play-mode error line): scene-scoped warm-up per game.js:1436-1443 - scene materials UNION IWarmupMaterials from the 8 instanced renderers, 1587 materials -> 35 variants (shader+keywords+render state), each drawn once through a hidden copy of the game camera into a 64x64 RT, one variant per frame (all-in-one-frame measured worse), three passes 0/+20/+45 s, Dispose after pass 3. SHADERWARMUP line per pass; FIRST_300_MAX_MS not worse (4721 vs 4694)."
+ },
+ {
+  "cs": "Assets/Scripts/Core/IWarmupMaterials.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "IEnumerable<Material> WarmupMaterials() implemented by CityRenderer, VegetationRenderer, StreetFurnitureRenderer, ShopfrontRenderer, ParkRenderer, LandmarkRenderer, RiverRenderer, RoadNetworkRenderer (every RenderMeshInstanced call site audited)."
+ },
+ {
+  "cs": "Assets/Scripts/Flight/PlaneModelFrame.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: Attach unpacks the prefab instance unconditionally (the !isPlaying guard's premise was false in the editor's play mode); 0 prefab-instance errors."
+ },
+ {
+  "cs": "Assets/Scripts/Core/AudioFx.cs",
+  "js": "audiofx.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (main session): MachineVoice.Build added its AudioLowPassFilter BEFORE any AudioSource existed and it came back null in a -nographics editor (CRANEFILL FAILED NRE at :874) - reachable only since LoadAllBanks made Pick() return real clips. Sources first, filter second, null-guarded; RailMotorVoice guarded the same way."
+ }
+]

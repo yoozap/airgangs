@@ -279,6 +279,89 @@ export const SURFACES = {
 
 export const surfaceOf = (key) => SURFACES[key] ?? SURFACES.concrete;
 
+// ---- a round must never mark something nobody can see ----------------------
+// "when i am shoot plane and its on crane, dots of shootings are in air"
+//
+// They were. Half the props on this slab are solid by way of an INVISIBLE
+// STAND-IN: the three fans in front of the slung Mustang have a guard of 40
+// modelled wires with 2 cm of air between them, so what a personage walks into
+// -- and what a round crosses -- is a plain box around the whole drum
+// (src/crane.js standFans). A bullet hole stamped on that box is stamped on
+// nothing: it hangs in the open air in the shape of a crate, a metre in front
+// of the grille it is supposed to be on.
+//
+// This is the same lie planedamage.refine() already undoes for an aeroplane's
+// collider, so it is undone the same way: when the hit landed on something
+// INVISIBLE that stands for visible geometry in the same holder, the round is
+// re-cast against the real thing and marks that. Nothing there -- it went
+// between the wires -- means the box lied, and the round flies on (null).
+//
+// A collider with nothing visible in its holder is left alone: those are baked
+// copies of the prop they stand for (the warehouse benches, the range, the
+// shed itself), so their triangles ARE where the thing you can see is, and a
+// mark on them lands on it.
+const _pxRay = new THREE.Raycaster();
+_pxRay.firstHitOnly = true;
+const _pxFrom = new THREE.Vector3();
+const _pxSize = new THREE.Vector3();
+const _pxBox = new THREE.Box3();
+const PX_BACK = 0.35;             // m the re-cast starts behind the box face
+const PX_KEY = '_proxyReal';
+const PX_FAR = '_proxyFar';
+const _pxLive = [];
+
+function shown(o, stop = null) {
+  for (let q = o; q && q !== stop; q = q.parent) if (!q.visible) return false;
+  return true;
+}
+
+export function refineProxy(hit, dir) {
+  const o = hit?.object;
+  if (!o || shown(o)) return hit;              // you can see it: it is the thing
+  const holder = o.parent;
+  if (!holder) return hit;
+  let real = holder.userData[PX_KEY];
+  if (!real) {
+    real = [];
+    holder.traverse((q) => {
+      if (q === o || !q.isMesh || !q.geometry?.attributes?.position) return;
+      if (q.userData.isPlaneShell || /_shell$|_collider$/.test(q.name)) return;
+      real.push(q);
+    });
+    holder.userData[PX_KEY] = real;
+    // These stand-ins cover whole props -- the crane is 42 meshes and 18k
+    // triangles -- and three.js raycasts a plain Mesh by brute force. The
+    // first round pays for it; the tree is built off the frame, so the burst
+    // behind it does not.
+    if (real.length) {
+      setTimeout(() => {
+        for (const q of real) {
+          if (q.isSkinnedMesh || q.geometry.boundsTree) continue;
+          try { q.geometry.computeBoundsTree?.(); } catch { /* not fatal */ }
+        }
+      }, 0);
+    }
+  }
+  if (!real.length) return hit;                // a baked copy: it IS the shape
+  // ...and the prop may be switched off rather than merely stood for: the
+  // plane hall drops its whole fleet past 480 m and the marks go with it, so
+  // a stand-in with nothing live behind it keeps the hit it had.
+  _pxLive.length = 0;
+  for (const q of real) if (q.visible && shown(q)) _pxLive.push(q);
+  if (!_pxLive.length) return hit;
+  let far = holder.userData[PX_FAR];
+  if (far === undefined) {
+    _pxBox.setFromObject(holder, true);
+    far = holder.userData[PX_FAR] = _pxBox.getSize(_pxSize).length() * 1.05;
+  }
+  _pxFrom.copy(hit.point).addScaledVector(dir, -PX_BACK);
+  _pxRay.set(_pxFrom, dir);
+  _pxRay.far = PX_BACK + far;
+  const h = _pxRay.intersectObjects(_pxLive, false)[0];
+  _pxRay.far = Infinity;
+  return h ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // WHAT DID IT HIT?
 // ---------------------------------------------------------------------------
@@ -459,13 +542,19 @@ export class BulletSim {
     // a foot proud of the skin in places -- so the round is re-cast against
     // the real airframe and the true panel is what answers (planedamage.js).
     // `null` means the crate lied and there is nothing there: fly on.
+    // ...and the same lie is told by everything else on this slab that is
+    // solid by way of an invisible stand-in -- the fans' box guard most of all,
+    // standing right in front of the aeroplane on the crane's hook. A mark on
+    // one of those hangs in the open air, so the round is re-cast onto the
+    // real grille (refineProxy above) and `null` means it went between the
+    // wires.
     const real = this.game.planeDamage?.refine(hit, this._d);
-    if (real === null) {
+    const land = real === null ? null : refineProxy(real ?? hit, this._d);
+    if (land === null) {
       b.pos.copy(hit.point).addScaledVector(this._d, SKIN);
       b.dist += hit.distance + SKIN;
       return b.dist < 600;
     }
-    const land = real ?? hit;
     b.dist += this._p0.distanceTo(land.point);
     b.pos.copy(land.point);
     return this._resolve(b, land, energy, v1);

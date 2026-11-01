@@ -1,0 +1,62 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="gi-bg" cx="0.42" cy="0.36" r="0.85">
+      <stop offset="0" stop-color="#14324e"/>
+      <stop offset="0.55" stop-color="#0a1526"/>
+      <stop offset="1" stop-color="#04070f"/>
+    </radialGradient>
+    <linearGradient id="gi-steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#aeeaff"/>
+      <stop offset="0.45" stop-color="#3f9ecc"/>
+      <stop offset="1" stop-color="#10344e"/>
+    </linearGradient>
+    <linearGradient id="gi-dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#35506a"/>
+      <stop offset="1" stop-color="#0c1e30"/>
+    </linearGradient>
+    <radialGradient id="gi-flash" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fffbe8"/>
+      <stop offset="0.4" stop-color="#ffd257"/>
+      <stop offset="1" stop-color="#ff8a3e" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="gi-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.7"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" fill="url(#gi-bg)"/>
+  <!-- tracer streaks behind the gun -->
+  <g stroke="#ffd257" stroke-linecap="round" filter="url(#gi-glow)" opacity="0.9">
+    <line x1="30" y1="34" x2="57" y2="15" stroke-width="2.4"/>
+    <line x1="36" y1="42" x2="60" y2="26" stroke-width="1.6" opacity="0.7"/>
+    <line x1="26" y1="26" x2="46" y2="11" stroke-width="1.3" opacity="0.55"/>
+  </g>
+  <g transform="rotate(-16 30 38)">
+    <!-- under-barrel + main barrel -->
+    <rect x="27" y="40.5" width="15" height="2.6" rx="1.2" fill="url(#gi-dark)"/>
+    <rect x="26" y="35.2" width="22" height="4.4" rx="1.6" fill="url(#gi-steel)"/>
+    <rect x="46" y="33.6" width="4.6" height="7.6" rx="1.4" fill="url(#gi-dark)" stroke="#7ceaff" stroke-opacity="0.5" stroke-width="0.7"/>
+    <!-- receiver -->
+    <rect x="7" y="31.5" width="21" height="12.5" rx="2" fill="url(#gi-dark)" stroke="#7ceaff" stroke-opacity="0.45" stroke-width="0.8"/>
+    <rect x="9.5" y="28.6" width="14" height="3.4" rx="1.4" fill="url(#gi-steel)"/>
+    <!-- grip + trigger -->
+    <path d="M13 44 L12 53 L17.5 53 L18.5 44 Z" fill="url(#gi-dark)" stroke="#7ceaff" stroke-opacity="0.35" stroke-width="0.7"/>
+    <path d="M22 44 q3 1.5 6 0.5" stroke="#7ceaff" stroke-opacity="0.6" stroke-width="1" fill="none"/>
+    <!-- ammo drum -->
+    <circle cx="26" cy="47" r="6" fill="url(#gi-dark)" stroke="#7ceaff" stroke-opacity="0.55" stroke-width="0.9"/>
+    <circle cx="26" cy="47" r="2.2" fill="#0a1626" stroke="#ffd257" stroke-opacity="0.8" stroke-width="0.8"/>
+    <!-- rivets -->
+    <g fill="#9fe8ff" opacity="0.8">
+      <circle cx="11" cy="34" r="0.9"/><circle cx="24" cy="34" r="0.9"/><circle cx="11" cy="41" r="0.9"/>
+    </g>
+  </g>
+  <!-- muzzle blast -->
+  <g transform="translate(53 30)">
+    <circle r="7.5" fill="url(#gi-flash)" filter="url(#gi-glow)"/>
+    <path d="M0 -8 L1.8 -1.8 L8 0 L1.8 1.8 L0 8 L-1.8 1.8 L-8 0 L-1.8 -1.8 Z" fill="#fff3c4"/>
+  </g>
+  <!-- falling casings -->
+  <g fill="#ffd257" opacity="0.85">
+    <rect x="20" y="55" width="1.8" height="3.4" rx="0.8" transform="rotate(24 21 56)"/>
+    <rect x="27" y="57" width="1.8" height="3.4" rx="0.8" transform="rotate(-18 28 58)"/>
+  </g>
+</svg>

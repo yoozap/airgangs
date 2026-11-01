@@ -270,6 +270,7 @@ const BANK_URLS = [
   'audio/guns/',   // the pistols, their reloads, and what the rounds hit
   'audio/rail/',   // the target carrier: its motor, and its end stop
   'audio/planes/', // the engines, the canopy, the harness, the wheels
+  'audio/fans/',   // the warehouse wind tunnel: the drum fans and their switch
 ];
 
 class SampleBank {
@@ -968,4 +969,132 @@ export function slideRelease(vol = 0.7, at = 0) {
   if (!a) return;
   fxAudio.burst(a, { at, dur: 0.035, freq: 2600, q: 2.2, gain: 0.22, rate: 1.3 });
   fxAudio.burst(a, { at: at + 0.05, dur: 0.045, freq: 1100, q: 1.6, gain: 0.2, rate: 0.8 });
+}
+
+// ---- A MACHINE THAT RUNS ----------------------------------------------------
+//
+// Everything else in this file is a thing that goes BANG: a shot, a hit, a
+// pane of glass. A fan is the other kind of sound -- it starts, it runs for as
+// long as you leave it, and it coasts to a stop -- and none of the one-shot
+// machinery fits it. "in fans on of i need real sounds".
+//
+// So: two loops out of the bank, crossfaded by how fast the thing is turning,
+// with the start and the stop as real recordings either side of them. The same
+// shape as the aeroplane engine in src/sound.js, which is no accident -- a
+// drum fan and a Merlin are the same problem, a rotating machine whose sound
+// is a state and not an event. The loops live in ONE chain that is built once
+// and then only has its numbers moved, because starting a BufferSource per
+// frame is how you get a machine that stutters.
+//
+// Distance is the chain's own: the level and the air absorption come off
+// fxAudio's own curves, so a fan across the shed is as dull and as quiet as a
+// shot across the shed. No propagation delay -- that is for events; a running
+// machine has been running since before the delay would have started.
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+class MachineVoice {
+  constructor({ low, high, start, stop, click }) {
+    this.keys = { low, high, start, stop, click };
+    this.chain = null;
+    this.v = 0;                  // what it was turning at last frame
+    this.want = 0;
+  }
+
+  // Built on the first frame it is actually asked to make a noise, and only
+  // once the bank has landed -- before that this is silent rather than
+  // synthesised, because a fan is one of the few things a sawtooth cannot fake.
+  _build() {
+    if (this.chain || !fxAudio.ensure()) return this.chain;
+    const lowBuf = samples.pick(this.keys.low);
+    const hiBuf = this.keys.high ? samples.pick(this.keys.high) : null;
+    if (!lowBuf) return null;
+    const ctx = fxAudio.ctx;
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 18000;
+    out.connect(lp).connect(ctx.destination);
+    const voice = (buf) => {
+      if (!buf) return null;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      src.connect(g).connect(out);
+      src.start(ctx.currentTime + 0.02);
+      return { src, g };
+    };
+    this.chain = { ctx, out, lp, lo: voice(lowBuf), hi: voice(hiBuf) };
+    return this.chain;
+  }
+
+  /**
+   * One frame. `v` is how hard it is running in whatever units the caller
+   * thinks in, `vMax` the top of that range; `dist` metres to the listener.
+   * Crossing zero in either direction fires the real start or stop recording.
+   */
+  update(dt, { v = 0, vMax = 1, dist = 10, vol = 1 } = {}) {
+    const was = this.v;
+    const now = Number.isFinite(v) ? Math.max(0, v) : 0;
+    this.v = now;
+    const d = Number.isFinite(dist) ? Math.max(1, dist) : 1;
+    if (now > 0.01 && was <= 0.01 && this.keys.start) {
+      playSample(this.keys.start, d, vol * 0.9, { reverb: 0.7 });
+    }
+    if (now <= 0.01 && was > 0.01) {
+      if (this.keys.stop) playSample(this.keys.stop, d, vol * 0.85, { reverb: 0.7 });
+    }
+    const c = now > 0.01 ? this._build() : this.chain;
+    if (!c) return;
+    const t = c.ctx.currentTime;
+    const k = clamp01(vMax > 0 ? now / vMax : 0);
+    // Level: what fxAudio would give any other source at this distance, times
+    // how hard it is running. A fan at a tenth of its speed is not a tenth as
+    // loud -- the curve is flatter than that, hence the root.
+    const amp = now > 0.01 ? fxAudio._loudAt(d, vol) * (0.35 + 0.65 * Math.sqrt(k)) : 0;
+    const set = (p, val, tau) => {
+      if (Number.isFinite(val)) p.setTargetAtTime(val, t, tau);
+    };
+    set(c.out.gain, amp, 0.25);
+    set(c.lp.frequency, fxAudio._darkAt(d), 0.3);
+    // ...and WHICH loop. Low is the motor and the blade wash, high is moving
+    // air; a big fan does not just get louder as it speeds up, it stops being
+    // a motor you hear and becomes a wind you hear.
+    if (c.lo) {
+      set(c.lo.g.gain, 1 - k * 0.85, 0.3);
+      set(c.lo.src.playbackRate, 0.88 + 0.26 * k, 0.3);
+    }
+    if (c.hi) {
+      set(c.hi.g.gain, k * 1.1, 0.3);
+      set(c.hi.src.playbackRate, 0.92 + 0.2 * k, 0.3);
+    }
+  }
+
+  // The switch itself: a contactor closing, not the fan.
+  click(dist = 3, vol = 1) {
+    if (this.keys.click) playSample(this.keys.click, Math.max(1, dist), vol, { reverb: 0.5 });
+  }
+
+  dispose() {
+    const c = this.chain;
+    if (!c) return;
+    for (const v of [c.lo, c.hi]) if (v) { try { v.src.stop(); } catch { /* already gone */ } }
+    c.out.disconnect();
+    this.chain = null;
+  }
+}
+
+/** A running machine, voiced from the sample bank. See MachineVoice. */
+export function machineVoice(keys) {
+  return new MachineVoice(keys);
+}
+
+/** The warehouse wind tunnel's three drum fans, with their contactor. */
+export function fanVoice() {
+  return new MachineVoice({
+    low: 'fan_low', high: 'fan_high', start: 'fan_start',
+    stop: 'fan_stop', click: 'fan_switch',
+  });
 }

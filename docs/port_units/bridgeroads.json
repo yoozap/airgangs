@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/City/BridgeBuilder.cs",
+  "js": "roads.js",
+  "covers": 320,
+  "note": "src/roads.js:146-465 `buildSpans` — the GENERIC structural-span pass for every OSM bridge way, as opposed to the 11 named Mtkvari bridges that file's other claim (js=bridges.js) covers. This is a SECOND claim on the same C# file for a second JS module, which the manifest could not express until the merge key became (cs, js): keyed on the path alone, one entry silently overwrote the other. That is exactly why roads.js read 31.0% with '321 lines left' — a measurement artifact, not a real gap. Verified by hand rather than taken on trust: BridgeBuilder.cs's own header at line 8 cites src/roads.js:146-465, and SegmentIndex (line 416), CrossesAt (445) and BuildSpans (491) are all present with the JS's constants matching exactly — ClearRoad 5.6 vs CLEAR_ROAD 5.6 (roads.js:161), Girder 1.6 vs GIRDER 1.6 (:164), Fascia 0.75 vs FASCIA 0.75 (:165).",
+  "verified": "tools/_probe_airroads.mjs RUN: transcribes buildSpans on a synthetic one-road/one-bridge flat-terrain scene and reports deckVerts=136 deckMinY=100.800 deckMaxY=105.600 concVerts=904 nStruct=28 nPier=4. unity/Assets/Editor/Probes/AirRoadsProbe.cs calls the REAL BridgeBuilder.BuildSpans on the identical inputs but has NOT been executed yet — the build was transiently red from concurrent edits. Re-run TbilisiFly.Probes.AirRoadsProbe.Run and diff against those numbers."
+ }
+]

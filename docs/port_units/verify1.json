@@ -1,0 +1,93 @@
+[
+  {
+    "cs": "Assets/Scripts/City/FacadeKitLoader.cs",
+    "js": "citymap.js",
+    "covers": 41,
+    "restates": true,
+    "verified": "tools/_probe_citygeo.mjs (JS, run 2026-10-27) vs unity/Assets/Editor/Probes/CityGeoProbe.cs (-executeMethod TbilisiFly.Probes.CityGeoProbe.Run, run 2026-10-27 inside the new VerifyPass1Probe aggregator so it could share one Unity launch with 4 sibling probes). tools/unity_port_check.py: compared 63 values across 35 js / 35 cs lines, PASS, worst relative diff 4.833e-07. This unit's own share: FacadeKitLoader.LodTriThreshold/LodBaseDist/LodChunkFrac constants matched exactly. The probe was pre-written by a prior agent pass and had never been executed before this run; no C# edits were needed."
+  },
+  {
+    "cs": "Assets/Scripts/City/FacadeKitBuilder.cs",
+    "js": "citymap.js",
+    "covers": 116,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry (tools/_probe_citygeo.mjs vs CityGeoProbe.cs, run inside VerifyPass1Probe): compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: LOD_TRI_THRESHOLD/LOD_BASE_DIST/LOD_CHUNK_FRAC constants plus the KitImposterBox wall/roof triangle index counts and face order (shared helper used by FacadeKitBuilder's chunk LOD path). No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/FacadeBoxBuilder.cs",
+    "js": "citymap.js",
+    "covers": 12,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: the KITIMPOSTER_ORDER/_WALL_INDICES/_ROOF_INDICES lines exercise ImposterBaker.KitImposterBox, the shared box-mesh builder FacadeBoxBuilder's callers also use. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/SpawnFinder.cs",
+    "js": "citymap.js",
+    "covers": 47,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: SpawnFinder.LegacyYawMagnitude/AvenueMinWidth/AlreadyOnRoadD2/AvenueSearchGiveUpD2 constants, AND the behavioural SPAWN_RESULT line — SpawnFinder.Compute() run on a real synthetic 2-road network (one 10 m avenue, one 4 m side street), returning x/z/yaw, matched the JS side's own re-derivation to 4.8e-7 relative. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/ChunkedSurfaceBuilder.cs",
+    "js": "citymap.js",
+    "covers": 55,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: DefaultTileSize constant, plus the behavioural SURF_BUCKET_CENTRES line — ChunkedSurfaceBuilder.Split() run on a real synthetic 3-triangle mesh (3 tiles along X), bucket centres matched exactly. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/VegetationLoader.cs",
+    "js": "citymap.js",
+    "covers": 185,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: StreetCap/ForestCap/TargetM2PerTree/StreetSpacing/StreetOffsetPad constants, PLUS the two fract-hash samples RND2_SMALL=VegetationLoader.Rnd(900123,4) and RND2_WORLDSCALE=VegetationLoader.Rnd(264137.5,8) at i=264137.5 — this project's own documented float32-vs-float64 disagreement point for the 43758.5453-class hash, printed to 10 decimals and matched to float32 tolerance. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/ImposterBaker.cs",
+    "js": "citymap.js",
+    "covers": 146,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: MinPx/MaxPx/TreeTopYFrac constants, the behavioural VIEWCAM_FRONT/VIEWCAM_TOP lines (ImposterBaker.ComputeViewCamera on a real synthetic 6x9x4m bounds box, front and top camera position/lookAt/pixel-dims all matched), and KitImposterBox's face order + wall/roof index counts. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/RoadSignsStreetlights.cs",
+    "js": "citymap.js",
+    "covers": 105,
+    "restates": true,
+    "verified": "Same pair/run as FacadeKitLoader.cs's verify1 entry: compared 63 values across 35/35 lines, PASS, worst relative diff 4.833e-07. This unit's own share: SignMinRoadWidth/SignTargetHeight/PoleMinRoadWidth/PoleSpacing/PoleCap/LampArmReach/LampHeight/pole+lamp mesh dims, PLUS the RND1_WORLDSCALE=RoadSignsStreetlights.Rnd12_9898(264137.5) fract-hash sample at the same documented float32/64 disagreement point, matched to float32 tolerance. No C# edits needed; probe pre-written, never executed before now."
+  },
+  {
+    "cs": "Assets/Scripts/City/BridgeBuilder.cs",
+    "js": "bridges.js",
+    "covers": 360,
+    "restates": true,
+    "verified": "tools/_probe_bridgebuilder.mjs (JS, run 2026-10-27) vs unity/Assets/Editor/Probes/BridgeProbe.cs (split Run() into Print()+Run() so it could join the VerifyPass1Probe aggregator; -executeMethod TbilisiFly.Probes.VerifyPass1Probe.Run). tools/unity_port_check.py: compared 419 values across 35 js / 35 cs lines, PASS, worst relative diff 8.194e-06. Exercises the REAL BridgeBuilder.RealBridges/RealBridgeZones(city)/BuildRealBridges(city) on a flat-terrain fixture (heightAt=>100): all 11 real named Mtkvari bridges' lat0/lon0/lat1/lon1/width/kind/spans; per-zone x/z/r2/x0/z0/x1/z1/L/yA/yB; per-bridge half-width, ornate flag, spanLen/archDepth/baseDepth/railH, the first full-width deck-slab quad's outer+inner corners, first fascia top/bottom Y, first underside-vault Y (no ground clamp, by design), rail count + first rail x/z/y/ang, lamp count, pier count; and the aggregate concrete/stone/rail vertex counts + Y bounds. Also confirms the documented BridgeBuilder.cs:247 Mathf.RoundToInt-tie gotcha is correctly guarded via Data.JsMath.Round (BRIDGE_ROUND_TIE_L85 v=3, matching JS's Math.round(2.5)=3, not C#'s native round-to-even 2). The probe was pre-written by a prior pass (docs/port_units/probecover2.json's own note: 'C# side, written, NOT YET EXECUTED') and is executed here for the first time; no C# behaviour was changed, only the Run()/Print() split."
+  },
+  {
+    "cs": "Assets/Scripts/City/InfraBuilder.cs",
+    "js": "infra.js",
+    "covers": 300,
+    "restates": true,
+    "verified": "tools/_probe_infrabuilder.mjs (JS, run 2026-10-27) vs unity/Assets/Editor/Probes/InfraFurnitureProbe.cs (split Run()->Print()+Run(), same reason, run inside VerifyPass1Probe). tools/unity_port_check.py: compared 65 values across 15 js / 15 cs lines, PASS, worst relative diff 7.926e-08. Calls the REAL InfraBuilder.BuildRiverEmbankment/BuildBridgeFurniture/BuildTunnelHeadwalls/BuildStreetFurniture directly (no transcription) on deterministic synthetic fixtures: 130 river bays (4 cliff/11 riprap/rest wall) + 2 bridge rails snapping clearBays/quay/step/riprap/cliff/parapet/piers/quayLamps counts and first parapet/pier/lamp positions, plus the bay31->bal_iron / bay60->bal_stone name-snap spot check; bridge-furniture passthrough (3 rails/2 fascia/4 lamps) counts + first rail position; tunnel headwalls (2 hill + 2 flat mouths) portal/underpass counts + first/last retaining-wall position and taper scale; street furniture over 4 synthetic roads (kerbs/crossings/signals/busstops/signs/guardrails/manholes/avenuelamps) + first kerb/crossing/signal/manhole position. Probe pre-written by a prior pass (docs/port_units/probecover2.json's own note: 'C# side, written, NOT YET EXECUTED'), executed here for the first time; no C# behaviour changed."
+  },
+  {
+    "cs": "Assets/Scripts/Flight/FlightModel.cs",
+    "js": "aero.js",
+    "covers": 248,
+    "restates": true,
+    "verified": "tools/_probe_aero.mjs (JS, run 2026-10-27) vs unity/Assets/Editor/Probes/FlightProbe.cs (split Run()->Print()+Run() so it could join the VerifyPass2Probe aggregator; -executeMethod TbilisiFly.Probes.VerifyPass2Probe.Run). Both build the real aero.js/FlightModel.cs FlightModel for the same 4 planes (spitfire/tornado/su33/mig21nk) from identical AeroPlaneDef inputs. tools/unity_port_check.py: compared 80 values across 8 js / 8 cs lines, PASS, worst relative diff 1.033e-06. Covers mass/S/kInduced/cd0/alphaStall/thrust0/vStall/vr/vne/rollMax/pitchMax/yawMax/tau/nAuth, plus rho/thrust-lapse/speed-cap at 0 m and 2000 m altitude, for every plane. Probe pre-written, never executed before now; no C# edits needed."
+  },
+  {
+    "cs": "Assets/Scripts/City/WaterBodies.cs",
+    "js": "citymap.js",
+    "covers": 111,
+    "restates": true,
+    "verified": "tools/_probe_river.py (JS/Python ground truth, run 2026-10-27) vs unity/Assets/Editor/Probes/RiverProbe.cs (split Run()->Print()+Run() so it could join the VerifyPass2Probe aggregator), calling the REAL WaterBodies.Build(terrain) against real public/tbilisi data. Isolating just this unit's WATERP line from the full RiverProbe run and diffing with tools/unity_port_check.py: compared 3 values (lake count=9, vertex count=235, triangle count=217) across 1 js / 1 cs line, PASS, exact match (worst relative diff 0). The full RiverProbe/_probe_river.py pair compared 597 values across 169/171 lines overall; the river-bed/sheet and grass-cover sections belong to RiverSheet.cs/GrassCover.cs, already verified under other units, not claimed here. Probe pre-written, never executed before now; no C# edits needed."
+  },
+  {
+    "cs": "Assets/Scripts/City/WorshipPlacer.cs",
+    "js": "citymap.js",
+    "covers": 179,
+    "restates": true,
+    "verified": "tools/_probe_river.py (run 2026-10-27) vs unity/Assets/Editor/Probes/RiverProbe.cs (Print()/Run() split, run inside VerifyPass2Probe), calling the REAL WorshipPlacer.Build(terrain). Isolating this unit's WORSHIPP lines and diffing with tools/unity_port_check.py: compared 17 values across 6 js / 7 cs lines (the 1 extra cs line is a CS-only placed/excluded/chunks breakdown that has no JS counterpart and is not counted as a miss), PASS, exact match. Confirms the real raw church count=421 and mosque count=9 (pre-exclusion totals, read from the live public/tbilisi/city.json.gz churches/mosques arrays by both sides independently) and 5 real sample points (3 churches, 2 mosques, by the same fixed raw-list indices on both sides) with real TerrainSampler heights, all exact. Probe pre-written, never executed before now; no C# edits needed."
+  }
+]

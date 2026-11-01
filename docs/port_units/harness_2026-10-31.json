@@ -1,0 +1,16 @@
+[
+ {
+  "cs": "Assets/Tests/PlayMode/HarnessInput.cs + InputEdgeLab.cs + InputLabSpy.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION INFRASTRUCTURE: the measured reason an unfocused batch editor never delivered a key EDGE (event deferral to the Editor update + a never-assigned editor step stamp), the three focus settings + EnableDevice that fix it, the UI pointer gate (eventSystemUpdateMode=Always). Every discrete binding in FirstPlayModeRun is now a real press; LoginClickRun guards the chrome click bug on every run; -perfNative measures the game at the JS bar's 2800x1800."
+ },
+ {
+  "cs": "Assets/Tests/PlayMode/FirstPlayModeRun.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "Real key edges for Enter/C/V/Tab/M/R/P/`/N/T/Space; mouse deltas 20/20; PERF settled window at renderScale 1 and the opt-in retina RT (C1 ~56 fps vs the 94 bar; HQ <= 1 ms); FOOT_MOUSE_LOOK_BUG line."
+ }
+]

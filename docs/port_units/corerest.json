@@ -1,0 +1,73 @@
+[
+  {
+    "cs": "Assets/Scripts/Core/GameLoop.cs",
+    "js": "game.js",
+    "covers": 793,
+    "verified": "tools/_probe_corerest.mjs: 24/24 PASS (source-text wiring presence + constants read byte-for-byte off src/game.js — CAM_MIN/CAM_SKIN/the _adaptResolution EMA-cool-budget-scale quartet/the fxLights pool size). unity/Assets/Editor/Probes/CoreRestProbe.cs written to the same KEY names for a runtime proof (constructs a real PlaneController+GameLoop, calls BeginSession/ResetPlane/Step, asserts every PlaneHullDamage/PlaneWallContact/PlaneGroundRoll hook WirePlaneCombat is supposed to set is actually non-null, and that ResetPlane() really restores Health via Hull.ResetAll()) — NOT EXECUTED this session, no editor access (coordinator holds the batch-mode lock).",
+    "note": "RESTATES the previous pass's claim (650) plus this pass's own additions, which are the previous pass's own named remainder: _keepCameraOutside (game.js:1255-1305, real Physics.RaycastAll dolly-clamp — folds the JS's separate plane-shell raycast into the one call since RaycastAll already returns every collider including the plane's own shell), _adaptResolution (game.js:2639-2652, the EMA+cooldown one-way render-scale drop, with an OnResolutionDrop hook since this file holds no UniversalRenderPipelineAsset reference), _updateAttribution (game.js:2700-2703, an OnAttributionChanged hook + AttributionProvider), _applyResume/_restoreLoadout (game.js:1101-1222, condensed to THIS port's own SaveState shape — pos/onFoot/health/plane only, no quat/vel/cam/guns/gear fields exist to restore because SaveState never wrote them; RestoreLoadout is an OnRestoreLoadout hook, honestly a no-op today), _reseatOnScenery (game.js:1226-1247, real — lifts on-foot or parked-plane position onto the terrain it's resting on, never drops), and the real half of dispose() (game.js:2712 `saveState(true, 'back to menu')`, wired to Unity's own OnDestroy — the JS's ~24 other dispose() calls either free plain C# objects with no unmanaged resource or belong to another agent's already-GameObject-lifecycle-managed file, so porting them 1:1 would just be a parallel, redundant teardown path). ALSO closes the previous pass's own named wiring gap, the highest-value part of this pass's scope: WirePlaneCombat(PlaneController) wires PlaneHullDamage's OnHint/OnHealthChanged/OnExplosionSound/OnEngineKill/OnSaveDeath/OnShowWasted/OnDentHull (new MetalDents instance, Combat/CrashDents.cs — not locked, nobody else constructs one) plus the NEW OnCrashed hook (PlaneHullDamage.cs), and PlaneWallContact.RamOther as a closure over TargetRegistry.RecOf(Collider) [new method+field on the existing TargetRegistry] and Flight/PlanePhysics.cs's PlanePhysicsSystem.Ram (now actually called from somewhere, for the first time in this port); GameLoop.ResetPlane() now calls ActivePlane.Hull.ResetAll(); StageFlight calls ActivePlane.CheckCollision() on the same 0.15s cadence right next to CheckStructuralStress (game.js:2409-2412). HONEST GAPS, named not silent: OnDetach/OnCrashScatter/OnSmokeClear/OnWingBend/OnWingRepair remain unwired (need a per-plane Combat.AirframeBreakup instance + the airframe prefab's own wing Mesh/Material — neither exists anywhere in this port yet); _syncPinBeams (game.js:2674-2698, needs UI.Map's real pin data, UI/ is locked this session) and _setupScene/_setupWorld/_precompileShaders/_resize (Three.js renderer/canvas/shader-warm-up bring-up with no Unity line-for-line counterpart — Unity's own Camera/URP pipeline does this automatically, same framing as Editor/BuildFlyableScene.cs's own 'no JS line-for-line counterpart' note) are NOT ported. _showError (game.js:2705-2709) was found ALREADY covered — Boot.cs's own AuthError event is this port's version of it."
+  },
+  {
+    "cs": "Assets/Scripts/Fx/FxLightPool.cs",
+    "js": "game.js",
+    "covers": 33,
+    "verified": "tools/_probe_corerest.mjs confirms FX_LIGHT_POOL_SIZE=3 against src/game.js's own `for (let i = 0; i < 3; i++)` pool-construction loop.",
+    "note": "NEW FILE. Port of the effect-light POOL this port's own brief calls out by name as the fix for the 'new PointLight recompiles every material' freeze: game.js:341-356 (_setupScene's 3-light pool, built once, parked at intensity 0 far below the map) and game.js:2654-2670 (takeFxLight/freeFxLight, round-robin borrow/return). Three real UnityEngine.Light components are created ONCE and reused — nothing in this port ever calls `AddComponent<Light>()` in a gameplay path. GameLoop.cs exposes TakeFxLight/FreeFxLight wrapper methods over one lazily-constructed instance. UNITY-NATIVE NOTE: three.js's PointLight decay exponent (1.8 in the pool) has no Light.range equivalent and is accepted-but-unused for call-site parity, documented in the file's own header."
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlaneRaycastWorld.cs",
+    "js": "game.js",
+    "covers": 0,
+    "whole_file": false,
+    "verified": null,
+    "note": "NEW FILE — pure Unity-native wiring infrastructure (Physics.RaycastAll/Physics.Raycast wrappers, IDamageWorld forwarding, FX/audio as optional no-op hooks), not a line-for-line port of any specific game.js range, same framing as Editor/BuildFlyableScene.cs's own 'covers: 0, listed for completeness.' It is what makes PlaneWallContact.cs/PlaneGroundProbe.cs/Flight/PlanePhysics.cs's own IPlaneWallWorld/IGroundProbeWorld/IPlanePhysicsWorld interfaces — all three written by a previous pass and implemented by NOTHING until now — actually constructible. HitConcreteSound/CollapseRumbleSound call Core/AudioFx.cs for real; SpawnEmber/SpawnSmoke/DustBurst/BurstGlass/ShowBuildingToast are honest no-op hooks (Action fields) until Core/CombatWorldAdapter.cs (locked this session) assigns real FX systems to them."
+  },
+  {
+    "cs": "Assets/Scripts/Flight/PlaneController.cs",
+    "js": "game.js",
+    "covers": 70,
+    "verified": "tools/_probe_corerest.mjs: plane_prevpos_field/plane_airborne_field/plane_step_branches_airborne/plane_touchwall_called_airborne_branch/plane_touchwall_called_groundroll_branch/plane_airbornegroundcheck_called/plane_checkcollision_wrapper/plane_ramspin_roundtrips_planephys all PASS (source-text). CoreRestProbe.cs's own plane_init_ok/plane_airborne_initial_true/airborne_branch_moved_plane/prevpos_captured checks construct a real instance and step it — NOT EXECUTED this session (no editor access).",
+    "note": "RESTATES the previous pass's claim (14 — deliberately narrow: 'the airborne core only, ground-roll out of scope') with this pass's full rewrite: the complete game.js:1483-1540 `if (this.airborne) {...} else {...}` dispatch, both arms, is now here. PrevPos (game.js:101,1501 `this._prevPos`) is captured once per Step() before either branch moves the plane. The airborne arm calls FlightModel.Update, PlaneGroundRoll.ApplyRamSpinAirborne (game.js:1494), integrates position (1502), calls PlaneWallContact.TouchWall (1507), then PlaneGroundRoll.AirborneGroundCheck (1513-1538) — grounding (Touchdown returning true) flips Airborne false. The ground-roll arm calls PlaneGroundRoll.Step, which owns its OWN inline TouchWall call (1603) via a passed-in delegate — lift-off flips Airborne true. CheckCollision() is a 4-line wrapper GameLoop.cs calls on its existing 0.15s timer; it now also updates Airborne when PlaneWallContact.CheckCollision's OWN two Touchdown call sites ground the plane (a correctness fix to that file — see PlaneWallContact.cs's restated claim). PlanePhys.RamSpin.Value round-trips through both branches so Flight/PlanePhysics.cs's RamSpinAccumulator (previously fed by nothing) actually affects the airframe's rotation every frame."
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlaneWallContact.cs",
+    "js": "game.js",
+    "covers": 326,
+    "verified": "tools/_probe_corerest.mjs: wallcontact_checkcollision_returns_bool PASS.",
+    "note": "RESTATES the previous pass's claim (326, unchanged JS-line coverage — no new game.js text is ported here this pass). The one change: CheckCollision() now returns bool instead of void, true exactly when either of its own two internal `_groundRoll.Touchdown()` calls actually grounds the plane (game.js:2179 `_land` sets `this.airborne = false` inside the Touchdown this method runs) — the previous version threw that fact away, so PlaneController.cs's Airborne flag (this pass's own new field) had no way to learn it. A correctness fix enabling the wiring this pass's brief asked for, not new ported behaviour."
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlaneHullDamage.cs",
+    "js": "game.js",
+    "covers": 182,
+    "verified": "tools/_probe_corerest.mjs: hulldamage_oncrashed_hook, hulldamage_oncrashed_invoked_in_explode PASS.",
+    "note": "RESTATES the previous pass's claim (180) plus a 13th hook: OnCrashed, invoked from Explode() right where game.js:2260 constructs `this.crash = new CrashSequence(...)` — the ONE place in the JS where airframe-health-reaching-zero also flips the GAME's own mode, not just this class's own `Crashed` flag. GameLoop.cs's EnterCrashed (previously reachable ONLY via CheckStructuralStress's G-break/VNE path) is now wired to this hook too, so a wall hit, a ram, or a bad touchdown also enters Crashed mode, not just over-G flight."
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlaneGroundRoll.cs",
+    "js": "game.js",
+    "covers": 279,
+    "verified": null,
+    "note": "RESTATES the previous pass's claim unchanged — not edited this pass. Now actually CALLED (see GameLoop.cs/PlaneController.cs's own restated claims): PlaneController.Step()'s ground-roll arm is this file's Step(), and its AirborneGroundCheck/Touchdown/ApplyRamSpinAirborne are now reached from the airborne arm too."
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlaneGroundProbe.cs",
+    "js": "game.js",
+    "covers": 78,
+    "verified": null,
+    "note": "RESTATES the previous pass's claim unchanged — not edited this pass. Backing IGroundProbeWorld is now a real implementation (Core/PlaneRaycastWorld.cs, new this pass) instead of nothing."
+  },
+  {
+    "cs": "Assets/Scripts/Core/Boot.cs",
+    "js": "main.js",
+    "covers": 550,
+    "verified": null,
+    "note": "RESTATES the previous pass's claim unchanged — not edited this pass. Audited this pass specifically for the task's named main.js seam (the WoW character-create screen's non-DOM logic): Boot.cs's own SelectBody(raceId, bodyId) ALREADY ports main.js:371-381 `selectBody`'s real state transition (selectedRace/selectedModel tracking + RosterChanged), and CreateHero already computes the race's starter plane fresh via StarterPlaneFor(SelectedRaceId) every time it's needed rather than caching a `starterPlane` field reactively the way main.js:375 does — an equivalent, slightly more robust (no stale cache) way of reaching the same behaviour. Nothing further to port: the remainder of main.js:257-526 (renderRaceColumn/renderCharList/renderCharInfo/applyCharLayout) is pure DOM markup generation with no non-DOM logic left inside it — it needs a UI.Character view, which this pass did not build per its own scope boundary ('another agent owns UI/, do not build UI views')."
+  },
+  {
+    "cs": "Assets/Scripts/Core/CharacterPreviewRig.cs",
+    "js": "main.js",
+    "covers": 96,
+    "verified": null,
+    "note": "RESTATES the previous pass's claim unchanged — not edited this pass."
+  }
+]

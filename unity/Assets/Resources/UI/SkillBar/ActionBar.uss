@@ -1,0 +1,92 @@
+@import url("../Theme/CyberTheme.uss");
+
+/* Ported from src/style.css:1055-1161 (#actionbar/#weaponbar, .ab-*) and
+ * :1657-1683 (#weaponbar .ab-wicon/.ab-ammo). Shared by both SkillBarView
+ * (the 10-slot ability bar) and WeaponBarView (the 8-slot on-foot weapon
+ * wheel) — the JS itself shares this exact class vocabulary between
+ * skillbar.js's two exported classes (SkillBar/WeaponSlots), so one USS file
+ * for both is the SAME factoring the source already used, not a new one.
+ *
+ * NOT CARRIED OVER CLEANLY:
+ *  - the 45°-cut end caps + the whole bar's slanted-trapezoid silhouette
+ *    (clip-path) are painted by AngledPanel.DrawTrapTop in C# instead of
+ *    clipped here — see ActionBarChrome in SkillBarView.cs/WeaponBarView.cs.
+ *  - the WoW cooldown radial sweep (.ab-cd's conic-gradient) has no USS
+ *    conic-gradient equivalent — see CooldownSweep.cs (Painter2D pie wedge).
+ *  - box-shadow glows (hover, .sel, .ready) are dropped; .sel's border +
+ *    outline alone still reads as "selected".
+ */
+
+.ab-root {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  translate: -50% 0;
+  flex-direction: row;
+  align-items: center;
+}
+
+.ab-slots {
+  flex-direction: row;
+}
+
+.ab-slot {
+  width: 52px;
+  height: 52px;
+  margin-left: 3px;
+  margin-right: 3px;
+  border-width: 1px;
+  border-color: var(--line-dim);
+  background-color: rgba(3, 6, 12, 0.75);
+  align-items: center;
+  justify-content: center;
+}
+
+.ab-slot.sel {
+  border-color: var(--gold);
+  border-width: 2px;
+}
+
+.ab-slot.empty {
+  background-color: rgba(3, 6, 12, 0.55);
+}
+
+.ab-key {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 10px;
+  -unity-font-style: bold;
+  color: var(--cyan2);
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: rgba(0, 0, 0, 0.95);
+}
+.ab-slot.sel .ab-key { color: var(--gold); }
+.ab-slot.empty .ab-key { opacity: 0.35; }
+
+.ab-icon {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+}
+
+/* on-foot weapon category glyph (emoji Label) — style.css:1657-1663 */
+.ab-wicon {
+  font-size: 19px;
+  opacity: 0.55;
+}
+.ab-slot.sel .ab-wicon { opacity: 0.95; }
+
+/* rounds-left readout, style.css:1669-1683 */
+.ab-ammo {
+  position: absolute;
+  right: 4px;
+  bottom: 1px;
+  font-size: 11px;
+  -unity-font-style: bold;
+  color: var(--gold);
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: rgba(0, 0, 0, 0.95);
+}
+.ab-ammo.low { color: #ffb347; }
+.ab-ammo.out { color: var(--mag); }

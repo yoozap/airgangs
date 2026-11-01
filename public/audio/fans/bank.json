@@ -1,0 +1,24 @@
+{
+ "fan_start": [
+  "fan_start_667277.wav",
+  "fan_start_704394.wav"
+ ],
+ "fan_low": [
+  "fan_low_361212.wav",
+  "fan_low_696180.wav",
+  "fan_low_831775.wav"
+ ],
+ "fan_high": [
+  "fan_high_453546.wav",
+  "fan_high_560554.wav",
+  "fan_high_799531.wav"
+ ],
+ "fan_switch": [
+  "fan_switch_807384_0.wav",
+  "fan_switch_807384_1.wav",
+  "fan_switch_807384_2.wav"
+ ],
+ "fan_stop": [
+  "fan_stop_543820.wav"
+ ]
+}

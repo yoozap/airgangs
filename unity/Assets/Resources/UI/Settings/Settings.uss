@@ -1,0 +1,184 @@
+@import url("../Theme/CyberTheme.uss");
+/* ============================ NO em UNITS ============================
+ * USS has NO `em` unit. Every `letter-spacing: 0.06em` in this file was a
+ * literal transcription of src/style.css and Unity's USS importer REJECTS
+ * it — and it does not reject just that declaration, it fails the whole
+ * import and leaves an EMPTY StyleSheet with the asset still loading, still
+ * named, still attached to the view. The screen then renders with every
+ * element present and NOTHING styled: full-width stacked rows, default grey
+ * buttons, no panels, no columns, no padding. Measured 2026-10-30 by
+ * Editor/Probes/UiShotProbe.cs (UISTYLE arm=character sheets=1 [Character]
+ * with .hangar's own `padding: 74px 44px 44px` resolving to padTop=0) and
+ * visible in the first ui_character.png.
+ *
+ * The em values are converted to the px they meant: CSS `em` is the
+ * element's own font-size, so 0.06em at font-size:15px is 0.9px. If a rule
+ * here gains or changes a font-size, convert again — do not reintroduce em.
+ * ===================================================================== */
+
+/* Ported from src/style.css:780-985 (#settingswin, .sw-*).
+ *
+ * NOT CARRIED OVER CLEANLY:
+ *  - backdrop-filter: blur(3px) on the overlay — dropped, no USS equivalent
+ *    (style.css:238-242 already notes this only ever blurred a static menu
+ *    screen, never the live 3D canvas, so the loss is cosmetic only).
+ *  - clip-path corner cuts on .sw-frame — painted by AngledPanel.cs instead.
+ *  - .sw-seg button.active's linear-gradient fill — flat var(--cyan) instead.
+ *  - .sw-toggle's box-shadow glow when on — dropped.
+ */
+
+.sw-overlay {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background-color: rgba(3, 6, 12, 0.6);
+  align-items: center;
+  justify-content: center;
+  display: none;
+}
+
+.sw-frame {
+  width: 560px;
+  max-width: 94%;
+  background-color: rgba(4, 7, 13, 0.96);
+  border-width: 1px;
+  border-color: var(--line);
+}
+
+.sw-head {
+  flex-direction: row;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom-width: 1px;
+  border-bottom-color: var(--line);
+  background-color: rgba(63, 214, 255, 0.06);
+}
+.sw-head Label.sw-title {
+  font-size: 17px;
+  letter-spacing: 3px;
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: rgba(63, 214, 255, 0.45);
+  flex-grow: 1;
+  margin-left: 12px;
+}
+.sw-tag { font-size: 10px; letter-spacing: 2px; color: var(--cyan); opacity: 0.75; }
+
+.sw-tabs {
+  flex-direction: row;
+  padding: 12px 16px 0;
+  border-bottom-width: 1px;
+  border-bottom-color: var(--line-dim);
+}
+.sw-tab {
+  font-size: 14px;
+  -unity-font-style: bold;
+  color: var(--dim);
+  background-color: transparent;
+  border-width: 0 0 2px 0;
+  border-bottom-color: transparent;
+  padding: 8px 16px;
+  margin: 0;
+}
+.sw-tab.active { color: var(--cyan2); border-bottom-color: var(--cyan); }
+
+.sw-page {
+  padding: 18px 22px 4px;
+  max-height: 420px;
+}
+.sw-page.hidden { display: none; }
+
+.sw-row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom-width: 1px;
+  border-bottom-color: rgba(63, 214, 255, 0.07);
+}
+.sw-row-label { font-size: 14.5px; max-width: 62%; color: var(--text); }
+.sw-val { color: var(--cyan); margin-left: 8px; font-size: 12px; }
+.sw-note {
+  font-size: 12px;
+  white-space: normal;
+  color: rgba(215, 236, 247, 0.62);
+  margin-top: 4px;
+}
+
+.sw-keys-title {
+  margin: 16px 0 2px;
+  font-size: 11px;
+  letter-spacing: 1.54px;
+  color: var(--cyan);
+  opacity: 0.85;
+}
+.sw-keys { margin-top: 4px; }
+.sw-keys-row { flex-direction: row; margin-top: 5px; }
+.sw-keys-row Label.sw-key-chip {
+  min-width: 52px;
+  color: var(--cyan2);
+  border-width: 1px;
+  border-color: var(--line-dim);
+  background-color: rgba(63, 214, 255, 0.06);
+  -unity-text-align: middle-center;
+  padding: 0 6px;
+  margin-right: 10px;
+}
+.sw-keys-row Label.sw-key-text { flex-grow: 1; white-space: normal; color: rgba(215, 236, 247, 0.85); }
+
+.sw-seg { flex-direction: row; }
+.sw-seg Button {
+  font-size: 12.5px;
+  -unity-font-style: bold;
+  color: var(--dim);
+  background-color: rgba(63, 214, 255, 0.05);
+  border-width: 1px;
+  border-color: var(--line-dim);
+  padding: 6px 12px;
+  margin-right: 4px;
+}
+.sw-seg Button.active {
+  color: #041018;
+  background-color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+/* .sw-toggle: a pill button (NOT a native checkbox — index.html's own DOM
+ * is <button class="sw-toggle">, so this is the faithful port, not a
+ * simplification) with a sliding knob child standing in for CSS ::after,
+ * which USS cannot express. style.css:926-947. */
+.sw-toggle {
+  width: 46px;
+  height: 22px;
+  background-color: rgba(63, 214, 255, 0.08);
+  border-width: 1px;
+  border-color: var(--line-dim);
+  padding: 0;
+}
+.sw-toggle.on { border-color: var(--cyan); background-color: rgba(63, 214, 255, 0.18); }
+.sw-toggle-dot {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background-color: var(--dim);
+}
+.sw-toggle.on .sw-toggle-dot { left: 26px; background-color: var(--cyan); }
+
+.sw-range { width: 200px; }
+
+.sw-footer {
+  padding: 10px 16px 14px;
+  border-top-width: 1px;
+  border-top-color: var(--line-dim);
+  align-items: center;
+}
+.sw-footer-link {
+  background-color: transparent;
+  border-width: 0;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.44px;
+  opacity: 0.7;
+  padding: 2px 4px;
+}
+.sw-footer-link:hover { color: var(--cyan2); opacity: 1; }

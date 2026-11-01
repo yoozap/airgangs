@@ -1,0 +1,44 @@
+[
+ {
+  "cs": "Assets/Scripts/Flight/PlaneModelFrame.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: SeatTheBelly (planes.js:1556-1564) drops every airframe so the belly sits at local y=-1.7 = game.js:67 WHEEL_HEIGHT; X/Z recentre (planes.js:1533-1535) deliberately left conditional (row xz-recentre-deviation)."
+ },
+ {
+  "cs": "Assets/Scripts/Flight/PlaneCockpitKit.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: UnpackPrefabAround before HingeHood (17 prefab-instance errors -> 0 in play mode); DestroyEither (Application.isPlaying switch) for the scenery controls/kit."
+ },
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: discrete keys P ` R N T wired (game.js:479-489, 502-505, 521-524, 553-558) with KeyBindings rows; DevActive frees the mouse (game.js:663-664); Ensure* UI installs go through UiBootstrap.GameUiRoot and assign after Add. NOTE: WarmupShadersOnce/PrecompileCo (game.js:1436-1443) uses Shader.WarmupAllShaders - project-wide, the source of every remaining play-mode error line (row shader-warmup-scope)."
+ },
+ {
+  "cs": "Assets/Scripts/Core/CharacterPreviewRig.cs",
+  "js": "main.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: the preview body was parented at the world origin - CharacterRig's constructor builds its own rig_<id>/act/anim root and reparents the model, undoing SetModel's parenting; now the RIG ROOT is parented under the holder and destroyed on swap (143 -> 6 edit-mode destroys); camera enabled only when the target is >= 64x64 (URP half-res textures of a 1x1 pre-layout target were the 'Explicit size ... zero' errors); explicit UniversalAdditionalCameraData with post/shadows/AA off like main.js's plain second renderer. UiShotProbe heroPreviewHasAnImage PASS (pctLit 9.71)."
+ },
+ {
+  "cs": "Assets/Scripts/UI/Common/UiBootstrap.cs",
+  "js": "hud.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: GameUiRoot() - the live game panel root or null-so-retry; replaces every FindAnyObjectByType<UIDocument> in HeldWeapon/GameLoop Ensure* installs."
+ },
+ {
+  "cs": "Assets/Scripts/UI/Map/BigMapView.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: style writes moved out of generateVisualContent (LayoutImage/Sync); MapWindowView gets FillPanel. First time the M window ever opened in the port."
+ }
+]

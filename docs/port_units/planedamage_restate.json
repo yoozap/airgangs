@@ -1,0 +1,10 @@
+[
+ {
+  "cs": "Assets/Scripts/Combat/PlaneDamage.cs",
+  "js": "planedamage.js",
+  "covers": 1503,
+  "restates": true,
+  "verified": "Verified under its existing probes (DamageProbe, PlaneMarkProbe clean after the renderer landed); this entry only LOWERS the claim.",
+  "note": "RESTATED DOWN by 47 lines, 2026-10-30. The blanket 1550 was filed while PlaneMarkLayer's own doc comment said rendering was 'left to the consumer' -- i.e. it billed planedamage.js:421-456 (MarkLayer's constructor: mesh/material/texture per layer, polygonOffset -8-2*order, renderOrder 3006+order) and :468-478 (alloc's uvOffset atlas pick) that PlaneDamage.cs never implemented. Fx/PlaneMarkFx.cs + Shaders/PlaneMark.shader implement them now and are filed at covers 0 in planemarks.json because planedamage.js has no headroom (1998 budget, 1949 claimed + 38 in combatdone.json). The merge keeps the HIGHER of two plain claims, so the Fx agent could not lower this by filing; `restates: true` is the one mechanism that can, and no other file restates this key. Net module coverage is unchanged (the 47 lines moved owner, not status); this is a correction of WHO ported them, so the per-file record is honest."
+ }
+]

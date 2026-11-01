@@ -1,0 +1,51 @@
+[
+ {
+  "cs": "Assets/Scripts/Character/MoveLibrary.cs",
+  "js": "anims.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "DELETED 2026-10-31 (orphan triage): the JS plays none of the library's 35 clips - characters.js:2792-2809 addMoves() consumes only WALK_SET; moves.json/.glb were never imported so Load() always returned false. anims.js's retargeter (109-369) is superseded by Unity's Humanoid Avatar (banana/eggplant/toad import as Humanoid); the walk-set half lives in CharacterRoster.WalkSet + CharacterRig.SetWalkDirection."
+ },
+ {
+  "cs": "Assets/Scripts/Character/CharacterRoster.cs",
+  "js": "anims.js",
+  "covers": 60,
+  "verified": "2026-10-31",
+  "note": "RESTATED claim (was on MoveLibrary.cs): the walk set measured off moves.json (anims.js movesFor/WALK_SET/canTakeMoves, ~60 lines) - WalkSet/WalkClipSpeed/WalkMaxRate/IsHumanoidBody; CharacterRig.SetWalkDirection replaces characters.js:2812-2834. Estimate, not probed line-for-line."
+ },
+ {
+  "cs": "Assets/Scripts/Fx/RubbleFx.cs",
+  "js": "citymap.js",
+  "covers": 50,
+  "verified": "2026-10-31",
+  "note": "citymap.js:2675-2724 _initRubble/_rubbleGrew: instanced rubble layers over rubble_kit.fbx, 4000-slot pools, Reserve/SetPiece/Render, growing Bounds. Proven by OrphansWiredProbe DEBRISWIRE draw drawnInstances=86 and play-mode collapseDebrisDraws=pass. Asset caveat: rubble_kit.glb ships 1 of 6 pieces on the JS side too."
+ },
+ {
+  "cs": "Assets/Scripts/Core/CollapseDebris.cs",
+  "js": "citymap.js",
+  "covers": 63,
+  "verified": "2026-10-31",
+  "note": "citymap.js:2593-2655 _updateDebris: the one shared field + step calling DebrisField.Launch/LaunchBlast/Step/SpawnRubble/ShedDebris and IFireFx smoke/ember on reignite and bounce; the five publishers wired in CombatBuildingChunk + CombatWorldAdapter.BlastDebris (was an empty body). DEBRISWIRE fall launchedTotal=47 settled=47 live=0."
+ },
+ {
+  "cs": "Assets/Scripts/Fx/GunDecalFx.cs",
+  "js": "guns.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (guns.js:90-171 textures were claimed by GunDecalTextures.cs; this draws them): the belly gun's own holes/cracks layers (guns.js:388-389, :603 cracks.stamp), ImpactDecalFx's pattern, owned by MachineGun. GUNDECALWIRE render drawnCracks=1; Holes stays empty by parity (the JS never stamps it)."
+ },
+ {
+  "cs": "Assets/Editor/Probes/OrphansWiredProbe.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: drives the real publishers (ignite/fall/shed stages 6-8/blast) and the gun decal stamp, reads the fields back; QUALITYWIRE for the four presets + the manual pin."
+ },
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "settings.js",
+  "covers": 12,
+  "verified": "2026-10-31",
+  "note": "ApplyQuality/SetHq: settings.js:6-10 QUALITY presets + :163-173 _applyQuality (pixelRatio -> URP renderScale, hq -> shadows + post), :167 manual pins _resDropped; ToggleHq shares SetHq. Subscribed at CombatWorldAdapter.cs:1183."
+ }
+]

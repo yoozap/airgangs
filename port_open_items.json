@@ -1,0 +1,654 @@
+[
+ {
+  "id": "views-wired",
+  "area": "UI",
+  "item": "Four combat UI views (lane card, score HUD, loot cards, on-foot reticle) built and constructed in the game",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "tools/_test_no_orphans.py: all four LIVE; CombatUiViewsProbe 46/46",
+  "owner": ""
+ },
+ {
+  "id": "engine-silent",
+  "area": "Core",
+  "item": "EngineSound was never constructed - the game was silent; then its first-ever Start() crashed twice",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "GameLoop.cs:391; CoreRestProbe ALL PASS; 121 -> 1 logged errors over 120 ticks",
+  "owner": ""
+ },
+ {
+  "id": "hp-table",
+  "area": "Core",
+  "item": "Building HP was a third formula nobody wrote down; crumble stage ran one ahead and collapsed buildings with HP left",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "CombatBuildingChunk.MaxHpOf = citymap.js:5344; StageOf = citymap.js:1498-1501",
+  "owner": ""
+ },
+ {
+  "id": "scene-size",
+  "area": "Scene",
+  "item": "Game.unity was 1.78 GB (three baked flower meshes); now 11.6 MiB, deserialize 6.06 s -> 0.09 s",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "SceneSizeReport; embedded Mesh/Texture2D 210/74 -> 0/0",
+  "owner": ""
+ },
+ {
+  "id": "double-render",
+  "area": "City",
+  "item": "Every scenery renderer drew its geometry twice after a scene load",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "SceneryRebuildCheck: 8 renderers pass1==pass2; negative control fails",
+  "owner": ""
+ },
+ {
+  "id": "flowers",
+  "area": "City",
+  "item": "Three flower kinds merged into single meshes (14.19 M verts); now instanced like everything else",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "PARKRENDER static verts 14,190,000 -> 184,117; 7 real draws/frame",
+  "owner": ""
+ },
+ {
+  "id": "fleet-records",
+  "area": "Flight",
+  "item": "35 parked planes had no PlaneDamageRecord: not clickable, no damage, not boardable",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "PLANEHALLFILL damageRecords=35/35 hullPointsTotal=62855",
+  "owner": ""
+ },
+ {
+  "id": "plane-marks",
+  "area": "Fx",
+  "item": "Plane damage marks (holes, tears, exits, scrapes, craze) computed but never drawn",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "PlaneMarkProbe: DRAWN per layer; pixel proof still needs a GPU run",
+  "owner": ""
+ },
+ {
+  "id": "rounding",
+  "area": "Flight",
+  "item": "9 of 35 planes had a wrong mass or fuel (Mathf.Round half-to-even vs JS half-up); 3 tonnage strings off by 0.1 t",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "PlaneCatalogProbe 703 values exact; JsMath.ToFixed verified 72/72",
+  "owner": ""
+ },
+ {
+  "id": "foot-plane-probe",
+  "area": "Character",
+  "item": "FootPlaneProbe unwired, then wired to every plane EXCEPT the hero's own",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "_foot.NearbyPlane = ActivePlane.transform; both consumers wired",
+  "owner": ""
+ },
+ {
+  "id": "gunpod",
+  "area": "Combat",
+  "item": "Belly-gun pod built by nothing; muzzle was a guess",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "evidence": "GunPod.Build in WirePlaneCombat; MuzzleWorld exact",
+  "owner": ""
+ },
+ {
+  "id": "propellers",
+  "area": "Flight",
+  "item": "No real aeroplane has a propeller that spins, blurs or is tagged - the pipeline only reached the wind-tunnel fans",
+  "status": "fixed",
+  "owner": "agent: real-plane propellers",
+  "evidence": "PlanePropsProbe: 15 planes, 31/31 propellers, every radius == JS (P-47 2.60 intact); Tag/Finish/Spin reached from PlaneProps.cs:412/365 + PlanePropellers.cs:93; spin from Engine.Rpm*2700 (game.js:2585)",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "collapse-fx",
+  "area": "City",
+  "item": "Building collapse raises no glass/blast FX (game.js:427/429); crumble roofline on a linear curve instead of STAGE_H",
+  "status": "fixed",
+  "owner": "agent: collapse FX",
+  "evidence": "Core/CollapseFxHooks assigned at CombatWorldAdapter.cs:538 (not +=); publishers at citymap.js:1552/2392-2405/2462-2524; CollapseStageProbe: ignite blasts=1 blastR=12.0 (=max(8,24*0.5)), slam 10.08; STAGE_H ported, roofIdeal exact at all 10 stages; collapse ANIMATION now runs (CollapseAnim un-orphaned)",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "rifle-sign",
+  "area": "Combat",
+  "item": "Rifle cover/reload hand Z flips sign vs JS (suspected forward-flip bug hidden by a probe key rename)",
+  "status": "fixed",
+  "owner": "agent: combat fixes",
+  "evidence": "The flip was in the PROBE: RangeProbe.cs fed applyRifleHold a Three.js aim (0,0,-1) = backward in Unity. RifleHolds.cs UNCHANGED and correct (Cross operands swapped consistently at 5 sites). Pair now 106 values, worst 0.000e+00 on the same synthetic rig",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "gunpod-taper",
+  "area": "Combat",
+  "item": "Gun-pod housing taper reversed; barrel taper collapsed to its mean",
+  "status": "fixed",
+  "owner": "agent: combat fixes",
+  "evidence": "Guns.cs: housing rMuzzle=0.200 rAft=0.160 and barrel 0.055/0.050 now match guns.js:398-399 (+Y->+Z derivation in the header); Pass4ExtrasProbe PASS 83 values worst 8.3e-08",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "building-regression",
+  "area": "City",
+  "item": "Building kit claims drifted -280 since 10-26 (two exact facts now wrong); likely float distance vs double hypot at a hard 9 m threshold",
+  "status": "fixed",
+  "owner": "agent: collapse FX",
+  "evidence": "FALSE ALARM: the Python oracle is the stale side. citymap.js:4601 skips footprints inside landmark exclusion rings; that landed in C# on 10-27; tools/_probe_buildingquality.py models no exclusions. 143 footprints fall inside rings (the same 143). C# is correct -> oracle needs the loop (new row)",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "cityrenderer-draws",
+  "area": "City",
+  "item": "CITYRENDERER reports 781,149 batches for 1.45 M instances (~1.86 per batch) vs 1,557 recorded earlier - instancing may have collapsed",
+  "status": "fixed",
+  "owner": "agent: collapse FX",
+  "evidence": "MEASURED: 781,149 is an unconditional TOTAL; real per-frame at spawn = 329 draw calls (CityDrawProbe CITYDRAW_FRAME), 182 at +800 m. Culling works. The BATCH count is the real problem -> new row",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "map-texture",
+  "area": "UI",
+  "item": "georgia-sat.jpg is 9984 px wide; Unity's limit is 8192 - the one logged error left on a real load",
+  "status": "fixed",
+  "owner": "coordinator",
+  "evidence": "StreamingAssets/tbilisi/georgia-sat.jpg 9984x5376 -> 8192x4411 (LANCZOS, aspect 1.85714->1.85718); MiniMapView stretches to layout size and the Mercator math uses the cols*TILE logical grid, so pixel size is free; JS copy untouched",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "arms-assets",
+  "area": "Combat",
+  "item": "UiWireProbe passes while reporting pistol_anim.fbx/akm_arms.fbx not found - the files exist, so the loader path is wrong and the assertion is dishonest",
+  "status": "fixed",
+  "owner": "agent: combat fixes",
+  "evidence": "Both FBX exist and import (pistol_anim.fbx 1.0 MB, akm_arms.fbx 545 KB, clips present). The probe helper printed its FAIL note on PASS lines - same defect in 8 probes, all fixed; assets now asserted by name; UiWireProbe pair 2 -> 6 values",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "persistence",
+  "area": "Core",
+  "item": "Building-damage server persistence - plan written, deliberately NOT coded: three key spaces and an unresolved hole-coordinate frame would corrupt shared data",
+  "status": "decision",
+  "owner": "user",
+  "evidence": "QUALITY_BAR 'OPEN - DO NOT WRITE'",
+  "date": ""
+ },
+ {
+  "id": "player-build",
+  "area": "Scene",
+  "item": "All scenery + sheds + fleet load art via AssetDatabase under #if UNITY_EDITOR - a player build renders none of it",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "SHEDSCENEFILL playerSafe=false; same in all 8 renderers",
+  "date": ""
+ },
+ {
+  "id": "hero-screen",
+  "area": "UI",
+  "item": "CharacterView (the hero-select screen) and CharacterPreviewRig are constructed only by probes",
+  "status": "fixed",
+  "owner": "agent: hero screen",
+  "evidence": "Before: NO login screen existed, PlayableSceneBoot dropped players straight into flight, Boot.SetScreen invoked a null delegate. Now UI/Shell/ShellUi+ShellView (index.html:50-104 verbatim Georgian), HeroScreenProbe drives login -> Character (roster=2, all 4 bodies preview) -> Enter (GAME_STARTED, 120 ticks 0 errors) -> back -> logout: 46 PASS 0 FAIL; CharacterView/CharacterPreviewRig LIVE; -nologin keeps the old direct entry",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "windsock",
+  "area": "Core",
+  "item": "WindsockDriver never constructed - the windsock does not point downwind",
+  "status": "fixed",
+  "owner": "agent: collapse FX",
+  "evidence": "City/WindsockRenderer (OnEnable->EnsureBuilt, reads the SAME Wind state as the tree-sway shader); bake log WINDSOCK socks=2 placed=2; the prop had never existed in the scene",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "pixel-proof",
+  "area": "Fx",
+  "item": "Plane holes/marks never pixel-proven in Unity (the JS proved all 35 planes by reading rendered pixels)",
+  "status": "fixed",
+  "owner": "agent: GPU render",
+  "evidence": "REALHOLE 32/35 pass: one 9 mm round paints ~100-150 px, three into the same spot grow it to ~1,200 px, control annulus 0 on 33/35 - the marks are real, local pixels and tears GROW. See-through NOT provable: PlaneHull.shader does not compile (new row)",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "cinema",
+  "area": "Cinema",
+  "item": "Cinema reel subsystem (10 files, 2,221 lines, probe-verified) deliberately not wired",
+  "status": "deferred",
+  "owner": "user",
+  "evidence": "user: 'lets remove cinema for now'",
+  "date": ""
+ },
+ {
+  "id": "t28-transform",
+  "area": "Flight",
+  "item": "PlaneHallFill reset every FBX's natural import transform; t28.fbx imports at rot(270,0,0)/scale 100, so the T-28 was parked 12 cm across and on its back",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: real-plane propellers",
+  "evidence": "PROPSNAT: 34/35 import at identity; holder GameObject now carries placement; parked=35 failed=0 unchanged"
+ },
+ {
+  "id": "airframe-axis",
+  "area": "Flight",
+  "item": "Measured: 14 hinted hubs on 4 models found at MINUS the hinted nose - the FBX bridge flips X not Z, so airframes may point along Unity -Z, contradicting FlightModel.cs's '+Z forward' header; YawUnity/RollUnity have no consumers",
+  "status": "fixed",
+  "owner": "agent: airframe axis audit",
+  "evidence": "AXIS table for all 35 at natural import: noseNegZ=29 nosePosZ=3 noseOther=3 - exactly the set planes.js:826-836 straightens, with the straightened nose still at -Z. The FBX bridge mirrors X, not Z. FlightModel.cs header now states the flight frame (+Z) vs model frame (-Z) boundary and the one meeting point that is missing -> new row",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "crane-p51-prop",
+  "area": "Props",
+  "item": "Crane's slung P-51 propeller hub sits 4.95 m BEHIND the cockpit (raw hub triple not FromRuf'd; +Z nose) and spins the wrong way",
+  "status": "fixed",
+  "owner": "agent: airframe axis audit",
+  "evidence": "nose = -forward and FromRuf: pivotLocalPos (0,1.57,+4.95) -> (0,1.57,-4.95); CRANEFILL_PROPNOSE onNose=1; hook 7.9000 unchanged",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "wreck-colliders",
+  "area": "Flight",
+  "item": "Wreck-vs-wreck collisions degrade to 'hit the ground': _bakeCollider/_dropCollider (planephys.js:561-590) unported, so LooseAirframeActorRef is read and never written",
+  "status": "fixed",
+  "owner": "agent: airframe axis audit",
+  "evidence": "planephys.js:560-591 DropCollider/BakeCollider ported, LooseAirframeActorRef written at PlanePhysics.cs:1004; WRECKREF all true. Premise corrected: in the JS too planeRec?.body is null whenever a ray can hit, so wreck-vs-wreck already resolved to world - now correct by construction",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "blade-fade",
+  "area": "Flight",
+  "item": "Propeller blades never faded behind the blur disc: URP Lit opaque ignores _BaseColor alpha; JS switches to transparent lazily",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: real-plane propellers",
+  "evidence": "IsFadeable/MakeFadeable per propeller.js:1115-1121"
+ },
+ {
+  "id": "batch-explosion",
+  "area": "City",
+  "item": "CityRenderer batch key = variant x 700 m cell x quantised tint (TintSteps=24, up to 25^3 buckets) x submesh -> 781,149 batches at 1.86 instances each, 734 materials; ~110 MB of tiny arrays swept every LateUpdate. JS uses ONE per-instance colour attribute, one draw per material",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "batches 781,149 -> 17,175 (45x); materials 734 -> 43; per-frame Old Town 3,306 -> 553 (6x), spawn 329 -> 206; kit memory 28 -> 16 MiB. Tint via MaterialPropertyBlock vector array (RenderMeshInstanced<T> custom fields do NOT arrive - pixel test caught 0.8/0.8/0.8 grey); CityKit.shader with UNITY_DEFINE_INSTANCED_PROP; CityWall.shader byte-identical",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "facade-relief",
+  "area": "City",
+  "item": "The facade relief - 500,019 windows, 160,000 balconies, 41,785 cornices, mullions, ACs, dishes, drainpipes, entrances, parapets, roof props - is COMPUTED on every build and never rendered (zero production consumers of .Relief); FacadeKitBuilder is dead. QUALITY_BAR's 'windows placed' was true only in the DECIDED sense",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "CITYFACADE batches=1287 instances=742,561 (window 500,008 balcony 160,000 cornice 41,528 glass_band 30,571 mullion 7,125 grille 3,329) drawn through the fixed instancer; +2 draws at spawn, +55 at Old Town; FacadeKitBuilder off the orphan list. All six layers draw the procedural fallback box AND SO DOES THE JS (facade_kit.glb has one node)",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "rubble-debris",
+  "area": "City",
+  "item": "Collapse debris: DebrisField (physics) has no instanced rubble renderer; public/models/rubble_kit.glb is loaded by nothing and has no FBX; _spawnRubble/setSmolder/stampScorch on collapse completion unported",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "grep -rn rubble unity/Assets -> DebrisField.cs only",
+  "date": ""
+ },
+ {
+  "id": "oracle-exclusions",
+  "area": "Probes",
+  "item": "tools/_probe_buildingquality.py models no landmark exclusions (citymap.js:4601), so it reads the correct C# as a -280-claim regression",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "Rings parsed from landmarks.js by regex, applied at citymap.js:4601 position: withFacts 17545 == 17545, coloured 37 == 37, claims 194,869 == 194,869 exact. Residual 17 of 169,004 claims is an apt_fit/shed_fit threshold difference, pre-existing and smaller than before",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "gunanim-noaim",
+  "area": "Combat",
+  "item": "GunAnim no-aim fallback was (0,0,-1) retyped from gunanim.js:565 - backward in Unity, so arms posed as if the hero faced backwards whenever no aim was passed",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: combat fixes",
+  "evidence": "Vector3.forward; clip-space _gunBore/_gunUp deliberately left at -Z (World(d) flips them)"
+ },
+ {
+  "id": "probe-note-on-pass",
+  "area": "Probes",
+  "item": "Check() helper in 8 probes printed its FAILURE note on PASS lines (read three times as a measurement); DestRestProbe asserted on _Color which nothing writes (_BaseColor is), passing vacuously",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: combat fixes",
+  "evidence": "UiWireProbe/CoreGameProbe/CoreRestProbe x2/DestRestProbe/PlayableProbe/RangeFireProbe/SaveStateProbe/SceneEnvironmentProbe; DestRest pair FAIL -> PASS 22 values"
+ },
+ {
+  "id": "sweep-contamination",
+  "area": "Probes",
+  "item": "PlayableProbe fails inside the one-launch sweep (300 MissingReferenceException from City/RangeDoorsPaper.cs:94 via RangeBootstrap.Tick) but passes standalone - an earlier probe in the same editor session destroys objects the loaded scene then ticks",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "VerifyCombatFixProbe.RunTouched vs standalone TICK_LOGGED_ERROR_COUNT=0",
+  "date": ""
+ },
+ {
+  "id": "plane-orientation",
+  "area": "Flight",
+  "item": "NOTHING applies PlaneDef.YawUnity/RollUnity or the 180-degree model yaw: the flown Mustang points its TAIL along the thrust vector, 4 airframes are tail-first, 2 sideways (Cessna 310 packed 9.9x11.2 instead of 11.25x9.74), tornado 37.7 and tu144 40.2 degrees askew, neonfly rolled 90 degrees onto a wing; f4f cockpit=insane is this bug in the seat bake",
+  "status": "fixed",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "Flight/PlaneModelFrame: planeRoot(+Z flight) > model_frame(180deg) > model_scale(def.Scale) > model_file(YawUnity/RollUnity, recentre pre-rotated) > model(natural import). ORIENTSUM noseLeads=33/35 (p100, hsp75 are asset/spec questions), cockpitSane 34 (f4f fixed, tornado now honest), 4 planes FLOWN 180 frames through PlaneController->FlightModel->PlanePhysics with nose leading velocity (velVsForwardDeg=0.4). Every -Z-anchored site (cockpit baker/kit/measurement, PlanePhysics ground stations, AirframeBreakup regions - wingL/wingR were swapped, PlaneDamage cut line/plume, PlaneHallFill packing) handed the model frame. PROPSUM 31/31, WHEEL_HEIGHT/touchdown, crane hub all unchanged",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "loose-gate",
+  "area": "Core",
+  "item": "game.js:779 `if (rec.loose || rec.dead) return false` - the gate that stops you boarding a tumbling or burning machine - has no counterpart in GameLoop.SwapToPlane; rec.Loose is now maintained, so it is a one-liner",
+  "status": "fixed",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "GameLoop.SwapToPlane: if (swapRec.Loose || swapRec.Dead) return false - game.js:779; first reader of PlaneRecord.Loose",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "asset-spans",
+  "area": "Assets",
+  "item": "hsp75.glb ships at 47% of its published span and its yaw=pi disagrees with every measurement; cargobro at 76% - asset questions, not port questions",
+  "status": "open",
+  "owner": "user",
+  "evidence": "AXIS hsp75 / cargobro rows marked *",
+  "date": ""
+ },
+ {
+  "id": "loading-overlay",
+  "area": "UI",
+  "item": "#loading-overlay (main.js:668-671) is not ported anywhere, so Boot.HintChanged (the loading text) is a dead delegate; needs a LoadingOverlayView in CombatWorldAdapter.InstallUi hidden when GameLoop.Started",
+  "status": "fixed",
+  "owner": "core spawn/overlay/starter/preview pass",
+  "evidence": "OVERLAY_TEXT matches Boot.LastHint on both Georgian strings; OVERLAY_DISPLAY=None once Started",
+  "fix": "UI/Common/LoadingOverlayView.cs (index.html:154-159, style.css:189-220) built in CombatWorldAdapter.InstallUi on the GAME panel, fed by Boot.HintChanged (+ Boot.LastHint replays the first hint, which fires before the panel exists), hidden in GameLoop.BeginSession at src/game.js:1390. tools/_test_no_dead_events.py printed 'FIXED (drop from the baseline): Boot.HintChanged' and that line is removed from docs/dead_events_baseline.txt.",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "starter-plane",
+  "area": "Core",
+  "item": "The scene has exactly ONE PlaneController (p51), so every hero gets the same machine regardless of their role's starter plane (FirstOrDefault fallback)",
+  "status": "fixed",
+  "owner": "core spawn/overlay/starter/preview pass",
+  "evidence": "CoreSpawnProbe STARTER lines + STARTERPLANESKIN belly=-0.159 / 4.410 (per-airframe)",
+  "fix": "Core/StarterPlaneSkin.cs re-skins the one PlaneController to the hero's catalog row (model/cockpit/shell/damage record) and PlaneController.ReInit rebuilds the flight rig; called from Boot.StartFlightAsync before BeginSession. STARTER role=mebrdzoli race=veggie -> spitfire, role=pari race=toys -> b58, both matching Boot.StarterPlaneFor.",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "preview-lights",
+  "area": "Core",
+  "item": "CharacterPreviewRig adds two global DirectionalLights while the menu is up - perturbs the lights hash on menu open/close (the shader-storm memory); needs a rendering-layer mask",
+  "status": "fixed",
+  "owner": "core spawn/overlay/starter/preview pass",
+  "evidence": "PREVIEWLIGHTS dirEnabled=1 at beforeMenu/menuOpen/menuCharacter/menuReopened/menuClosed; materials 1510->1510 across the open and 1554->1554 across the close",
+  "fix": "CharacterPreviewRig's two DirectionalLights are created DISABLED with shadows off and enabled only inside the preview camera's own render, via RenderPipelineManager.beginCameraRendering (URP raises it before that camera's cull; URP has no per-light culling mask). Unhooked in Stop(), re-hooked in Start(). main.js:296/299's 2.4/1.2 intensities unchanged.",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "editmode-prefab-errors",
+  "area": "Flight",
+  "item": "Scene load in the editor logs 10x 'Setting the parent of a transform which resides in a Prefab instance is not possible' from the fleet's canopies/propellers + 3 MeshFilter.mesh / 1 renderer.material edit-mode leaks - edit-mode only, absent in Play, but noisy and worth a sharedMesh/unpack pass",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "HeroScreenProbe [open] phase: 14 errors, all pre-Awake",
+  "date": ""
+ },
+ {
+  "id": "shader-planehull",
+  "area": "Shaders",
+  "item": "Assets/Shaders/PlaneHull.shader does NOT compile (line 194 `lerp(1h, ...)` - `1h` is not a literal): on the first hit HoleSet.Patch swaps every skin material onto it, so SHOOTING ANY PLANE TURNS IT MAGENTA and the tear discard never runs",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "PlaneHull.shader: `1h` -> (half)1.0 plus two more bare-half literals in the same file; under real graphics RSCHECK allProjectShadersCompile=PASS, realHoleSeeThrough=PASS (planes=3) - the _TearInv discard runs - noErrorMagenta=PASS at 8 stations; negative control (a deliberately broken shader is reported) proves the scan",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "shader-glassglint",
+  "area": "Shaders",
+  "item": "Assets/Shaders/GlassGlint.shader does not compile (line 70 float2 * float3)",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "GlassGlint.shader: each view axis scaled by its own component; compiles",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "spawn-in-building",
+  "area": "Core",
+  "item": "The player's P-51 spawns INSIDE A BUILDING at Delisi (plane y 492.09, a chunk_18 surface at 494.64 passes through the airframe). City/SpawnFinder (the JS's clear-spot search on Vazha-Pshavela, citymap.js:6530) has NO runtime caller",
+  "status": "fixed",
+  "owner": "core spawn/overlay/starter/preview pass",
+  "evidence": "Core/SpawnResolver.cs, Core/GameLoop.PlaceOnSpawn, docs/port_units/corespawn.json",
+  "fix": "City/SpawnFinder is LIVE: Core/SpawnResolver.cs loads the merged road net at runtime and GameLoop.ResetPlane->PlaceOnSpawn applies it (src/game.js:747-751, which was absent). CoreSpawnProbe on the shipped scene: SPAWN pos=(-4.30,477.46,30.40) clear=true road=22.2m roads=56259, ray below hits plane_shell then tile_5_3/Terrain and NO Buildings chunk, nose dot=1.0000 against the mirrored road heading. RenderShotProbe: HERO id=above n=0, below_hit=tile_5_3/Terrain; scratchpad/shots/heroplane_top.png shows the aeroplane in the open with its own shadow. Also fixed here: resetPlane left Airborne=true against game.js:727, and the pilot's body stayed at the data origin.",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "exposure-gamma",
+  "area": "Rendering",
+  "item": "Everything outdoors is blown out white: project is in GAMMA colour space (m_ActiveColorSpace: 0) with Three.js's linear light values (sun 2.7, ambient 2.0); the game camera has no UniversalAdditionalCameraData so post-processing is OFF; there is NO Volume in the scene - ACES/bloom/SSAO never run",
+  "status": "fixed",
+  "owner": "agent: exposure + colour space",
+  "evidence": "THREE gates: renderer asset postProcessData was NULL (script-created renderer; URP drops every post pass silently) + no UniversalAdditionalCameraData + Gamma colour space. Fixed all three; measured lights UNCHANGED. oldtown mean 234/231/211 10.4% white -> 142/141/116 0.00% white; landmarks 45.7% -> 0.00%. Control arm (post off) re-blows every view by ~24 levels = ACES measured in pixels. Linear reimport: 736 sRGB albedo / 62 linear *_n,*_mgs - none mis-tagged",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "no-roads-river",
+  "area": "City",
+  "item": "NO roads, NO river, NO embankment, NO bridges render in Game.unity - the Mtkvari should cross the Old Town frame. RoadBuilder/RiverSheet/bridges/tunnels are probe-verified but apparently not built into the boot scene",
+  "status": "fixed",
+  "owner": "agent: boot-scene roads/river/infra",
+  "evidence": "City/RoadNetworkRenderer + RiverRenderer + GrassRenderer (OnEnable->EnsureBuilt, nothing baked, scene +27 KB): ROADS segs=56259 bridges=1771 tunnels=262 asphaltTiles=4791 realBridges=11 bores=68 luminaires=3918 furniture=84615; RIVER sheetVerts=157547 banks=47457 quay=19769 lakes=9 furniture=71415; GRASS chunks=669 groundQuads=445362 cutTris=790848. A/B pixel diff water off/on = 63,818 px (3.08%) of the Old Town frame, mean (44,56,45) = the Mtkvari olive. 8 builder probe pairs re-run in one launch: 8/8 PASS, zero builder lines changed. Wired into BuildPlayableScene by the coordinator",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "no-terrain-texture",
+  "area": "City",
+  "item": "Terrain is a flat untextured surface everywhere outside the shed pads",
+  "status": "fixed",
+  "owner": "agent: boot-scene roads/river/infra",
+  "evidence": "Root cause: stock URP/Lit does not read mesh.colors, so TerrainBuilder.ComputeVertexColors (citymap.js:3883-3915 ground-class palette) was DISCARDED and the ground drew flat olive. PlayableGround now uses TbilisiFly/CityWall (albedo * IN.color.rgb) with a white base; plus the grass sheet + cut terrain from GrassRenderer",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "fleet-untextured",
+  "area": "Flight",
+  "item": "Every aeroplane in the fleet renders untextured white - no liveries (planehall.png, the slung P-51 in warehouse.png)",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "shots/planehall.png",
+  "date": ""
+ },
+ {
+  "id": "vegetation-cull",
+  "area": "City",
+  "item": "46,627 trees are built but only 62-72 draws / 309-904 instances are submitted per frame at Narikala - the Old Town frame shows a dozen trees; cull distance or chunk bounds wrong",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "NON-FINDING: TreeChunkM=300, StreetMaxDist=430, ForestMaxDist=620 are citymap.js:7823-7824 own radii; ~600 instances/frame at Narikala is the JS behaviour",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "landmarks-zero-draws",
+  "area": "City",
+  "item": "LandmarkRenderer submits 0 draws per frame at Old Town and in both sheds (TotalInstances=596)",
+  "status": "fixed",
+  "owner": "agent: boot-scene roads/river/infra",
+  "evidence": "Not the distance - what it was measured FROM: one batch per variant with city-spanning Bounds, culled against the centroid of all 207 statues across a 20 km city. Now ChunkedInstancer.Place with landmarks.js:1459-1474 own numbers (1500 m chunk, 2200 m max - the constant was also wrong, 2500): batches 10 -> 193, LastTickDrawCalls 0 -> 40 at Old Town",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "hero-prop-on-tail",
+  "area": "Flight",
+  "item": "The flown P-51's propeller hub is at local z=-4.95 with forward +Z - on its TAIL (same 4.95 m as the crane P-51 had)",
+  "status": "fixed",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "propZ=+4.95 on the flown P-51 (planes.js:239 authored constant); PROPPIX hubLocalToPlane=(0,1.57,+4.95) from the GPU render",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "range-not-in-scene",
+  "area": "City",
+  "item": "warehouse.png shows crane mast, slung P-51, three fans - but no paper-target lane, no ammo crates, no crane boom/jib. Verify the range and crane boom are built into Game.unity at all",
+  "status": "open",
+  "owner": "agent: warehouse interior",
+  "evidence": "Crane boom is present (part of crane_machine.fbx single model; the frame just missed it). Range + 3 crates + tables + guns are in NO scene: builders are private statics in Editor/BuildAirportDetail.cs, a standalone bake that never saves and whose output the strip step would delete. Needs Props/WarehouseInteriorFill (OnEnable->EnsureBuilt against ShedSceneFill.Warehouse) + one scenery line",
+  "date": ""
+ },
+ {
+  "id": "unprovable-planes",
+  "area": "Combat",
+  "item": "carpet has no skin under its shell (Refine returns nothing from 17 stations); h6k and neonfly marks submit but hit panels are behind others at every station",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "REALHOLE 3 fails of 35",
+  "date": ""
+ },
+ {
+  "id": "frame-draws",
+  "area": "City",
+  "item": "~6,200 instanced draw calls per frame over the city (CityRenderer 6,117 at spawn) vs the JS build's ~500 - the batch explosion's real cost. Inside the sheds: ~600",
+  "status": "fixed",
+  "owner": "agent: city instancing",
+  "evidence": "Old Town per-frame 3,306 -> 553 (A) -> 608 (A+B with the relief); spawn 206/208. Caveat: the GPU screenshots had FrameDrawCalls=0 because CityRenderer.LateUpdate threw on the bad RenderMeshInstanced<T> call - they contained NO instanced kit; re-shooting",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "latent-pi",
+  "area": "Rendering",
+  "item": "three.js BRDF_Lambert divides diffuse by pi; URP LightingLambert does not - so the verbatim sun 2.7 / hemisphere 2.0 are ~3.14x hotter in Unity. Nothing clips now, but frames read a touch hot. Changing it is a DECISION (deviate from measured values) and needs a side-by-side with the JS build",
+  "status": "decision",
+  "owner": "user",
+  "evidence": "exposure agent, deliberately not changed",
+  "date": ""
+ },
+ {
+  "id": "ui-colour-check",
+  "area": "UI",
+  "item": "After the Gamma->Linear switch, the Georgian UI panels / CyberTheme hex colours and the panel-block vertex-colour dirt have not been visually verified (UI Toolkit does its own gamma; vertex colours are not gamma-converted so dirt reads stronger)",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "needs one HUD + one personage screenshot and an eyeball on oldtown_linear.png weathering",
+  "date": ""
+ },
+ {
+  "id": "bake-camera-env",
+  "area": "Scene",
+  "item": "BuildPlayableScene runs env.Setup() before the camera exists, so the SAVED scene has no UniversalAdditionalCameraData and keeps fov 60 / far 12000 (runtime Awake re-runs it, so the game is right; the bake YAML is not)",
+  "status": "fixed",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "env.Cam = cam; env.Setup() after game.MainCamera = cam; saved scene now has UniversalAdditionalCameraData, fov 62, far 60000",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "shadow-dist-gate",
+  "area": "City",
+  "item": "The per-chunk SHADOW_DIST gate (citymap.js:7988-7995, CityCulling.VisChunk.ShOn, 500 m) is not read by CityRenderer.Submit - the JS measured the kits at 21M triangles/frame through the depth pass before gating them; a real remaining win that removes distant kit shadows (a LOOK change - needs a screenshot)",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "city instancing agent, deliberately not done blind",
+  "date": ""
+ },
+ {
+  "id": "facade-props-pitched",
+  "area": "City",
+  "item": "The six FacadeProps layers (AC/dish/drainpipe/entrance/parapet/roof prop) are not in rich.Relief; their only producer documents pitchedFinal=false as an over-placement - wiring as-is would stand roof vents on pitched cottage roofs. BuildRich must surface per-building pitched first",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "CityLoader.BuildFacadePropsForEveryBuilding",
+  "date": ""
+ },
+ {
+  "id": "kit-impostor",
+  "area": "City",
+  "item": "The kit impostor is an untextured box - no _bakeViews render-texture bake (needs a live renderer)",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "pre-existing",
+  "date": ""
+ },
+ {
+  "id": "tornado-cockpit",
+  "area": "Spec",
+  "item": "tornado.fbx has no mesh named canopy/glass/cockpit/seat/window, so findCockpit has nothing to pick (JS too); its old 'sane' was read across a 37.7-degree-skewed airframe. Parity fix is a one-line cockpit:{z~-5} override in src/planes.js beside the nine that exist - a change to the SPEC data",
+  "status": "decision",
+  "owner": "user",
+  "evidence": "ORIENTCKDIAG id=tornado candidates=0",
+  "date": ""
+ },
+ {
+  "id": "cessna-packing",
+  "area": "Flight",
+  "item": "Hall packing used the unstraightened box: Cessna 310 9.88x11.20, f4f 8.15x11.60",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "ORIENTPACK cessna310 after=11.20x9.88 (published 11.25x9.74); f4f 11.60x8.15"
+ },
+ {
+  "id": "breakup-wings-swapped",
+  "area": "Combat",
+  "item": "AirframeBreakup's structural regions were in the -Z frame and discarded x, so wingL/wingR were SWAPPED (shoot the left wing, the right one came off)",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: airframe orientation pass",
+  "evidence": "breakup.js:63-71 regions + TailZ/NoseZ reversed, x kept"
+ },
+ {
+  "id": "kits-palette-joined",
+  "area": "Assets",
+  "item": "infra_kit / embankment_kit / facade_kit GLBs in public/models were palette-JOINED to one node by an early tools/compress_models.sh run (before its --join false guard): every kit[name] lookup failed on BOTH sides - the shipped JS build has no quays, balustrades, kerbs, crossings, bus stops, portals or lamp columns either, and facade_kit's missing win_shop (21,444 shopfront fallback boxes) is the same root cause. Intact kits survive in models_raw/. Unity: infra + embankment re-converted (furnitureDropped 84615 -> 0); facade_kit still damaged. JS side: re-run compress_models.sh over models_raw into public/models",
+  "status": "fixed",
+  "owner": "coordinator",
+  "evidence": "Unity side: all three kits re-converted from models_raw/ via blender glb_batch_fbx (infra 23 nodes, embankment 5, facade 24 - the shipped ones had 1 each; .meta/GUIDs untouched). Bake: SHOPFRONTRENDERER modules=21444 fallbackBox=False (was True - the 21,444 fallback boxes are gone); furnitureDropped 84615 -> 0. JS side is a separate decision row",
+  "date": "2026-10-30"
+ },
+ {
+  "id": "unload-sweep-meshes",
+  "area": "City",
+  "item": "Unity's mid-load 'Unloading unused Assets' sweep destroyed runtime meshes held only by a static C# field (RiverSheet, 669 grass chunks, bridge/tunnel meshes read null 8 ms after building). Fixed with HideFlags.DontUnloadUnusedAsset|DontSave on everything CityGroundData hands out; every renderer now COUNTS lost meshes (meshesLost=0)",
+  "status": "fixed",
+  "date": "2026-10-30",
+  "owner": "agent: boot-scene roads/river/infra",
+  "evidence": "RIVER sheet=0 logged after sheet verts=157547 - before the fix"
+ },
+ {
+  "id": "water-envmap",
+  "area": "Rendering",
+  "item": "envMapIntensity 0.5/0.3 (citymap.js:7324-7331, tuned to avoid the 'white mirror sheet from a low pass') has no URP/Lit equivalent: at grazing angles the Mtkvari picks up full sky reflection and reads bright blue; from above it is the right olive. Needs a reflection-intensity float in a water shader",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "GroundMaterials note",
+  "date": ""
+ },
+ {
+  "id": "ground-load-time",
+  "area": "City",
+  "item": "The ground layer adds ~15.5 s to scene load (CITYGROUND 5.9 s incl. a second CityData.Load for TunnelCuts; ROADS 9.3 s, mostly creating 13,350 tile GameObjects). Candidate for chunk-mesh baking per the building precedent",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "bake log ms= fields",
+  "date": ""
+ },
+ {
+  "id": "collidable-flags",
+  "area": "City",
+  "item": "Road SurfaceTile.Collidable/Ground flags are carried through but nothing pushes them into a collidable set (MeshColliders + CombatTerrainTag are on the tiles, so ground probes work; CollidableHash deliberately has no instance)",
+  "status": "open",
+  "owner": "unassigned",
+  "evidence": "ChunkedSurfaceBuilder",
+  "date": ""
+ },
+ {
+  "id": "kits-js-side",
+  "area": "Assets",
+  "item": "The shipped Three.js build has the same damaged kits (public/models/{infra_kit,embankment_kit,facade_kit}.glb, 1 node each): no quays/balustrades/kerbs/bus stops/lamp columns and 21,444 shopfront boxes in the ORIGINAL. Fix is `tools/compress_models.sh` over models_raw/ into public/models/ (the script now has the --join false guard). The JS build is retired, so whether to touch it is the user's call",
+  "status": "decision",
+  "owner": "user",
+  "evidence": "src/infra.js:115 bails on the same kit[name] lookup",
+  "date": ""
+ }
+]

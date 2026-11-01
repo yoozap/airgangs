@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Shaders/CityWater.shader + Assets/Scripts/City/GroundMaterials.cs",
+  "js": "citymap.js",
+  "covers": 40,
+  "verified": "2026-10-31",
+  "note": "citymap.js:7314-7360: the one water material (roughness 0.5, envMapIntensity 0.3) as a hand-rolled URP forward-lit shader with indirectSpecular * _EnvMapIntensity and the JS's dual-normal ripple fragment code; ShaderHasError guard; uWaterTime. RIVERWATER custom=true envMapIntensity=0.300; grazing luminance 69.3 -> 65.9. The bright-blue channel is NOT this material (row river-blue-channel)."
+ },
+ {
+  "cs": "Assets/Scripts/City/CityRenderer.cs",
+  "js": "citymap.js",
+  "covers": 30,
+  "verified": "2026-10-31",
+  "note": "FIX x2: (1) the 500 m SHADOW_DIST gate (citymap.js:257/7988-7995/1204-1211) read from CityCulling.VisChunk.ShOn into RenderParams.shadowCastingMode - 90 -> 39 shadow batches at spawn, 0 px changed (URP shadow distance is 160 m), PERF_MEAN_MS 10.4 -> 9.0; (2) THE KIT SCALE: ResolveVariant returns the model subtree matrix (natural Lcl Scaling 100 / Rotation -90 of every kit FBX) composed on the right of the placement - 169,004 instances were 24 cm models on their backs. ApplyModelTransform toggle."
+ },
+ {
+  "cs": "Assets/Scripts/City/KitImpostorBake.cs + Assets/Shaders/CityImpostor.shader",
+  "js": "citymap.js",
+  "covers": 110,
+  "verified": "2026-10-31",
+  "note": "citymap.js:8035-8094 _bakeViews / 8115-8158 _kitImposter: hidden orthographic camera bakes front+top albedo per variant into one 1024 atlas (hand-written shelf packer - PackTextures rescaled silently); Lambert + alphaTest 0.35 + instanced tint. KITIMPOSTOR variants=30 views=60 meanAlpha=0.892; atlas eyeballed. The frame A/B is flaky under swap pressure (row kit-impostor-ab-flaky)."
+ },
+ {
+  "cs": "Assets/Editor/Probes/RenderingItemsProbe.cs + RenderingItemsSuite.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: water mask/luminance measurement, shadow-gate counters + pixel diff, impostor atlas/draw assertions + the forced-LOD A/B, the RIKIT scale lines that found the 1/100 kit."
+ }
+]

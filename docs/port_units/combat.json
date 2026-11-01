@@ -1,0 +1,65 @@
+[
+  {
+    "cs": "Assets/Scripts/Combat/Ballistics.cs",
+    "js": "ballistics.js",
+    "covers": 660,
+    "note": "Cartridge/Surface tables, classifySurface (with IBallisticsWorld hooks for the City-owned structural tags), ProxyRefine (the invisible-stand-in re-cast), and BulletSim's full Spawn/Update/Step/Resolve integrator (quadratic drag, gravity, Poncelet penetration, ricochet). NOT ported: _draw()'s InstancedMesh visible-round-streak rendering (~20 lines, pure VFX). NextRandom is an injectable RNG specifically so the stochastic ricochet/perforation branches, not just the deterministic formulas, can be diffed exactly against a seeded Math.random() on the JS side.",
+    "verified": "BallisticsProbe + tools/_probe_ballistics.mjs — cartridge/surface tables (4 cartridges, 15 surfaces), free-flight trajectory (2 cartridges x 5 checkpoints), and 11 seeded _resolve() cases spanning ricochet/perforation/lodge across 6 surfaces incl. two plane surfaces; worst relative difference 1.48e-6"
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Guns.cs",
+    "js": "guns.js",
+    "covers": 145,
+    "note": "The belly-mounted MachineGun's real gameplay logic: fire-rate gate, cone/spread, hitscan + visual-tracer travel, plane-shell/proxy re-cast chaining, damage routing (IDamageWorld), window-pane vs generic-mark branch, OnHitToast event. NOT ported (VFX/UI, ~500 of 674 lines): DecalLayer/ShardBurst/GunSound/ImpactDust (guns.js keeps its OWN copies of these rather than reusing impactfx.js's — deliberately NOT duplicated here; MachineGun.Impact() calls the shared ImpactFx.MarkHit instead, which is a consolidation, not a gap), the modelled gun-pod geometry, the muzzle-flash sprite, and the crosshair/toast DOM elements.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Shooting.cs",
+    "js": "shooting.js",
+    "covers": 500,
+    "note": "The on-foot Pistol's full state machine: Fire()/Update()/Reload()/MagazineTick, AimResolver (cinema override / blind-fire override / camera-through-crosshair raycast — src/shooting.js:162-170 aimDir + :306-326's aimPoint resolution), EjectCase (the real weapon-axis case-ejection velocity, wired into ImpactFx.Casings), zero/drop, PUBG-style cone (hip/aim/move/crouch/blind), recoil (climb pattern + random-walk drift + camera-pitch kick/decay), sway+shake, kick-back/muzzle-kick as continuously-maintained fields for Character to apply to the weapon Transform. NOT ported: the muzzle-flash sprite, the DOM reticle + its CSS, flashTexture() (VFX/UI, ~65 of 585 lines).",
+    "verified": "tools/_probe_shooting.mjs ground truth exists and runs (spread-cone samples under a seeded mulberry32, zero/drop in isolation, bloom/recoil decay curves, reload cue counts) — no ShootingProbe.cs written yet, so no comparison has been run"
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Rockets.cs",
+    "js": "rockets.js",
+    "covers": 160,
+    "note": "RocketLauncher's fire cadence, swept-raycast flight (frame-travel + 1.5 m, so nothing tunnels), and the full Impact() orchestration (damage first, then Blast.Explode, hole-punch, prop-strip, window-blast, debris, ignite, toast). Dust/decal calls are CONSOLIDATED onto ImpactFx's shared Debris/Pits layers rather than re-created locally. NOT ported: the modelled rocket body/fins/engine-glow sprite, the propellant-trail particle shader, the launch-whoosh WebAudio synthesis (~180 of 340 lines, VFX/audio).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Blast.cs",
+    "js": "blast.js",
+    "covers": 300,
+    "note": "BlastFx's full lifecycle timing (fireball inflate/cool curve, flash-light decay with the 47 Hz flicker, pressure-ring expand/fade, crater placement) and the composed Explode() orchestration verbatim (radii, counts, delays, the 3 staggered secondary fireballs, the tangent-frame wall-hugging dust spray, the 0.45 s late-soot callback). NOT ported: the two GLSL shaders (the fbm3 noise-boil fireball vertex/fragment shader, ~90 lines) and the canvas-painted crater texture (~55 lines) — Shader Graph / Texture2D territory.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/ImpactFx.cs",
+    "js": "impactfx.js",
+    "covers": 580,
+    "note": "SurfaceFit's 4-corner probe-and-shrink (via Collider.Raycast against the one object hit, matching THREE.Raycaster.intersectObject(obj) more closely than a scene-wide Physics.Raycast would), DecalLayer's stamp composition (orientation basis, non-uniform ellipse scale, along-the-flight-path stretch, slide offset), ParticleCloud's full drag/gravity/life simulation, Casings' bounce-and-settle physics, and ImpactFX's Resolve/MarkHit/Strike/Ricochet/Glass/Water decision logic including the exact pane-hit-counter-to-3 glass-departure rule and the paper/lane hook pass-through. NOT ported: the 5 canvas-texture-painting functions (pit/spall/exit/scuff/star, ~250 lines) and the ParticleCloud/DecalLayer point-sprite shader source strings (~90 lines).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/GunAnim.cs",
+    "js": "gunanim.js",
+    "covers": 620,
+    "note": "CLIPS/GUN_CLIPS/AK_CLIPS/AK_GUN_CLIPS/GUN_CLIP_SETS tables and PISTOL_SPEC/RIFLE_SPEC transcribed verbatim (frame-rounded at 30 fps, matching THREE.AnimationUtils.subclip's cut points exactly). WeaponAnim (the gun-parts mixer: slide cycle, mag, bolt) is a RUNTIME ADAPTATION — Unity's AnimationClip has no runtime subclip-extraction, so it samples the one whole clip at cut.Start+localTime via AnimationClip.SampleAnimation instead of THREE.AnimationMixer playing an extracted clip; crossfade is reproduced by snapshotting both poses and blending bone-by-bone rather than via two AnimationActions. roleOf/NEXT/FALLBACK/slotsOf (bone-role classification) ported as pure string/tree logic, no handedness. GunAnim's _squareUp/_gunAxes/_readDirs and the full blendReloadPose overlay are ported with 2 cross-product operand swaps (_squareUp's u=cross(x,f) and blendReloadPose's r=cross(f,worldUp)/u=cross(r,f) — see GeoFrame's rule). NOT independently probed.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Weapons.cs",
+    "js": "weapons.js",
+    "covers": 520,
+    "note": "WEAPON_DEFS/GEAR_DEFS catalog verbatim (Georgian labels byte-for-byte). FindHandBone/FindHandBoneL, FindArmChain/FindArmChainL (regex bone classification), AimBone/AimHand (the one IK primitive every pose in the game is built from), BodyAxes/CrossBody/AimLine/BodyFwd/ChestAxis (the body-relative axis helpers), MeasureOnce/AttachToHand/SeatWeapon (model measurement + per-frame seating, with QuaternionFromBasis replacing THREE.Matrix4.makeBasis via Shepherd's method since Unity has no basis-matrix-to-quaternion built-in), ApplyPistolPose and ApplyAimPose (the hip-carry and two-handed aim holds) and ApplyReachPose (the two-bone IK used while a pistol travels to/from the holster). 2 cross-product pairs swapped in SeatWeapon (right=cross(up,forward), up=cross(forward,right)) and 1 in ChestAxis, all per GeoFrame's rule. THE BIGGEST REMAINING GAP IN COMBAT, left out given the time available: applyTuckPose (the roll-tuck pose), applyCoverArms, and the entire rifle-hold cluster — rifleChains/applyRifleHold/applyRifleSupport/applyRifleReloadHand/boreReach/magBone (~500 lines) — these are the AKM's two-handed shoulder/reload/cover holds and are NOT ported. biasWorn (a polygon-offset depth trick) is intentionally dropped as a Unity non-issue.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Combat/CombatWorldHooks.cs",
+    "js": null,
+    "covers": 0,
+    "note": "Shared interfaces (IDamageWorld, IPlaneDamageHooks, DamageResult) so Guns/Rockets/Shooting/ImpactFx compile and read correctly today, and so City's building-damage system and the (separately-scoped) src/planedamage.js port have one narrow surface to implement against instead of reaching into Combat's files. Every method name/behaviour is read directly off what guns.js/rockets.js/impactfx.js actually call on g.world/g.planeDamage.",
+    "verified": null
+  }
+]

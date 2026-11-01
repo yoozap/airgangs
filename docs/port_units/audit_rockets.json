@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/Fx/RocketTrailFx.cs",
+  "js": "rockets.js",
+  "covers": 69,
+  "note": "SECOND claim for a file already credited under smoke.js. fx.json's unit declares js=\"src/smoke.js, src/rockets.js (trail only)\"; the merge's norm_js() keeps the first token only, so rockets.js:25-93 (class RocketTrail: the 512-point ring buffer, TRAIL_LIFE=2.4 fade, dispose) was ported but uncredited. Verified by reading both sides, not by trusting the note: src/rockets.js:25 is `class RocketTrail`, :93 closes dispose(). The cs path is listed on its own here so the merge keys it separately from the SmokeTrailFx pairing and cannot double-count smoke.js.",
+  "verified": "Hand-checked range endpoints in src/rockets.js (sed -n '23,28p;90,95p')."
+ }
+]

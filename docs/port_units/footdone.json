@@ -1,0 +1,17 @@
+[
+ {
+  "cs": "Character/FootBelt.cs",
+  "js": "foot.js",
+  "covers": 1,
+  "note": "ReseatAll(IEnumerable<WornGear>) \u2014 foot.js:624 `for (const w of this.worn.values()) this._seatGear(w);`, the one line of _loadBody (foot.js:615-643) that is honestly FootBelt's own (re-seating worn gear onto a NEW rig after a body reload). The other ~17 uncited lines of _loadBody (the async body/GLB load, resetting holster-draw state, equipping the default belt the first time) remain unported and are CharacterRoster/FootController's call to wire up \u2014 see FootBelt.cs's class header and ReseatAll's own doc comment. Verified by Editor/Probes/FootBeltProbe.cs's new RunReseat(): builds two separate CharacterRig instances (banana.fbx twice, since FootBelt's _rig is readonly and a reload therefore means a NEW FootBelt), seats a test WornGear on belt1/rig1, then calls belt2.ReseatAll(belt1.Worn.Values) and confirms five facts \u2014 wornOnBelt1=1 onRig1=1 reparented=1 onRig2=1 wornOnBelt2=1 \u2014 i.e. the gear actually moved from rig1's hips bone to rig2's DIFFERENT GameObject, not a no-op.",
+  "verified": "FootBeltProbe.RunReseat: RESEAT id=test wornOnBelt1=1 onRig1=1 reparented=1 onRig2=1 wornOnBelt2=1 (5/5 values true)"
+ },
+ {
+  "cs": "Assets/Scripts/Character/FootController.cs",
+  "js": "foot.js",
+  "covers": 1871,
+  "restates": true,
+  "note": "RESTATED on measured evidence, not estimate. The manifest claimed 5,379 of foot.js across 13 cs entries, but the C# ACTUALLY cites 6,052 distinct foot.js lines in its own `// foot.js:NNN` comments (counted independently by the coordinator over Scripts/Character/*.cs + Combat/RifleHolds.cs, union of every range) \u2014 the claims undercounted the real citations by 673. A line-by-line audit then classified the 394 still-uncited lines: 49 blank, 215 comment/prose, 162 already covered but never line-cited (spot-verified: the scratch Vector3/Quaternion module fields need no C# equivalent because they are structs, which is the very reason JS reuses them; _footHint == FootController.FootHint with the identical Georgian string; _coverNear is genuinely superseded by Physics.Raycast + layermask; coverCanFire/coverShot/coverBlind == FootCover.CanFire/Shot/Blind; _endSlide == FootController.EndSlide line-for-line), 1 dead (FOOT_PROBE feeds _probeGround, which has ZERO call sites in src/*.js), 1 newly ported, and only ~105 genuinely missing. The 673 is added to this file's existing 1,198 as the single largest claimant rather than spread across 13 entries, because only ONE file may restate a key and several files restating one key silently stomped each other earlier today. REAL REMAINING WORK IN foot.js IS ~105 LINES, of which 88 are blocked on applyRifleHold/applyCoverArms/applyRifleSupport not existing in Combat/Weapons.cs and 17 are _loadBody orchestration deliberately left unwired for want of a body-reloaded callback.",
+  "verified": "Citation union counted by the coordinator with a regex over the real C# comments, independent of the agent that reported it. FootBeltProbe.RunReseat prints wornOnBelt1=1 onRig1=1 reparented=1 onRig2=1 wornOnBelt2=1 \u2014 5/5, gear genuinely moved between two different rigs' hip bones."
+ }
+]

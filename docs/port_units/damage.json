@@ -1,0 +1,58 @@
+[
+ {
+  "cs": "unity/Assets/Scripts/Combat/PlaneDamage.cs",
+  "js": "planedamage.js",
+  "covers": 1550,
+  "note": "Tear feed/merge (TearRadius sqrt-of-count growth), union-find cut-join across a structural part with energy-scaled Bridge (pistol/AKM/belly-gun distances verified numerically, see tools/_probe_damage.mjs JOIN/BRIDGE lines), Spans/GapTo real-airframe severing via AirframeBreakup.Cut, Refine/Mark/Trace (IPlaneDamageHooks), HoleSet (the shader-driving tear-position/radius texture + per-renderer range budget, unique Material-per-renderer instead of the JS's onBeforeCompile clone \u2014 same isolation, Unity's own idiom), PlaneMarkLayer (ring-buffered pose data, rendering left to the consumer same as Combat/ImpactFx.cs's DecalLayer), stamp/basis (cross-product operand swap documented), soot/hull/burn/update, canopy shatter, rehome-to-severed-piece. NOT covered: the ~340 lines of procedural canvas decal-texture drawing (jag/punch/atlasTexture/drawSkinHole/drawSkinTear/drawSkinExit/skinScrapeTexture/drawCraze) \u2014 deferred as art/VFX, the same precedent Combat/ImpactFx.cs already set for its own decal textures.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/Combat/PlaneDamageRecord.cs",
+  "js": "planedamage.js",
+  "covers": 0,
+  "note": "Supporting MonoBehaviour (per-plane state container: tears dict, hole set, marks, cutter, canopy/hull fields) \u2014 not a line-for-line JS port itself, counted at 0 to avoid double-claiming planedamage.js's own count.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/Combat/AirframeBreakup.cs",
+  "js": "breakup.js",
+  "covers": 390,
+  "note": "Structural region split (triangle-centroid classification in wrapper-local space), Detach/Cut/CrashScatter, wreck physics (gravity + velocity-scaled drag, local-axis tumble via Transform.Rotate(Space.Self) \u2014 a direct match for three.js's intrinsic rotateX/Y/Z, no handedness mirror needed), one-bounce-then-rest + burn trail, Restore/ClearParts, Lines(). Documented simplification: SplitMesh keeps the full shared vertex buffer per output mesh instead of JS's compact-buffer rebuild (behaviourally identical, not byte-identical) since Unity's submesh model makes the JS's group/interleaved-buffer bookkeeping unnecessary.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/Combat/CrashDents.cs",
+  "js": "dents.js",
+  "covers": 900,
+  "note": "Crush() depth/radius formula (DentDepthFor exposed standalone and numerically matches the JS header comment's three calibration arrivals: ~5cm/20kJ, ~15cm/100kJ, ~80cm/1.1MJ \u2014 see tools/_probe_damage.mjs DENTDEPTH lines), Near/FindSkin (nearest-vertex-then-closest-triangle-point via a hand-written Ericson closest-point-on-triangle), Tessellate (budgeted midpoint subdivision across ALL Unity mesh channels: position/normal/uv/color/boneWeight/tangent), Displace (crater/rim/crease-noise push with the same value-noise Ridge function), Renormalize (per-triangle re-summed normals blended back by crush fraction), Paint/Repair. OwnGeometry is a thin wrapper around MeshFilter.mesh's built-in clone-on-first-touch, which does by itself what src/dents.js's _ownGeometry hand-rolls (documented as a simplification, not a gap). NOT covered: interleaved-buffer splitting (~40 lines) \u2014 no Unity analogue, Mesh always exposes plain arrays.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/Combat/BreakWall.cs",
+  "js": "breakwall.js",
+  "covers": 290,
+  "note": "BuildShell (tessellated facade + inward-offset lining + fan-triangulated floor slabs \u2014 the fan is breakwall.js's OWN documented triangulateShape fallback, not a cut corner), Carve (degenerate-in-place index rewrite, facade vs smaller lining disc, verified to actually drop cells: tools/_probe_damage.mjs BREAKWALL ateCells=1), WriteShellVerts (squash/jitter/dark/lean crumble, verified to squash height: BREAKWALL squashed=1). ADAPTED INPUT (documented in the file's own header): takes the building's FOOTPRINT RING directly rather than reading a pre-captured shared-ring mesh snapshot, because City/BuildingBuilder.cs's current wall mesh is unshared per-edge quads, not citymap.js's shared-ring layout breakwall.js was written against \u2014 the cell/carve/crumble MATH is an exact port either way. Also added GeoFrame.FlipWinding (missing in a first pass, since every vertex here is mirrored) and RecalculateNormals (src/breakwall.js never computes normals at all, which would render pitch black under URP Lit with no fallback \u2014 a deliberate, labelled, strictly-additive fix).",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Scripts/Combat/BreakingGlass.cs",
+  "js": "glass.js",
+  "covers": 262,
+  "note": "Shard ballistic sim (gravity, skid-bounce-then-rest, fade-out \u2014 verified to actually reach rest: tools/_probe_damage.mjs GLASS anyRested=1), glint sparks (flat-array sim matching Combat/ImpactFx.cs's ParticleCloud convention), pane decal data (Shatter/StampPane/BurstPane/BurstList). NOT covered: makeShardGeo (a trivial quad, built by whoever renders) and makeBrokenPaneTexture (canvas art, deferred like PlaneDamage.cs's own decal textures) \u2014 together ~70 lines. Assets/Shaders/GlassGlint.shader replaces the JS's inline gl_PointSize-based THREE.Points ShaderMaterial with a camera-facing instanced billboard quad (HLSL/URP has no reliable point-size-from-shader equivalent). [Trimmed 280->262: DamageDecals.cs later ported glass.js:19-85 (67 lines, the canvas textures this unit deferred) and GlassGlint.shader covers the glint material (25). 262+67+25=354, the file's exact length \u2014 the three no longer double-count.]",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Shaders/PlaneHull.shader",
+  "js": "planedamage.js",
+  "covers": 60,
+  "note": "THE discard/clip shader the quality bar requires: loops _TearAll (openings belonging to no panel) then this renderer's own [_TearLo,_TearHi) range from a shared _TearTex (LOAD_TEXTURE2D / texelFetch-equivalent, exact port of HoleSet's write()/patch() scheme at src/planedamage.js:323-338), clip()s any fragment inside an opening. Also folds in src/dents.js:505-514's vertex-colour-driven roughness/metalness scuff (the JS itself chains both patches onto one material \u2014 see src/dents.js:499's own comment). Hand-rolled URP lighting (GetMainLight/GetAdditionalLight/SampleSH) rather than UniversalFragmentPBR, for API stability across URP versions this agent could not compile-check against. Counted against planedamage.js since the clip-the-metal behaviour is its spec, not dents.js's.",
+  "verified": null
+ },
+ {
+  "cs": "unity/Assets/Shaders/GlassGlint.shader",
+  "js": "glass.js",
+  "covers": 25,
+  "note": "The one piece of glass.js that genuinely needed hand-written HLSL rather than a stock material (see BreakingGlass.cs's own note): an additive camera-facing billboard reproducing the JS's inline Points shader's distance-falloff glint, driven by per-instance vertex-colour alpha instead of a gl_PointSize/life varying.",
+  "verified": null
+ }
+]

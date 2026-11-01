@@ -1,0 +1,34 @@
+[
+  {
+    "cs": "Assets/Scripts/City/BuildingBuilder.cs",
+    "js": "citymap.js",
+    "covers": 460,
+    "restates": true,
+    "note": "SAME covers=460 as the existing claim (NO increment — citymap.js has 0 lines of headroom at this pass's start, 8445/8445 already claimed; filing higher would just feed the clamp per this file's own README). Restated to record a REAL fix made this pass, requested directly: LandmarkBuilder.Build and BuildRich had NO landmark-exclusion check at all, despite LandmarkPlacer.cs's own header leaving the exact TODO ('Not consumed here — just the data, for whoever extends BuildingBuilder with the exclusion'). Added InLandmarkExclusion(gameX, gameZ) (citymap.js:4601, fed by a BuildExclGame() transform of LandmarkPlacer.Exclusions — citymap.js:4178-4182's `excl = EXCLUSIONS.map(...)`, neither previously cited anywhere) and a `continue` at both call sites (Build:~213, BuildRich's expanded loop:~468) where the GAME-frame centroid is already computed for the OSM-facts lookup. CONSEQUENCE, verified against real data, not synthetic: 143 of 193,146 real OSM footprints were extruded into a generic destructible grey box standing on/inside 25 of the 32 landmark circles (Sameba cathedral's own 150 m ring alone caught 26 real buildings) — a visible double-geometry bug AND the literal mechanism behind this task's 'landmarks are currently destructible when they should be immune' defect, since the landmark's own asset has no HP pathway of its own (Core/CombatWorldAdapter.cs's DamageHit: 'statue — nothing with HP here') but the proxy building sitting on the same footprint does. ~7 real JS lines now covered (citymap.js:4178-4182,4601) via ~24 lines of C#, reported here rather than billed because the module has no free lines to receive them — whoever next finds real citymap.js headroom (e.g. by re-auditing CityRenderer.cs's own clamp) can fold these 7 lines in then.",
+    "verified": "Assets/Editor/Probes/LandmarkExclusionProbe.cs (-executeMethod TbilisiFly.Probes.LandmarkExclusionProbe.Run), an INDEPENDENT reimplementation of the exclusion test (not a call into BuildingBuilder's own private method) against the real city.json footprints: LMX id=totals buildings=193146 vc3plus=193146 inExclusion=143 circlesWithAHit=25/32. LMX id=build extruded=193003 expected=193003 ASSERT_counts=PASS (193146-143=193003, i.e. BuildingBuilder.Build's real output building count now matches the independently-computed expectation exactly). LMX id=sameba hits=26 ASSERT_sameba=PASS(had a real building to exclude) — proves the bug was live on real data, not vacuous. LMX id=overall ASSERT_overall=PASS. Unity batch-mode compile clean (0 error CS) for both touched files; the project's only compile error during this pass (Assets/Editor/Probes/FlightRestProbe.cs CS7036, LooseAirframeActor's bellyOffset param) is pre-existing/untracked, in Flight/* (not this agent's territory), and resolved itself mid-session without this file being touched."
+  },
+  {
+    "cs": "Assets/Scripts/City/LandmarkTag.cs",
+    "js": "citymap.js",
+    "covers": 0,
+    "note": "NEW FILE. The other half of the landmark-immunity task: a tag component (LandmarkName/Immune/NoPose/MaxHp) matching citymap.js:1781-1826's registerLandmark rec (immune/noPose/name fields — citymap.js:1781,1793,1807,1828). Filed at covers=0 ON PURPOSE, matching this project's own 'a probe proves a CALCULATION, not that the calculation is REACHED' rule: nothing in the project attaches this component to a GameObject yet, because nothing instantiates landmark GameObjects outside an Editor probe in the first place — grep for Art/Landmarks|Art/Statues|BuiltLandmarks|ProceduralLandmarks under Assets/Editor finds exactly one consumer, LandmarkProbe.cs, the same 'CityLoader.RunCritical/RunScenery/RunAll have zero runtime callers' shape this project's own skill doc already names. Billing lines for an unreached tag would repeat exactly the mistake the skill doc warns against (IsHumanoid-class gate-not-open bugs), so this is reported as scaffolding, not claimed as a port. HAND-OFF (Core/Combat, not this agent's territory): (1) Core/CombatWorldAdapter.cs:349 `IsLandmark(Collider hit) => false` should become `hit != null && hit.GetComponentInParent<City.LandmarkTag>() != null`; (2) whenever a landmark damage path is added (none exists today — Combat only drives HP through CombatBuildingChunk, which City/BuildingBuilder.cs's sibling fix in this same pass now correctly excludes landmark footprints from), it must early-return with no HP change when LandmarkTag.Immune is true, mirroring citymap.js:1828's `if (rec.immune) return null`; (3) the actual Instantiate-and-attach call site is the still-open 'which component goes in which scene' question this project's README already flags for CityLoader — attaching LandmarkTag belongs wherever that gets resolved, plus Props/WarehouseCrane.cs's shed (src/shed.js:268's `{pose:false, immune:true}`).",
+    "verified": "Compiles clean under the same Unity batch-mode pass as BuildingBuilder.cs (0 error CS). No runtime/probe claim made, consistent with covers=0 — there is nothing yet to exercise."
+  },
+  {
+    "cs": "Assets/Scripts/City/StatueMaterials.cs",
+    "js": "landmarks.js",
+    "covers": 29,
+    "restates": true,
+    "note": "SAME covers=29 as the existing claim — no port work added here, only a proposed_excluded entry (below) for 2 lines this file's own header (StatueMaterials.cs:28-36) already proves dead but that were never entered into docs/port_manifest.json's excluded array.",
+    "verified": "Unchanged from the existing claim's own verification.",
+    "proposed_excluded": [
+      {
+        "js": "landmarks.js",
+        "what": "module-level `const BRONZE = lambert(0x5a4a38)` and `const PATINA = lambert(0x4f7a68)`",
+        "lines": "1216-1217",
+        "excluded": 2,
+        "reason": "Already verified dead by this file's own header (StatueMaterials.cs:28-36, 'NOT PORTED, ON PURPOSE... verified by tools/_probe_landmarksrest.mjs's CONST_USED_IN_STATUES check (both come back 0)') but never entered into docs/port_manifest.json's excluded array, so landmarks.js's free-line count has been silently treating these 2 lines as still-owed work for several passes. philharmonic()'s own local `const PATINA = lambert(0x5f8f7a)` is a DIFFERENT value that shadows the module one and is excluded separately (part of that builder's own asset-substitution exclusion, already filed) — not double-counted here."
+      }
+    ]
+  }
+]

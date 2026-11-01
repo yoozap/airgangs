@@ -1,0 +1,258 @@
+@import url("../Theme/CyberTheme.uss");
+/* ============================ NO em UNITS ============================
+ * USS has NO `em` unit. Every `letter-spacing: 0.06em` in this file was a
+ * literal transcription of src/style.css and Unity's USS importer REJECTS
+ * it — and it does not reject just that declaration, it fails the whole
+ * import and leaves an EMPTY StyleSheet with the asset still loading, still
+ * named, still attached to the view. The screen then renders with every
+ * element present and NOTHING styled: full-width stacked rows, default grey
+ * buttons, no panels, no columns, no padding. Measured 2026-10-30 by
+ * Editor/Probes/UiShotProbe.cs (UISTYLE arm=character sheets=1 [Character]
+ * with .hangar's own `padding: 74px 44px 44px` resolving to padTop=0) and
+ * visible in the first ui_character.png.
+ *
+ * The em values are converted to the px they meant: CSS `em` is the
+ * element's own font-size, so 0.06em at font-size:15px is 0.9px. If a rule
+ * here gains or changes a font-size, convert again — do not reintroduce em.
+ * ===================================================================== */
+
+/* Port of src/style.css:1474-1650 (.hangar / .race-head / .body-* / .pl-* /
+ * .hi-* / .hs-*) — the WoW-style character create/roster screen.
+ *
+ * NOT CARRIED OVER CLEANLY (same gaps already documented for Settings.uss /
+ * Credits.uss, and dropped here the same way, for consistency with those
+ * already-ported screens rather than inventing a third convention):
+ *  - clip-path corner cuts (every panel in the source CSS) — USS has no
+ *    clip-path. Flat border-width/border-color rectangles instead, same as
+ *    .sw-frame / .cr-frame.
+ *  - linear-gradient() fills (.hs-fill) — flat var(--cyan) instead.
+ *  - box-shadow glows (.hi-select, .hs-fill, .body-card.selected) — dropped.
+ *  - .hs-label::before's CSS ::before bullet dot — USS has no pseudo-
+ *    elements. The bullet is a literal "• " prefix on the label text
+ *    instead (CharacterView.cs), same visual read without the glow.
+ *  - -webkit-line-clamp on .rh-desc (3-line clamp) — no USS equivalent;
+ *    left unclamped (the race description is short enough in practice).
+ *  - repeating-linear-gradient() .scanlines overlay — dropped, purely
+ *    cosmetic (see CyberTheme.uss's own note on gradients).
+ *
+ * FONT: every Georgian string here renders through "Noto Sans Georgian"
+ * (CyberTheme.FontGeorgian) — the one family in this project with Mkhedruli
+ * glyphs. No .ttf/FontAsset is bundled anywhere in this port yet (see
+ * CyberTheme.cs's own note); until one is imported every Georgian glyph on
+ * THIS screen is an empty tofu box, exactly like every other already-ported
+ * Georgian-text view (Settings/Credits/Hud/Target/SkillBar) — not a new gap
+ * this screen introduces.
+ */
+
+.hangar {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  flex-direction: column;
+  padding: 74px 44px 44px;
+}
+.hangar .hidden { display: none; }
+
+.hangar-head { flex-direction: row; align-items: center; margin-bottom: 18px; }
+.hback {
+  -unity-font-style: normal;
+  font-size: 14px;
+  color: var(--dim);
+  background-color: transparent;
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.3);
+  padding: 8px 14px;
+  margin-right: 20px;
+}
+.hback:hover { color: var(--cyan); border-color: var(--cyan); }
+
+.hangar-title-row { flex-direction: row; margin-right: 20px; }
+.hangar-title { -unity-font-style: bold; font-size: 26px; letter-spacing: 2px; color: var(--text); }
+.hangar-title-slash { -unity-font-style: bold; font-size: 26px; letter-spacing: 2px; color: var(--cyan); }
+.hangar-sub { font-size: 15px; color: #9fb0c6; letter-spacing: 0.9px; white-space: normal; }
+
+.hangar-cols { flex-grow: 1; flex-direction: row; }
+
+/* #race-list / #race-list-2: 272px, reused for the race column (create) and
+ * the roster list (roster) — src/style.css:1491. */
+.side-list { width: 272px; flex-grow: 0; flex-shrink: 0; margin-right: 22px; }
+
+.hangar-mid { flex-grow: 1; flex-direction: column; margin-right: 22px; }
+.hangar-mid .hangar-preview { flex-grow: 1; }
+
+.create-bar {
+  flex-grow: 0;
+  flex-direction: row;
+  align-items: flex-end;
+  background-color: rgba(8, 13, 22, 0.85);
+  border-width: 1px;
+  border-color: var(--line);
+  padding: 16px 20px;
+  margin-top: 14px;
+}
+.cb-line {
+  max-width: 230px;
+  font-size: 11px;
+  white-space: normal;
+  letter-spacing: 0.88px;
+  color: var(--dim);
+}
+
+/* ---- the race header that tops each side column (RACE_HEAD, main.js:392-399) ---- */
+.race-head {
+  background-color: rgba(8, 13, 22, 0.85);
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.25);
+  padding: 14px 15px;
+  margin-bottom: 9px;
+}
+.race-head:hover { background-color: rgba(63, 214, 255, 0.1); }
+.race-head.on { background-color: rgba(63, 214, 255, 0.14); border-color: var(--cyan); }
+.rh-top { flex-direction: row; align-items: center; }
+.rh-icon { font-size: 22px; margin-right: 8px; }
+.rh-name { -unity-font-style: bold; font-size: 15px; color: var(--text); }
+.race-head.on .rh-name { color: var(--cyan); }
+.rh-latin { flex-grow: 1; -unity-text-align: middle-right; font-size: 10px; letter-spacing: 1.4px; color: var(--dim); }
+.rh-role { margin-top: 5px; font-size: 12px; color: #9fb0c6; letter-spacing: 0.6px; }
+.rh-desc { margin-top: 7px; font-size: 11.5px; white-space: normal; color: var(--dim); }
+
+/* ---- the bodies of a race, as portrait tiles (BODY_GRID, main.js:400-411) ---- */
+.body-grid { flex-direction: row; flex-wrap: wrap; margin-bottom: 9px; }
+.body-card {
+  width: 48%;
+  margin: 1%;
+  -unity-text-align: upper-center;
+  align-items: center;
+  background-color: rgba(8, 13, 22, 0.75);
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.25);
+  padding: 13px 8px 11px;
+}
+.body-card:hover { background-color: rgba(63, 214, 255, 0.12); }
+.body-card.selected { background-color: rgba(63, 214, 255, 0.18); border-color: var(--cyan); }
+.bc-icon { font-size: 26px; }
+.bc-name { margin-top: 5px; font-size: 12px; -unity-font-style: bold; color: var(--text); }
+.body-card.selected .bc-name { color: var(--cyan); }
+
+/* ---- roster rows (PL_ITEM, main.js:437-450) — also used for race cards
+ * in the legacy single-column path, so .pl-item stays generic. ---- */
+.pl-item {
+  background-color: rgba(8, 13, 22, 0.75);
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.25);
+  padding: 12px 15px;
+  margin-bottom: 9px;
+}
+.pl-item:hover { background-color: rgba(63, 214, 255, 0.12); }
+.pl-item.selected { background-color: rgba(63, 214, 255, 0.16); border-color: var(--cyan); }
+.pl-row1 { flex-direction: row; justify-content: space-between; }
+.pl-name { flex-direction: row; align-items: center; }
+.pl-name Label { -unity-font-style: bold; font-size: 15px; color: var(--text); }
+.pl-item.selected .pl-name Label { color: var(--cyan); }
+.race-icon { font-size: 18px; margin-right: 6px; }
+.pl-code { font-size: 11px; color: var(--dim); }
+.pl-row2 { flex-direction: row; justify-content: space-between; margin-top: 3px; }
+.pl-cls { font-size: 12px; color: #9fb0c6; letter-spacing: 0.72px; }
+.pl-tag { font-size: 10px; letter-spacing: 1px; color: var(--dim); }
+.pl-tag.equipped { color: var(--cyan); }
+.pl-row3 { margin-top: 4px; font-size: 10px; letter-spacing: 0.6px; color: rgba(63, 214, 255, 0.75); }
+
+.pl-item.new-hero { -unity-text-align: middle-center; color: var(--dim); -unity-font-style: bold; letter-spacing: 0.96px; border-color: rgba(125, 140, 161, 0.4); }
+.pl-item.new-hero:hover { color: var(--cyan); border-color: var(--cyan); }
+/* `color` is an INHERITED property in USS, so the colour of the parent
+ * .pl-item.new-hero rule already reaches this Label on its own. The CSS
+ * `color: inherit` that used to be written here is NOT a USS keyword: it
+ * parses into a Keyword handle and then ReadColor throws
+ * "Trying to read value of type Color while reading a value of type Keyword"
+ * on EVERY style pass, once per frame, for the life of the screen. Dropping
+ * the declaration is the port-faithful fix, not a workaround. */
+.pl-item.new-hero Label { -unity-text-align: middle-center; -unity-font-style: bold; }
+
+/* ---- live 3D hero preview ---- */
+.hangar-preview {
+  position: relative;
+  background-color: rgba(8, 13, 22, 0.5);
+  border-width: 1px;
+  border-color: rgba(63, 214, 255, 0.16);
+}
+.char-preview { position: absolute; left: 16px; top: 16px; right: 16px; bottom: 16px; }
+.hp-tag {
+  position: absolute; left: 20px; bottom: 20px;
+  font-size: 11px; letter-spacing: 1.76px; color: rgba(63, 214, 255, 0.6);
+}
+
+/* ---- info panel (HI_*, main.js:460-504) ---- */
+.hangar-info {
+  width: 330px;
+  flex-grow: 0;
+  flex-shrink: 0;
+  background-color: rgba(8, 13, 22, 0.85);
+  border-width: 1px;
+  border-color: var(--line);
+  padding: 24px;
+}
+.hi-code { font-size: 11px; letter-spacing: 2.2px; color: var(--cyan); margin-bottom: 6px; }
+.hi-name { -unity-font-style: bold; font-size: 25px; color: var(--text); }
+.hi-class {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.72px;
+  color: var(--bg0);
+  background-color: var(--mag);
+  -unity-font-style: bold;
+  padding: 4px 12px;
+  align-self: flex-start;
+}
+.hi-spot {
+  margin-top: 12px;
+  font-size: 12px;
+  white-space: normal;
+  color: var(--cyan);
+  letter-spacing: 0.48px;
+  padding: 7px 10px;
+  background-color: rgba(63, 214, 255, 0.08);
+  border-width: 1px;
+  border-color: rgba(63, 214, 255, 0.35);
+}
+.hi-desc { margin-top: 14px; font-size: 13px; white-space: normal; color: #9fb0c6; }
+.hi-stats { margin-top: 20px; }
+.hs-row { flex-direction: row; justify-content: space-between; margin-bottom: 5px; }
+.hs-label { font-size: 12px; color: var(--text); letter-spacing: 0.6px; }
+.hs-val { font-size: 12px; color: var(--cyan); }
+.hs-track { height: 7px; background-color: rgba(125, 140, 161, 0.18); margin-bottom: 12px; }
+.hs-fill { height: 100%; background-color: var(--cyan); }
+
+.fld.char-name-fld { margin-top: 18px; }
+.char-name-caption { color: #fff; font-size: 12px; margin-bottom: 6px; }
+.char-name-wrap { position: relative; }
+.char-name-input { font-size: 15px; -unity-font-style: bold; letter-spacing: 0.6px; }
+.fld-placeholder {
+  position: absolute; left: 4px; top: 2px;
+  font-size: 15px; color: var(--dim); letter-spacing: 0.6px;
+}
+
+.hi-spacer { flex-grow: 1; min-height: 16px; }
+.char-delete {
+  -unity-font-style: normal;
+  font-size: 12px;
+  letter-spacing: 0.72px;
+  color: var(--dim);
+  background-color: transparent;
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.3);
+  padding: 9px;
+  margin-bottom: 8px;
+}
+.char-delete:hover { color: var(--mag); border-color: rgba(255, 62, 138, 0.5); }
+
+.hi-select {
+  -unity-text-align: middle-center;
+  -unity-font-style: bold;
+  font-size: 16px;
+  letter-spacing: 0.96px;
+  padding: 15px;
+  background-color: var(--cyan);
+  color: var(--bg0);
+  border-width: 0;
+}
+.hi-select:hover { background-color: var(--cyan2); }
+.hi-select.equipped { background-color: rgba(63, 214, 255, 0.15); color: var(--cyan); border-width: 1px; border-color: var(--cyan); }

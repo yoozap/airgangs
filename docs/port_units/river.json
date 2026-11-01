@@ -1,0 +1,26 @@
+[
+  {
+    "cs": "Assets/Scripts/City/RiverSheet.cs",
+    "js": "citymap.js",
+    "covers": 537,
+    "whole_file": false,
+    "note": "RIVER_DEPTH const (citymap.js:447); river.json load + 12 m carve mask + measured-centreline level lookup (citymap.js:583-724, 'river'-kind polys only, matching the JS); the river-carve clause of heightAt (citymap.js:3230-3243, as HeightAt() layered on TerrainSampler.HeightAtGame rather than reimplementing the sampler); _buildRiverSheet in full — real-OSM-ring collection with winding normalisation, the lake-exclusion test, hand-written ear-clip-with-holes triangulation (a from-scratch earcut-equivalent, since Unity ships none; validated against the real river.json data before this file was written — the 2416-outer + 1969-hole worst ring triangulates in well under a second), 2x midpoint subdivision, per-vertex LevelAt sampling, and the bank-bay walk/classification that feeds InfraBuilder.RiverBank (citymap.js:7373-7752). PROVED: RiverProbe.RIVERP bed samples show the carved bed sitting ~37-41 m below the raw 30 m-DEM sample at 5 real points along the Mtkvari, and ~3.5 m below the measured surface everywhere the mask has a level — exactly the relationship citymap.js:3230-3243 exists for. NOT PORTED (see class doc for why): the 'spare the carve mask near roads' step (citymap.js:679-712 — nothing yet calls HeightAt from road draping, so there is no drowned-road bug to prevent); the streetHere half of the wall/rip/cliff bank test (needs the 29,652-entry roads array in a 70 m hash — Kind currently falls back to onRiver+rise alone, over-applying 'wall' off-street); _cutFlag/_inTunnelCorridor (tunnel-corridor Clear bays — no tunnel-cut system exists in this port; every Bank.Clear is false); the raster marching-squares + Chaikin-smoothed fallback boundary (citymap.js:7387-7486), since river.json ships real OSM polys and the live game never takes that branch.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/WaterBodies.cs",
+    "js": "citymap.js",
+    "covers": 111,
+    "whole_file": false,
+    "note": "_buildWater in full (citymap.js:7255-7365): still-body polygons from city.json.gz's `water` array (own GZip+JsonTextReader pass, same pattern BuildingFacts.cs uses for levels.json), the circularity test that tells a lake from a river reach, the bank-spread test, median-bank-height-plus-0.3 level, triangulated via RiverSheet.EarClip.Triangulate (shared, no-holes case). Real measured Mtkvari colour/roughness/metalness/opacity exposed as constants (citymap.js:7310-7338) for a future material. NOT PORTED: the dual-normal-map counter-drifting ripple shader (citymap.js:7343-7359, a THREE.Material.onBeforeCompile patch) and the sky-reflection hookup — both need a new .shader/.mat asset, outside the 'create only the four named files' brief; RippleDriftA/B and RippleScaleB are kept as data for whoever authors it.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/WorshipPlacer.cs",
+    "js": "citymap.js",
+    "covers": 179,
+    "whole_file": false,
+    "note": "_buildWorship in full (citymap.js:935-1113): the real Georgian Orthodox church silhouette (stone cross-plan, gabled arms, 12-sided drum, conical tent dome and cross, walled churchyard with a west gate gap and 8 cypresses) and the mosque silhouette (domed box, open-bottom hemisphere dome, minaret with balcony), both rebuilt as hand-wound box/cylinder/cone/gable/dome-half primitive meshes (Unity ships none of THREE's primitives) with every winding derived and verified by hand; kept the JS's 3-submesh split (stone wall / arch drum / everything else) plus real per-part tints baked as vertex colour on every submesh so the mesh reads correctly even before a material is assigned. 421 churches + 9 mosques read straight from city.json.gz (own GZip+JsonTextReader pass), filtered against LandmarkPlacer.Exclusions (reused, not duplicated), scaled by clamp(sqrt(area)/16, 0.7, 2.4), chunked into 2000 m buckets, hp=620+420*scale, Georgian labels 'ეკლესია'/'მეჩეთი' kept byte for byte. NOT PORTED: the real photo-stone/arch-band textures the JS streams in over the 3 submeshes (citymap.js:1066-1083, uvPlanar included) — needs new texture assets AND per-part planar UVs (not built here, no texture to map onto yet), outside the 'create only the four named files' brief; the 3-submesh split is kept so a future pass can add both without restructuring the mesh, but today every submesh shows flat vertex-colour tuff/roof/tent/gold tints only.",
+    "verified": null
+  }
+]

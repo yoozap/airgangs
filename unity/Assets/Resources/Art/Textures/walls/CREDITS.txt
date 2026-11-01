@@ -1,0 +1,27 @@
+Windowless wall material tiles (brick/plaster/panel), cut from
+Wikimedia Commons photos and made seamless for game texturing.
+
+brick_red.jpg — File:Tiflis Straßenszene 7.jpg — Giftzwerg 88, CC BY-SA 3.0, via Wikimedia Commons
+brick_dark.jpg — File:Orkhevi I Lane.jpg — Tiia Monto, CC BY-SA 3.0, via Wikimedia Commons
+plaster_decay.jpg — File:Buildings on Chavchavadze Ave 37, Tbilisi.jpg — Erekle K, CC BY-SA 4.0, via Wikimedia Commons
+plaster_yellow.jpg — File:Architectural Detail - Old Town - Tbilisi - Georgia — Adam Jones, CC BY-SA 2.0, via Wikimedia Commons
+plaster_pink.jpg — File:Tbilisi public school 156. Back view.jpg — David Osipov, CC BY 4.0, via Wikimedia Commons
+panel_concrete.jpg — File:Apartment Building on Aleksandre Tsulukidze II Turn Street.jpg — Supanut Arunoprayote, CC BY 4.0, via Wikimedia Commons
+brick_orange.jpg — File:Tbilisi - Ibrahim Isfahanli Street 9 - 2025-10.jpg — Aleksandr Sigachyov (Александр Сигачёв), CC0, via Wikimedia Commons
+brick_painted.jpg — File:2025-06-11 4 Merab Aleksidze 2nd Lane from SE.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons
+brick_buff.jpg — File:2026-03-22 46 Sairme Street in Tsqneti.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons
+plaster_grey.jpg — File:2025-02-09 36 Titsian Tabidze 1st Lane.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons
+plaster_cream.jpg — File:Dugladze Wine and Spirits. Orkhevi.jpg — David Osipov, CC BY 4.0, via Wikimedia Commons
+plaster_cement.jpg — File:Tbilisi - Ibrahim Isfahanli Street 9 - 2025-10.jpg — Aleksandr Sigachyov (Александр Сигачёв), CC0, via Wikimedia Commons
+stone_rubble.jpg —  — Wikimedia Commons contributor (see file page), CC BY-SA 4.0, via Wikimedia Commons
+stone_tuff.jpg — File:Tbilisi - Prosecutor General's Office - 2025-10 - p2.jpg — Aleksandr Sigachyov (Александр Сигачёв), CC0, via Wikimedia Commons
+stone_flag.jpg — File:Dugladze Wine and Spirits. Orkhevi.jpg — David Osipov, CC BY 4.0, via Wikimedia Commons
+panel_pebble.jpg — File:Tbilisi City - Urban Photos (6).jpg — Mostafameraji, CC BY-SA 4.0, via Wikimedia Commons
+panel_ribbed.jpg — File:Tbilisi City - Urban Photos (6).jpg — Mostafameraji, CC BY-SA 4.0, via Wikimedia Commons
+panel_white.jpg — File:2025-11-06 Mukhiani 4b-th Microdistrict, bldg. 21.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons
+stone_ashlar.jpg — File:2026-01-03 62 Irakli Abashidze Street.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons
+plaster_teal.jpg — File:Old Industrial Building in Tbilisi, Georgia.jpg — AlexandreAssatiani, CC BY 4.0, via Wikimedia Commons
+stone_basalt.jpg — File:Tbilisi Love You- Urban Photos, Canon Photos, Creative Commons, Mostafa Meraji 27.jpg — Mostafameraji, CC BY 4.0, via Wikimedia Commons
+panel_boardform.jpg — File:Akaki Tsereteli avenue.jpg — David1010, CC BY-SA 4.0, via Wikimedia Commons
+brick_thin_salmon.jpg — File:2014 Tbilisi, Domy na Starym Mieście (03).jpg — Marcin Konsek, CC BY-SA 4.0, via Wikimedia Commons
+stone_flagstone.jpg — File:2026-03-22 38 Sairme Street in Tsqneti.jpg — Yuri Samoylov, CC BY-SA 4.0, via Wikimedia Commons

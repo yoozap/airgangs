@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Tests/PlayMode/FirstPlayModeRun.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "VERIFICATION ONLY, covers=0. The first play-mode run of the port (716 lines, one [UnityTest]): drives the real shell login->personage->world, holds throttle on a virtual keyboard (QueueStateEvent + InputSystem.Update with ProcessEventsManually - QueueStateEvent alone delivers nothing in batchmode), fires, climbs out, walks/jumps/crouches, reads the HUD, measures frame time. Run 10: GAME_STARTED, FIRE_SHOTS 15, climb-out pass, FOOT_W_DIST 8.5, PERF_MEAN_FPS 203 @640x480, 2 of ~40 checks failing (planeLeftTheGround -> groundroll-attitude; zeroLoggedErrors -> mesh-readable). Found 5 production bugs no probe could: LabelPool repaint throw, stale _board after ApplyResume, parked speed 50 m/s, 25 s first dt, Guns unreachable."
+ },
+ {
+  "cs": "Assets/Scripts/UI/Common/LabelPool.cs",
+  "js": "hud.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX: Put records marks, Flush applies them from the panel scheduler outside generateVisualContent; ERROR_UI_REPAINT 1164 -> 0 in play mode."
+ },
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX (restates nothing): ResetPlane drops _board (game.js:728-729 precedent) and pairs Mode=Boarding with BeginEnter; ResetGroundSpeed call (game.js:733/736); Guns/Rockets public on the game object (game.js:206-207); BoardingPending/ORPHANBOARD/RESETPLANE tripwires."
+ },
+ {
+  "cs": "Assets/Scripts/Flight/PlaneController.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX: ResetGroundSpeed(); Update() clamps dt to 0.05 (game.js:2360)."
+ }
+]

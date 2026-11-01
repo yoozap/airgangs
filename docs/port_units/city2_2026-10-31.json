@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Scripts/City/FacadeKitLoader.cs + FacadeKitBuilder.cs + ShopfrontRenderer.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: the facade kit's natural transform (all 24 nodes scale 100 / rot 270) composed TRS * model at the ten kit call sites and in ShopfrontRenderer's own lookup - 960,917 relief instances + 21,444 shopfront modules were 1/100 Z-up. Composed frame == facade_kit.glb's bounds exactly. Counts byte-identical. Gotcha: shoot before/after arms in SEPARATE processes."
+ },
+ {
+  "cs": "Assets/Scripts/City/RiverSheet.cs + RiverRenderer.cs + CityGroundData.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX (Unity-native per the user's policy): RiverSheet.BuildMaskFill - a water quad per 12 m carve cell under the OSM sheet, same CityWater material, no collider; covers the ear-clip hole over the carved bed (the pale blue was GrassRenderer's cut-terrain patch). river_fill cells=41869."
+ },
+ {
+  "cs": "Assets/Scripts/Data/TerrainSampler.cs + City/TerrainGridOps.cs",
+  "js": "citymap.js",
+  "covers": 43,
+  "verified": "2026-10-31",
+  "note": "citymap.js:3073-3115 _carveWater is now CALLED (FromFullRes, CarveWaterOnLoad) as the JS does before any river/bank/lake system reads heights - it had no runtime caller. Game.unity rebaked. The RIVER count line moved to the carved values; tools/_probe_river.py models the carve now."
+ },
+ {
+  "cs": "Assets/Editor/Probes/FacadeRiverProbe.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: FKPART/FKASSET/FKKIT natural-transform measurement, FKPUTARM partition invariance, FKMASK relief coverage, RBCROSS river cross-section, per-renderer magenta attribution of the blue channel, RIVERFILL counts."
+ }
+]

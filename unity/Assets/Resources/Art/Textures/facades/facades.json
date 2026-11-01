@@ -1,0 +1,198 @@
+{
+ "plaster": {
+  "file": "plaster.jpg",
+  "bays": 1,
+  "floors": 1,
+  "credit": "Andrew Milligan sumo, CC BY 2.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Old_Town,_Tbilisi,_Georgia_(48808646896).jpg"
+ },
+ "panel": {
+  "file": "panel.jpg",
+  "bays": 2,
+  "floors": 4,
+  "credit": "Supanut Arunoprayote, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Apartment_Building_on_Aleksandre_Tsulukidze_II_Turn_Street_09.23_(3).jpg"
+ },
+ "panel2": {
+  "file": "panel2.jpg",
+  "bays": 2,
+  "floors": 2,
+  "credit": "Supanut Arunoprayote, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Apartment_Building_on_Aleqsandre_Tsulukidze_I_street_09.23.jpg"
+ },
+ "oldtbilisi": {
+  "file": "oldtbilisi.jpg",
+  "bays": 3,
+  "floors": 2,
+  "credit": "Andriabenia, CC0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Classical_facades_of_Tbilisi.JPG"
+ },
+ "tower16": {
+  "file": "tower16.jpg",
+  "bays": 5,
+  "floors": 14,
+  "credit": "Supanut Arunoprayote, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Apartment_Building_on_Davit_Kvachantiradze_Street_09.23.jpg"
+ },
+ "khrush5": {
+  "file": "khrush5.jpg",
+  "bays": 3,
+  "floors": 5,
+  "credit": "Supanut Arunoprayote, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Apartment_Building_on_Aleksandre_Tsulukidze_II_Turn_Street_09.23_(5).jpg"
+ },
+ "oldtbilisi2": {
+  "file": "oldtbilisi2.jpg",
+  "bays": 7,
+  "floors": 1,
+  "credit": "Yuriy75, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:2025-03-26_65_Davit_Aghmashenebeli_Avenue_(southern).jpg"
+ },
+ "opera_stripes": {
+  "file": "opera_stripes.jpg",
+  "bays": 2,
+  "floors": 2,
+  "credit": "Vladimer Shioshvili, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Tbilisi_Opera_House_(6).jpg"
+ },
+ "opera_arch": {
+  "file": "opera_arch.jpg",
+  "bays": 3,
+  "floors": 1,
+  "credit": "Vladimer Shioshvili, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Tbilisi_Opera_House_(6).jpg"
+ },
+ "mcd_sign": {
+  "file": "mcd_sign.jpg",
+  "bays": 1,
+  "floors": 1,
+  "credit": "Marco Fieber, CC BY-SA 2.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Mc_Donalds_Tbilisi_(10600396135).jpg"
+ },
+ "mcd_arches": {
+  "file": "mcd_arches.jpg",
+  "bays": 1,
+  "floors": 1,
+  "credit": "Marco Fieber, CC BY-SA 2.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Mc_Donalds_Tbilisi_(10600396135).jpg"
+ },
+ "mcd_stone": {
+  "file": "mcd_stone.jpg",
+  "bays": 1,
+  "floors": 2,
+  "credit": "Marco Fieber, CC BY-SA 2.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Mc_Donalds_Tbilisi_(10600396135).jpg"
+ },
+ "funicular_arcade": {
+  "file": "funicular_arcade.jpg",
+  "bays": 4,
+  "floors": 1,
+  "credit": "Adam Jones, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Funicular02.jpg"
+ },
+ "jvari_stone": {
+  "file": "jvari_stone.jpg",
+  "bays": 2,
+  "floors": 1,
+  "credit": "Diego Delso, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Jvari_Monastery_01.jpg"
+ },
+ "marriott_facade": {
+  "file": "marriott_facade.jpg",
+  "bays": 2,
+  "floors": 2,
+  "credit": "LoMit, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Hotel_Marriott,_Tbilisi_1.jpg"
+ },
+ "oldbrick": {
+  "file": "oldbrick.jpg",
+  "bays": 2,
+  "floors": 1,
+  "credit": "Giftzwerg 88, CC BY-SA 3.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Tiflis_Stra%C3%9Fenszene_7.jpg"
+ },
+ "glass": {
+  "file": "glass.jpg",
+  "bays": 7,
+  "floors": 8,
+  "credit": "ambientCG.com, CC0",
+  "source": "https://ambientcg.com/view?id=Facade006"
+ },
+ "sameba_stone": {
+  "file": "sameba_stone.jpg",
+  "bays": 2,
+  "floors": 1,
+  "credit": "Vyacheslav Argenberg, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Sameba_Cathedral,_Courtyard_2,_Tbilisi,_Georgia.jpg"
+ },
+ "sameba_cross": {
+  "file": "sameba_cross.jpg",
+  "bays": 1,
+  "floors": 1,
+  "credit": "Vyacheslav Argenberg, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Sameba_Cathedral,_Courtyard_2,_Tbilisi,_Georgia.jpg"
+ },
+ "sameba_arches": {
+  "file": "sameba_arches.jpg",
+  "bays": 8,
+  "floors": 1,
+  "credit": "Vyacheslav Argenberg, CC BY 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Sameba_Cathedral,_Courtyard_2,_Tbilisi,_Georgia.jpg"
+ },
+ "parl_arcade": {
+  "file": "parl_arcade.jpg",
+  "bays": 2,
+  "floors": 6,
+  "credit": "Kober, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Parliament_building._Rustaveli_Avenue,_Tbilisi._Georgia%27s_Independence_Day_celebrations_26.05.2017.jpg"
+ },
+ "parl_pediment": {
+  "file": "parl_pediment.jpg",
+  "bays": 4,
+  "floors": 1,
+  "credit": "Kober, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Parliament_building._Rustaveli_Avenue,_Tbilisi._Georgia%27s_Independence_Day_celebrations_26.05.2017.jpg"
+ },
+ "parl_stone": {
+  "file": "parl_stone.jpg",
+  "bays": 1,
+  "floors": 1,
+  "credit": "Kober, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Parliament_building._Rustaveli_Avenue,_Tbilisi._Georgia%27s_Independence_Day_celebrations_26.05.2017.jpg"
+ },
+ "church_stone": {
+  "file": "church_stone.jpg",
+  "bays": 1.5,
+  "floors": 1.2,
+  "credit": "Diego Delso, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Catedral_de_Sioni,_Tiflis,_Georgia,_2016-09-29,_DD_103.jpg"
+ },
+ "church_arches": {
+  "file": "church_arches.jpg",
+  "bays": 3,
+  "floors": 2.2,
+  "credit": "Diego Delso, CC BY-SA 4.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:Catedral_de_Sioni,_Tiflis,_Georgia,_2016-09-29,_DD_95.jpg"
+ },
+ "phil_glass": {
+  "file": "phil_glass.jpg",
+  "bays": 2,
+  "floors": 1,
+  "credit": "Max Benidze, CC BY-SA 2.0, via Wikimedia Commons",
+  "source": "https://commons.wikimedia.org/wiki/File:MG_1295.JPGd_(33878022914).jpg"
+ },
+ "roof_flat": {
+  "file": "roof_flat.jpg",
+  "bays": 3,
+  "floors": 3,
+  "credit": "ambientCG.com, CC0",
+  "source": "https://ambientcg.com/view?id=Concrete036"
+ },
+ "roof_metal": {
+  "file": "roof_metal.jpg",
+  "bays": 2,
+  "floors": 2,
+  "credit": "ambientCG.com, CC0",
+  "source": "https://ambientcg.com/view?id=CorrugatedSteel009"
+ }
+}

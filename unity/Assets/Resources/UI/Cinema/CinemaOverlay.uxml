@@ -1,0 +1,35 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of src/cinema.js:1887-1958 `_showOverlay`/`_bars`/`_hideOverlay`/
+       `dispose` — the 2.39:1 letterbox chrome the reel shows while it plays:
+       two black bars (height computed in CinemaLetterboxMath.cs, written
+       onto cb-t/cb-b from code — the Unity-side equivalent of the JS setting
+       a CSS custom property named `cb`), a vignette, animated film grain, and an
+       ESC hint. See CinemaLetterboxView.cs for what drives each element and
+       CinemaOverlay.uss's own header for what CSS features had no USS
+       equivalent.
+
+       NOT HERE: cinema.js:1893-1898's `body.cinema-mode` rules (hiding
+       #hud/#mapwin/#settingswin/#target-card/#chrome and the cursor while
+       the reel plays). USS has no cross-document selector to express "hide
+       THAT other UIDocument" from inside this one's stylesheet — the same
+       boundary CinemaReel.cs's own header draws around every DOM side
+       effect ("Character/'s and Combat/'s territory... Exposed as
+       OnStart/OnStop hooks; a caller does the actual [effect]"). Whoever
+       opens/closes this view on CinemaDirector.Active is the caller that
+       hides the HUD/map/settings/target-card roots and sets the cursor,
+       the same way CinemaReel.cs's hooks are filled in by its own caller. -->
+  <Style src="CinemaOverlay.uss" />
+  <ui:VisualElement name="cinema-overlay" picking-mode="Ignore" class="cinema-overlay">
+    <ui:VisualElement name="cb-t" picking-mode="Ignore" class="cb t" />
+    <ui:VisualElement name="cb-b" picking-mode="Ignore" class="cb b" />
+    <ui:VisualElement name="cv" picking-mode="Ignore" class="cv" />
+    <ui:VisualElement name="cg" picking-mode="Ignore" class="cg" />
+    <ui:VisualElement name="cf" picking-mode="Ignore" class="cf" />
+    <!-- cinema.js:1927 `<i class="ch">ESC</i>` — taken VERBATIM. This is a
+         bare keycap label (the physical key, like the skill bar's "1".."0"
+         or the logout badge's "⎋"), not a translatable phrase, so the
+         project's "every string is Georgian" rule does not apply to it —
+         confirmed by reading the literal source string, not assumed. -->
+    <ui:Label name="ch" picking-mode="Ignore" class="ch" text="ESC" />
+  </ui:VisualElement>
+</ui:UXML>

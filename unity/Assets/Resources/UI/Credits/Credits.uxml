@@ -1,0 +1,26 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- docs/QUALITY_BAR.md: "no credits UI to carry the CC BY/BY-SA attribution
+       — it is only logged". This is that screen. Shell only — the section
+       list itself (CreditsData.BuildSections) is built in CreditsView.cs
+       since it is real data (609 photos / N photographers / live audio
+       counts), not fixed markup, the same split Settings uses between this
+       static shell and SettingsView's code-driven sync. -->
+  <Style src="Credits.uss" />
+  <ui:VisualElement name="cr-overlay" class="cr-overlay">
+    <ui:VisualElement name="cr-frame" class="cr-frame">
+
+      <ui:VisualElement name="cr-head" class="cr-head">
+        <ui:Label name="cr-tag" class="cr-tag" text="◄ CREDITS //" />
+        <ui:Label name="cr-title" class="cr-title" text="კრედიტები" />
+        <ui:Button name="credits-close" text="✕" tooltip="დახურვა (Esc)" />
+      </ui:VisualElement>
+
+      <ui:Label class="cr-intro" text="ქალაქი აგებულია რეალურ მონაცემებზე, ფოტოებსა და ჩანაწერებზე — აქ არის ყველა, ვისაც მადლობა ეკუთვნის." />
+
+      <ui:ScrollView name="cr-list" class="cr-list" />
+
+      <ui:Label class="cr-footer" text="TbilisiFly · Air Gangs of Georgia" />
+
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>

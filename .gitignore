@@ -16,3 +16,10 @@ models_raw/
 # scratch
 undefined/
 Screenshot*.png
+
+# Unity port — built players, editor crash dumps, per-user editor state, local tool permissions
+build/
+unity/mono_crash*
+unity/UserSettings/
+.claude/settings.local.json
+undefined_*.png

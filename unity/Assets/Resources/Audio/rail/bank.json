@@ -1,0 +1,15 @@
+{
+ "rail_motor": [
+  "rail_motor_683806.wav",
+  "rail_motor_683807.wav",
+  "rail_motor_741372.wav",
+  "rail_motor_717554.wav"
+ ],
+ "rail_stop": [
+  "rail_stop_865928_0.wav",
+  "rail_stop_865928_1.wav",
+  "rail_stop_717554_0.wav",
+  "rail_stop_545024_0.wav",
+  "rail_stop_545024_1.wav"
+ ]
+}

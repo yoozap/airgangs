@@ -1,0 +1,83 @@
+@import url("../Theme/CyberTheme.uss");
+
+/* Ported from src/style.css:655-778 (#mapwin, .mw-*).
+ * clip-path on #mapwin-hint is painted by AngledPanel.DrawTrapTop in
+ * BigMapView/MapWindowView instead (see Common/AngledPanel.cs). The
+ * diagonal resize-handle hatch (style.css:773-776) is a repeating-linear-
+ * gradient — no USS equivalent — approximated with a flat corner triangle. */
+
+.mw-root {
+  position: absolute;
+  background-color: rgba(4, 7, 13, 0.94);
+  border-width: 1px;
+  border-color: var(--line);
+  min-width: 360px;
+  min-height: 280px;
+}
+.mw-root.hidden { display: none; }
+
+.mw-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+  border-color: var(--cyan);
+  opacity: 0.8;
+}
+.mw-corner.tl { top: -2px; left: -2px; border-right-width: 0; border-bottom-width: 0; }
+.mw-corner.tr { top: -2px; right: -2px; border-left-width: 0; border-bottom-width: 0; }
+.mw-corner.bl { bottom: -2px; left: -2px; border-right-width: 0; border-top-width: 0; }
+.mw-corner.br { bottom: -2px; right: -2px; border-left-width: 0; border-top-width: 0; }
+
+.mw-title {
+  height: 40px;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 10px 0 14px;
+  background-color: rgba(63, 214, 255, 0.06);
+  border-bottom-width: 1px;
+  border-bottom-color: var(--line);
+  letter-spacing: 2px;
+}
+.mw-dot { width: 7px; height: 7px; background-color: var(--cyan); margin-right: 10px; }
+.mw-name { font-size: 12px; -unity-font-style: bold; color: var(--cyan2); }
+.mw-sub { font-size: 10px; color: var(--dim); letter-spacing: 1.5px; margin-left: 8px; }
+.mw-btns { flex-direction: row; margin-left: auto; }
+.mw-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  color: var(--cyan2);
+  background-color: rgba(63, 214, 255, 0.06);
+  border-width: 1px;
+  border-color: var(--line-dim);
+  margin-left: 6px;
+  -unity-text-align: middle-center;
+}
+
+.mw-body {
+  position: relative;
+  flex-grow: 1;
+}
+.mw-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  translate: -50% 0;
+  background-color: rgba(4, 7, 13, 0.85);
+  border-width: 1px;
+  border-color: var(--line-dim);
+  color: rgba(215, 236, 247, 0.8);
+  padding: 5px 14px;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.mw-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+}
+.mw-root.full .mw-resize { display: none; }

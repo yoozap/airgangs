@@ -1,0 +1,30 @@
+[
+  {
+    "cs": "Assets/Scripts/Flight/FlightInput.cs",
+    "js": "game.js",
+    "covers": 13,
+    "note": "_readStick() (game.js:1469-1481), byte-for-byte: W/Shift gas, S/Ctrl brake, up/down arrow pitch, left/right-arrow-or-A/D roll, Q/E rudder. Deliberately does NOT read the mouse -- in the JS the mouse only orbits the chase camera (this.look), never this.vel/this.rates -- so there is no mouse axis here by design, not by omission.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Flight/PlaneController.cs",
+    "js": "game.js",
+    "covers": 14,
+    "note": "Plane-state fields (game.js:96 halfSpan, 102-103 vel/rates, 112 struct, 227 `new FlightModel(...)`) and the airborne core of _flightUpdate (game.js:1483-1484 read stick, 1487 if(airborne), 1491-1493 aero.update+speed, 1501-1502 integrate position). NOT ported: the ground-roll taxi branch (game.js:1540-1666), _applyRamSpin, _structuralStress, _touchWall, ground contact/touchdown/crash (game.js:1504-1539), the city boundary wall. The task spawns the plane 'a little above the ground' specifically so none of that is needed to be flyable -- FlightModel.Update runs unconditionally, airborne from frame one. Damage is always Airframe.Intact; Combat/ is untouched and out of scope.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Flight/FlightCamera.cs",
+    "js": "game.js",
+    "covers": 39,
+    "note": "GTA chase camera (game.js:1677-1708): ease-back-to-centre free-look, camQuat = plane.rotation * lookOffset, behind-and-above offset, exponential position lerp with two time constants (dragging vs released), look-ahead shrink while orbiting, speed-squared FOV kick. Plus the left-drag orbit input (game.js:646-650,654-675 subset, MOUSE_SENS at :77) and camScale (game.js:98). The look-offset itself is a fresh Unity-frame quantity defined to match the subjective feel, not a bit-exact handedness port like FlightModel -- it is camera-only, not physics, and the file header says so. The local offset sign (0,up,-back) vs the JS's (0,up,+back) follows directly from FlightModel.cs's own documented axis flip (Unity forward=+Z, so 'behind' is -Z here).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Editor/BuildFlyableScene.cs",
+    "js": "game.js",
+    "covers": 0,
+    "note": "Pure Unity scene-assembly (opens the already-baked Tbilisi.unity, strips its static overview camera, adds the Plane/FlightInput/FlightCamera wiring, saves as Fly.unity) -- there is no JS line-for-line counterpart since the Three.js build has no equivalent editor-time scene-bake step at all. Listed here for completeness, not as covered game.js lines.",
+    "verified": null
+  }
+]

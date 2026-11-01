@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fxAudio, glassBreak, collapseRumble } from './audiofx.js';
-import { CARTRIDGES } from './ballistics.js';
+import { CARTRIDGES, refineProxy } from './ballistics.js';
 
 // Belly-mounted machine gun — hold Space to fire. Hitscan rounds with visual
 // tracers: the raycast happens at the muzzle, the damage lands when the
@@ -574,9 +574,14 @@ export class MachineGun {
     // re-cast onto the real airframe so a 12.7 mm round marks an aeroplane
     // where it actually struck it (src/planedamage.js). `null` = the crate
     // lied and the round went through a gap in it, so nothing happened.
+    // ...and so is anything else that is solid by way of an invisible
+    // stand-in: a mark on the fans' box guard hangs in the open air in front
+    // of the grille, so that is re-cast onto the real thing too, and a round
+    // that went between the wires leaves nothing (src/ballistics.js).
     const real = g.planeDamage?.refine(tr.hit, tr.dir);
-    if (real === null) return;
-    if (real) tr.hit = real;
+    const land = real === null ? null : refineProxy(real ?? tr.hit, tr.dir);
+    if (land === null) return;
+    tr.hit = land;
     const res = g.world.damageHit?.(tr.hit, tr.hit.planeRec ? PLANE_DAMAGE : DAMAGE);
     const n = this._hitNormal(tr.hit) ?? tr.dir.clone().negate();
     const vol = g.sound.volume ?? 0.7;

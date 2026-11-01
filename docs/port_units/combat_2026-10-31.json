@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "target.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: nested TargetRegistry.PickAt walks RaycastAll sorted by distance and takes the first hit that resolves to a registered entry (target.js:102-123 intersects a CANDIDATE LIST, so an unregistered crate/fan cannot shadow a machine); PickRange 700 (target.js:31, was 2000); own plane deliberately stays clickable (target.js:118). TargetPickThroughProbe: a real crane/shed metal blocker at 8.6 m, javelin at 29.8 m selected; sky picks nothing."
+ },
+ {
+  "cs": "Assets/Scripts/Combat/Blast.cs + Core/CombatBuildingChunk.cs + Core/CombatWorldAdapter.cs",
+  "js": "citymap.js",
+  "covers": 14,
+  "verified": "2026-10-31",
+  "note": "citymap.js:2508-2519 FinishCollapse publishes ClearBurning/StampScorch/SetSmolder/SetBurning over DebrisField.MoundAnchors; BurnKeyOf = the city-wide building index (bi restarts per chunk), FireKeyOf = (1<<24)+key for the ':fire' namespace. AND game.js:2455: FireSystem.Update is now stepped from WorldTick - it had NO caller (the whole fire/smoke layer was inert). ScorchSmolderWireProbe: scorch size 50.4 = span 24 x 2.1, 6 anchors exact, 66 puffs = 6 x 1.1/s x 10 s, columns fade."
+ },
+ {
+  "cs": "Assets/Scripts/Character/FootController.cs",
+  "js": "foot.js",
+  "covers": 30,
+  "verified": "2026-10-31",
+  "note": "FIX: LookYaw (= g.look.yaw) on the body; the five branches of foot.js:5645-5726 ported line for line (roll/dive/slide consume, armed consumes, bare composes camYaw = yaw + look.yaw); Cover.Tick consumes the real accumulator (foot.js:3524/3544); the uncited look-recentre removed (that block is the PLANE's _chaseCamera, game.js:1678-1684). GameLoop.ReadFootLook (game.js:654-675) runs before _foot.Update. PLAYMODE FOOT_MOUSE_YAW_RATIO 0.05 -> 0.95."
+ },
+ {
+  "cs": "Assets/Editor/Probes/TargetPickThroughProbe.cs + ScorchSmolderWireProbe.cs",
+  "js": "target.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: click-through-obstacle selection on a real load (hunts a stance where every nearer hit is unregistered); a real chunk driven to collapse completion through the live hooks with the real FxSink, then the scene-load reachability half (fireSystemIsStepped)."
+ }
+]

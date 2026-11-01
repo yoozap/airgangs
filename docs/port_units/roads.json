@@ -1,0 +1,26 @@
+[
+  {
+    "cs": "Assets/Scripts/City/RoadBuilder.cs",
+    "js": "roads.js",
+    "covers": 144,
+    "whole_file": false,
+    "note": "fetchRoadNet/legacy()/mergeRoadNet (roads.js:19-94) + buildJunctions (roads.js:101-144), ported 1:1 including the roadnet.json.gz bbox-based in-city filter. ALSO covers src/citymap.js:6597-6868 (_buildRoads, ~272 lines) — the actual draped asphalt/sidewalk/verge/painted-markings deck, which lives in citymap.js not roads.js, but is the visible road surface so it was ported here rather than left out (combined coverage across both files: ~416 lines). Draping uses TerrainSampler.HeightAtGame exclusively (the triangle sampler) at 0.70/0.75/0.80/0.83 m bands matching the JS's anti-z-fight offsets; real widths/lanes/layer/class come from the roadnet merge, not a uniform ribbon.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/BridgeBuilder.cs",
+    "js": "bridges.js",
+    "covers": 360,
+    "whole_file": true,
+    "note": "src/bridges.js in full: REAL_BRIDGES (11 named Mtkvari bridges), realBridgeZones, buildRealBridges (arch/girder/stone structure, balustrade+fascia+lamp placement lists, waterline staining, cutwater piers). ALSO covers src/roads.js:146-465 buildSpans (~320 lines, generic structural spans for every OSM bridge way: deck profile solved from real crossings, piers every ~28 m, abutments) — combined coverage across both files: ~680 lines. All geometry built in the GAME frame and mirrored/FlipWinding exactly once per mesh via the shared MeshBuf helper; no 3-D cross products anywhere (every direction here is a 2-D rotate-90 on a game-frame delta, which needs no operand swap).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/InfraBuilder.cs",
+    "js": "infra.js",
+    "covers": 300,
+    "whole_file": false,
+    "note": "src/infra.js:126-421 ported as a PURE DATA CLASS (no GameObject/Instantiate — the house style MallPlacer.cs/MetroBuilder.cs also settled on): river embankment (quay/quay_step/riprap/cliff + parapet with bridge-rail-snapping + piers + lamps), bridge furniture (consumes BridgeBuilder's rail/fascia/lamp lists), tunnel headwalls (portal vs. tapered underpass retaining walls), and full street furniture (granite kerbs up to 260k capped instances, crossings, signals, bus stops, signs, guardrails, manholes, avenue lamps) computed straight off the merged road list + TerrainSampler. NOT ported: infra.js:13-93 (loadKit/embankmentMaterials/textureKit, ~80 lines) — GLB/FBX kit loading and material binding is a scene-assembly concern under the pure-data convention, not this builder's; a consumer resolves each FurniturePlacement.Kind string to the matching child Transform inside infra_kit.fbx/embankment_kit.fbx. ALSO NOT PORTED (genuine data gap, not a scope choice): the UPSTREAM river-bank bay classification (citymap.js:_riverBanks, ~300 lines around citymap.js:7600-7900) and tunnel-mouth computation (citymap.js:_tunnelMouths, inside _buildTunnels, tied to terrain cutting) — neither lives in roads.js/bridges.js/infra.js, both are citymap.js/TerrainBuilder territory. BuildRiverEmbankment/BuildTunnelHeadwalls take List<RiverBank>/List<TunnelMouth> as GAME-frame parameters so the consuming logic here is ready the moment that data exists.",
+    "verified": null
+  }
+]

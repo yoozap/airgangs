@@ -1,0 +1,23 @@
+[
+ {
+  "cs": "Assets/Scripts/Flight/PlaneModelFrame.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "FIX: RecentreXZ (planes.js:1528-1537 makeGameplayPlane's unconditional X/Z recentre, distinct from the :830-832 fix-pivot one the port had) - moves model_file's localPosition by -box.center.x/z in model_scale space, never the model, so PlaneProps' search frame and the authored prop hubs are unchanged (PROPSUM 31/31 held). 20 of 35 machines had kept their raw file origin; carpet moved 6.99 m, tu144 1.55/3.15 m, tornado, b767, spitfire. Y stays with SeatTheBelly (the JS overwrites Y at :1563). Muzzle (guns.js:417 constant) now on the centreline for 35/35, box shell straddles x=0 for 35/35, hall packing offCentre=0 overlaps=0 outside=0 - all three re-measured and better."
+ },
+ {
+  "cs": "Assets/Scripts/Props/WarehouseCraneFill.cs",
+  "js": "crane.js",
+  "covers": 6,
+  "verified": "2026-10-31",
+  "note": "crane.js:356-361: the slung P-51 gets a PlaneDamageRecord (HalfSpan planes.js:1574, Size :1575, NoseLen = max(1,-ownB.min.z) :1587 verbatim sign - the slung machine is NOT in PlaneModelFrame, its local -Z is the nose, MaxHullPoints = PlaneStamina target.js:69) - the port's registry is DISCOVERED (CombatWorldAdapter sweeps PlaneDamageRecord), so the one component is the whole of the JS's register() call. Tab/click select it, card shows name/HP 1062, rounds land on its skin, Enter still refuses it (NoBoardMarker). GAMESCENE planeDamageRecords=36/36 crane=1/1."
+ },
+ {
+  "cs": "Assets/Editor/Probes/FlightXzCraneProbe.cs",
+  "js": "planes.js",
+  "covers": 0,
+  "verified": "2026-10-31",
+  "note": "VERIFICATION ONLY: All() = AIRFRAME_RECENTRE per plane + MUZZLEFIT/SHELLFIT/RECENTRESUM over 35 + the crane-target proof (CRANETGT) against the real Game.unity, chaining PlaneHallLayoutProbe and PlaneHallFillProbe (HALLCENTRE/HALLOVERLAP/HALLINSIDE) - one editor launch answers both rows."
+ }
+]

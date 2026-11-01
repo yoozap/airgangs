@@ -1,0 +1,80 @@
+[
+ {
+  "system": "city",
+  "js_lines": 13361,
+  "ported": 13038,
+  "verified": 12557,
+  "remaining": 323,
+  "difficulty": 1.8,
+  "effort": 581,
+  "hours_low": 0.6,
+  "hours_high": 1.5,
+  "pct": 97.58,
+  "why": "8552-line generator plus instanced-rendering perf work from scratch — the Three.js \"detach chunks from the scene graph\" win has no Unity analogue."
+ },
+ {
+  "system": "character",
+  "js_lines": 9343,
+  "ported": 8893,
+  "verified": 8872,
+  "remaining": 450,
+  "difficulty": 2.0,
+  "effort": 900,
+  "hours_low": 1.0,
+  "hours_high": 2.2,
+  "pct": 95.18,
+  "why": "Bone-level pose work: every layer must write in LateUpdate after the Animator, and never rebase off its own output."
+ },
+ {
+  "system": "flight",
+  "js_lines": 4632,
+  "ported": 4489,
+  "verified": 4489,
+  "remaining": 143,
+  "difficulty": 1.0,
+  "effort": 143,
+  "hours_low": 0.2,
+  "hours_high": 0.4,
+  "pct": 96.91,
+  "why": "Hand-integrated aerodynamics. Ports almost line-for-line; the handedness mirror is the only real hazard."
+ },
+ {
+  "system": "combat",
+  "js_lines": 10834,
+  "ported": 10593,
+  "verified": 10244,
+  "remaining": 241,
+  "difficulty": 1.7,
+  "effort": 410,
+  "hours_low": 0.5,
+  "hours_high": 1.0,
+  "pct": 97.78,
+  "why": "Ballistics, damage decals and tear geometry — lots of surface math, all probe-checkable."
+ },
+ {
+  "system": "ui",
+  "js_lines": 1983,
+  "ported": 1845,
+  "verified": 1525,
+  "remaining": 138,
+  "difficulty": 1.2,
+  "effort": 166,
+  "hours_low": 0.2,
+  "hours_high": 0.4,
+  "pct": 93.04,
+  "why": "UI Toolkit with USS carrying the existing CSS theme. Georgian strings throughout."
+ },
+ {
+  "system": "core",
+  "js_lines": 8736,
+  "ported": 8030,
+  "verified": 7414,
+  "remaining": 706,
+  "difficulty": 1.3,
+  "effort": 918,
+  "hours_low": 1.0,
+  "hours_high": 2.3,
+  "pct": 91.92,
+  "why": "The game loop, world hooks and startup sequence: the integration hub everything else plugs into."
+ }
+]

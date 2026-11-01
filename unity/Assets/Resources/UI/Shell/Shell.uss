@@ -1,0 +1,269 @@
+@import url("../Theme/CyberTheme.uss");
+
+/* Port of src/style.css:21-28 (html,body), :30-37 (.screen), :1330-1375
+ * (.scanlines / #chrome / .ch-status / #pilot-badge / .pb-*), :1384-1398
+ * (the big title block) and :1403-1465 (.login-*, .fld*, .auth-error,
+ * .cta-btn, .login-note) — the WoW-style shell: login, and the chrome that
+ * frames both it and the personage screen.
+ *
+ * NOT CARRIED OVER CLEANLY — exactly the same four gaps Character.uss,
+ * Settings.uss and Credits.uss already document, dropped the same way rather
+ * than inventing a fifth convention:
+ *  - clip-path corner cuts (.login-panel :1408, .cta-btn :1457). These two
+ *    are NOT dropped: UI/Common/AngledPanel.DrawNotchedTlBr paints that exact
+ *    top-left/bottom-right shear in generateVisualContent, so the USS leaves
+ *    their background-color transparent and ShellView.cs does the painting.
+ *  - linear-gradient()/radial-gradient() fills — flat colours instead.
+ *  - box-shadow glows (.fld > input:focus, .cta-btn, .fld-check input:checked)
+ *    — dropped; USS has no equivalent.
+ *  - repeating-linear-gradient() .scanlines overlay (:1330) — dropped, purely
+ *    cosmetic, same as Character.uss.
+ *  - @keyframes agIn (:1400, the login panel's 0.4s rise-and-fade-in) — USS
+ *    has transitions but no keyframe animations. Dropped rather than faked.
+ *
+ * FONT: nothing here sets -unity-font-definition. UI/Common/UiBootstrap.cs
+ * makes Resources/Fonts/TbilisiFlyText the PANEL default, which is the 6-face
+ * OFL fallback chain carrying Mkhedruli plus the 61 characters a Georgian
+ * face alone lacks (🍌 🧸 ⚔ ✈ ★ • ▶ ⎋ …). A per-selector font rule here
+ * would override that chain with a single face and bring the tofu boxes back.
+ */
+
+.shell-root {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+}
+.shell-root .hidden { display: none; }
+
+/* html,body { background: var(--bg0) } — src/style.css:21-28. */
+.shell-backdrop {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background-color: var(--bg0);
+}
+
+/* the personage screen's slot — .screen { position:absolute; inset:0 } (:30-36) */
+.shell-screens {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+}
+
+/* ---- #screen-login (.screen + .screen.active, src/style.css:30-37) ---- */
+.screen-login {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- the big title block (src/style.css:1384-1398) ---- */
+.ag-kicker {
+  font-size: 13px;
+  letter-spacing: 4px;            /* 0.35em of 13px; USS has no em on letter-spacing */
+  color: var(--mag);
+  margin-bottom: 10px;
+}
+.ag-title {
+  -unity-font-style: bold;
+  font-size: 56px;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+/* color: transparent + -webkit-text-stroke: 1px var(--cyan) (:1393-1396) —
+ * USS has -unity-text-outline, which is the real equivalent. */
+.ag-outline {
+  -unity-font-style: bold;
+  font-size: 23px;
+  letter-spacing: 9px;            /* 0.42em of 23px */
+  margin-top: 6px;
+  color: rgba(0, 0, 0, 0);
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: var(--cyan);
+}
+.ag-tagline {
+  margin-top: 14px;
+  font-size: 14px;
+  color: #9fb0c6;
+  letter-spacing: 1px;
+  white-space: normal;
+}
+
+/* ---- the login panel (src/style.css:1403-1465) ---- */
+.login-wrap { width: 420px; }
+.login-panel {
+  margin-top: 30px;
+  padding: 26px 28px;
+  /* A browser lets a too-tall #login-panel overflow and scroll; UI Toolkit's
+   * flex SHRINKS it instead, and at a small window (the 640x480 play-mode
+   * harness) the username field laid out 364x0 — nothing to click
+   * (LoginClickRun fieldRect=(138,339,364,0), 2026-10-31). Never shrink. */
+  flex-shrink: 0;
+  /* background + 1px inset border are painted by AngledPanel.DrawNotchedTlBr
+   * (ShellView.cs) so the 14px corner shear survives — see this file's header. */
+  background-color: rgba(0, 0, 0, 0);
+}
+.login-tabs {
+  flex-direction: row;
+  margin-bottom: 22px;
+  border-bottom-width: 1px;
+  border-bottom-color: rgba(125, 140, 161, 0.2);
+}
+.ltab {
+  flex-grow: 1;
+  -unity-font-style: bold;
+  font-size: 15px;
+  letter-spacing: 1px;
+  padding: 10px 0;
+  color: var(--dim);
+  background-color: rgba(0, 0, 0, 0);
+  border-width: 0;
+  border-bottom-width: 2px;
+  border-bottom-color: rgba(0, 0, 0, 0);
+  margin: 0;
+}
+.ltab:hover { color: var(--cyan2); }
+.ltab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+.fld { margin-bottom: 16px; flex-shrink: 0; }
+.fld-caption {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+.fld-wrap { position: relative; }
+.fld-input {
+  margin: 0;
+  font-size: 15px;
+}
+/* the inner input box — UI Toolkit's own class name for TextField's
+ * "unity-text-input" child; a `> TextInput` type selector does not match it. */
+.fld-input .unity-base-text-field__input {
+  background-color: rgba(5, 7, 13, 0.9);
+  border-width: 1px;
+  border-color: var(--line);
+  padding: 11px 13px;
+  color: var(--text);
+  font-size: 15px;
+}
+.fld-input .unity-base-text-field__input:focus { border-color: var(--cyan); }
+/* the simulated placeholder — must not eat the click that focuses the field;
+ * pickingMode is set in C# (ShellView.cs), the project's own convention. */
+.fld-placeholder {
+  position: absolute;
+  left: 14px; top: 11px;
+  font-size: 15px;
+  color: rgba(109, 130, 150, 0.7);
+}
+
+/* index.html:95-98 is `<input type=checkbox> <span>text</span>` — box first,
+ * then the Georgian line. UI Toolkit's Toggle is a BaseField, which lays its
+ * label FIRST and its checkmark second, so the row is reversed here (and
+ * pushed back to the left edge with flex-end, which in a reversed row is the
+ * visual left) to get the JS's own order. */
+.fld-check {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: -4px;
+  margin-bottom: 14px;
+}
+.fld-check Label {
+  font-size: 13px;
+  color: var(--dim);
+  white-space: normal;
+  margin-left: 10px;
+  min-width: 0;
+}
+.fld-check:hover Label { color: var(--text); }
+
+.auth-error {
+  margin-top: -4px;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #ffb3c8;
+  background-color: rgba(255, 62, 138, 0.12);
+  border-width: 1px;
+  border-color: rgba(255, 62, 138, 0.45);
+  white-space: normal;
+}
+
+.cta-btn {
+  width: 100%;
+  -unity-font-style: bold;
+  font-size: 17px;
+  letter-spacing: 1px;
+  padding: 15px 22px;
+  color: var(--bg0);
+  /* fill painted by AngledPanel.DrawNotchedTlBr (12px) — see header */
+  background-color: rgba(0, 0, 0, 0);
+  border-width: 0;
+  margin: 0;
+}
+.login-note {
+  margin-top: 14px;
+  -unity-text-align: middle-center;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--dim);
+  white-space: normal;
+}
+
+/* ---- #chrome (src/style.css:1337-1375) ---- */
+.chrome {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+}
+.chrome-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 36px;
+}
+.ch-status {
+  flex-direction: row;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+.pilot-badge {
+  flex-direction: row;
+  align-items: center;
+}
+.pb-avatar {
+  width: 34px;
+  height: 34px;
+  -unity-text-align: middle-center;
+  font-size: 15px;
+  color: var(--cyan);
+  background-color: rgba(63, 214, 255, 0.1);
+  border-width: 1px;
+  border-color: var(--line);
+  margin-right: 11px;
+}
+.pb-text { margin-right: 14px; }
+.pb-name { -unity-font-style: bold; font-size: 13px; letter-spacing: 1px; color: var(--text); }
+.pb-sub { font-size: 11px; color: var(--cyan); }
+.pb-out {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--dim);
+  background-color: rgba(0, 0, 0, 0);
+  border-width: 1px;
+  border-color: rgba(125, 140, 161, 0.3);
+  padding: 7px 11px;
+  margin: 0;
+}
+.pb-out:hover { color: var(--mag); border-color: rgba(255, 62, 138, 0.5); }
+
+.chrome-bottom {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 14px 36px;
+}
+.ch-ver { font-size: 10px; letter-spacing: 1px; color: var(--dim); }

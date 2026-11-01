@@ -1,0 +1,148 @@
+[
+  {
+    "cs": "Assets/Scripts/Combat/GunAnim.cs",
+    "js": "gunanim.js",
+    "covers": 641,
+    "note": "+21 over the prior 620 (the old note's claim that every top-level construct was already attributed turned out to be about CONSTRUCTS existing, not every behaviour inside them being reproduced — re-checked line by line now that this pass owns GunAnim.cs outright). Added: gunanim.js:263-264 key() (name-normalize helper, 'letters and digits only so a bone name survives whatever the loader did to it') plus fixing GunAxes()'s root_FindByName to compare through it instead of a raw string == (gunanim.js:312,372 usage sites); gunanim.js:356-357 the load() console.log diagnostic (ported as Debug.Log in Initialize()); gunanim.js:446-456 the held-weapon double-mixer-step guard (new public UpdateHeldPartsGuard(dt, heldAnim, heldIsRifle) — this is the exact tools/_probe_mag.mjs bug: one GunAnim per kind, both ticked every frame, so the OTHER kind's instance must not also step the held gun's parts mixer); gunanim.js:502-505 dispose() (new MarkDisposed(), sets Ready=false — nothing else to release, GunAnim.cs owns no GPU/mixer resource the way WeaponAnim does); gunanim.js:535 the OUT bias dict (was hardcoded 0f inline in GunPoseBlend.Apply's else-branch; restored as a named Dictionary<string,float> so the hook the JS comment calls 'the first thing anyone will want back' is reachable again — same zero behaviour today).",
+    "verified": "Brace/paren balance checked by script (106/106 braces, 371/371 parens at time of edit — file has since grown further from a second, concurrent agent's own independent fix to the SAME file's crossfade gap, see report). Not run through Unity -batchmode by this agent directly; a later run in this pass compiled Combat/ including this file with zero `error CS` (see handback report).",
+    "proposed_excluded": [
+      {
+        "js": "gunanim.js",
+        "what": "load()'s actual asset-loading half: gltf.loadAsync + its catch + animations[0] lookup + mixer construction",
+        "lines": "298-317",
+        "excluded": 20,
+        "reason": "Core/asset territory, not Combat's — Combat/GunAnim.cs's own Initialize(GameObject root, AnimationClip whole) already receives the result of this step directly (the asset is loaded by Combat/WeaponAnimLoader.cs + glTFast elsewhere); Initialize()'s own doc comment says so. Not a behavioural gap, just not this file's job."
+      }
+    ]
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Shooting.cs",
+    "js": "shooting.js",
+    "covers": 531,
+    "note": "+7 over the 524 this pass found already filed (muzzle-smoke debris emit, shooting.js:373-379, was added concurrently by another agent against Impacts.Debris — confirmed present and correct, not re-claimed here). This pass's own additions: shooting.js:382 gunReport — added the missing OnGunReport(Cartridge) hook and its Invoke() call in Fire() (every other audio cue in Fire() — OnDryFire, OnEjectCase, OnPlayClip, OnPlayWeaponClip — already had one; this was the one shot-audio call with NO hook at all, so every shot was silent downstream of Combat with no way to wire it); shooting.js:520-525 the crosshair-open-with-the-cone formula, added as a new continuously-maintained `CrosshairScale` public field computed in Update() — same 'measured formula, not art' rationale this file already used for FlashScale/FlashRotation (it is a function of the live spread cone, not a fixed art asset), for a UI consumer (e.g. UI/Hud/HudView.cs) to scale the reticle sprite by instead of Combat writing a DOM/UIElements transform.",
+    "verified": "Brace/paren balance checked by script (46/46 braces, 280/280 parens after this pass's edits). Not independently probed against tools/_probe_shooting.mjs this pass — OnGunReport/CrosshairScale are new surface with no existing probe key; flagging for whoever extends tools/_probe_shootlag.mjs or Editor/Probes/RangeFireProbe.cs next.",
+    "foundNotFiled": [
+      {
+        "js": "shooting.js",
+        "what": "target-list gathering before the aim raycast (world.collidablesNear + world.shootables + ownPlaneTargets, concat'd into one array for THREE.Raycaster.intersectObjects)",
+        "lines": "296-304",
+        "reason_not_filed": "Looked like a clean 'superseded by Physics.Raycast + LayerMask' exclusion (AimResolver.ResolveFireDirection already does exactly that), but docs/port_units/README.md was updated today with the crane.js precedent: 'Unity does this differently is not a supersession — check whether the port actually KEPT the concept first.' grep shows City/CollidableHash.cs IS a direct port of the SAME collidablesNear spatial hash these lines read (citymap.js:1286, cited by CollidableHash.cs). So the concept was kept, just in a different file Combat doesn't currently call into for this raycast — this is open design work (should Combat route its target raycasts through CollidableHash.Near() rather than trusting PhysX's own layer-masked broadphase alone?), not a provable exclusion. Reporting rather than filing, per the same README section's own worked example."
+      }
+    ]
+  },
+  {
+    "cs": "Assets/Scripts/Combat/RangeLane.cs",
+    "js": "rangelane.js",
+    "covers": 335,
+    "note": "No new covers this pass (verified the existing 335 rather than inflating it — RangeLanes.Adopt/Key/Sway/Hit/Update/Dispose already carry every real piece of driving, pendulum and firing-line math, including the Mathf.Sign(0)==+1-vs-Math.sign(0)==0 guard at update()'s dir computation and the already-correct simplification of dropping JS's `lane.obj.parent?.worldToLocal(...)` fixup line 379 — Unity's Transform.position is already world space, so the JS's local-reconversion step has no work to do here). Read the full 419-line source end to end against the full C# file to pin the remaining 84-line gap exactly rather than trust the prior note's round '#lane-ctl DOM card' claim.",
+    "verified": "Read both files in full; every non-DOM function/branch in rangelane.js traced to its RangeLane.cs equivalent by hand (no probe run this pass — RangeLane.cs's own prior entries already flag Update/Sway as its weakest-verified surface, unchanged here).",
+    "proposed_excluded": [
+      {
+        "js": "rangelane.js",
+        "what": "_ui() — builds the #lane-ctl DOM control card (buttons, distance readout element, hint line element)",
+        "lines": "126-196",
+        "excluded": 71,
+        "reason": "/UI/ territory (hard rule) — RangeLanes.Update returns a LaneHud snapshot (Show/DistM/Dir/Lane) plus the separate static HintText(dir) helper for a UI script to render; no gameplay logic lives here, confirmed by reading the function in full."
+      },
+      {
+        "js": "rangelane.js",
+        "what": "update()'s own DOM reads/writes around the ui element: the `const el = this._ui(); if (!el) return;` guard, the display:flex/none visibility toggle, and the final distance/hint-text/arrow-class DOM writes",
+        "lines": "366-367,372-375,406-410",
+        "excluded": 11,
+        "reason": "Same /UI/ DOM-write territory as the _ui() exclusion above. Every piece of real math around these lines (lane selection, goal-seek, drive acceleration, end-stop) is already in RangeLanes.Update/Sway; this is purely the HTML side-effects interleaved into the same function. Confirmed by reading update() in full against its C# port line by line — nothing was skipped here beyond these literal DOM calls."
+      },
+      {
+        "js": "rangelane.js",
+        "what": "dispose()'s DOM element removal (`this._el?.remove(); this._el = null;`)",
+        "lines": "415-416",
+        "excluded": 2,
+        "reason": "RangeLanes never builds a DOM element on the Unity side (see the two exclusions above), so there is nothing to remove. Combat/RangeLane.cs's own Dispose() already covers the real cleanup (motor stop + Lanes.Clear())."
+      }
+    ]
+  },
+  {
+    "cs": "Assets/Scripts/Combat/PaperTargets.cs",
+    "js": "papertargets.js",
+    "covers": 484,
+    "note": "+4 over the prior 480. Verified the prior note's 14+58=72 split by reading both flagged ranges in full rather than trusting the paraphrase: papertargets.js:280-293 (14 lines) IS the four rings' painted number glyphs and IS genuinely never read back by scoring (hit()/_punch() score off real-world millimetres against IssfTarget.RingRadiusMm, never off a pixel) — confirmed excludable, decoration only. papertargets.js:479-536 (58 lines) is the #target-card DOM score HUD, but one piece of real logic was buried inside it and had NOT been extracted: :525-528, the shot's CLOCK-FACE position (\"where on the clock face it landed, which is how a shot is called\" — atan2(x,y) rather than the usual atan2(y,x), because a clock face is measured clockwise from north). Pulled this out as ScoreSnapshot.ClockHour/RMm plus the public Snapshot(Card,Shot) method, same pattern PaperTargets.cs already used for the pure-math/UI split (IssfTarget vs PaperTargets). JsMath.Round used for the hour index (a discrete 1-12 value, not display-only float). This closes the module's entire budget: 484 covered + 68 proposed-excluded = 552.",
+    "verified": "Read src/papertargets.js:270-300 and :470-540 directly (quoted in this note) before touching anything; brace count 65/65 balanced after the edit; no Unity run this pass (static review only — ScoreSnapshot has no existing probe key, same caveat as Shooting.cs's CrosshairScale)."
+  },
+  {
+    "js": "papertargets.js",
+    "proposed_excluded": [
+      {
+        "js": "papertargets.js",
+        "what": "the four white rings' painted ring-number glyphs inside Paint() — pure decoration, confirmed never read by hit()/_punch()'s scoring math",
+        "lines": "280-293",
+        "excluded": 14,
+        "reason": "No bitmap font rasteriser exists in this port (flagged, not hidden, in PaperTargets.cs's own header). Scoring reads real-world millimetres off the mesh via IssfTarget.RingRadiusMm, never the ring-number pixels, so this is pure cosmetic text with no Unity gameplay replacement needed."
+      },
+      {
+        "js": "papertargets.js",
+        "what": "the #target-card DOM score HUD, minus the clock-face calculation now ported separately as ScoreSnapshot.ClockHour/RMm (papertargets.js:525-528, +4 lines, see this cs's own covers note)",
+        "lines": "479-524,529-536",
+        "excluded": 54,
+        "reason": "/UI/ territory (hard rule) — PaperTargets.cs's own ScoreSnapshot struct + Snapshot(Card,Shot) method hands a UI script every real field (Ring/Sum/N/Inner/Avg/GroupMm/ClockHour/RMm) to render however it likes; no UI/ widget for this specific card exists yet in unity/Assets/Scripts/UI/ (grepped — nothing matches papertarget/scorecard/ringnumber), so this is reported as 'no UI widget built yet', not as superseded by an existing one."
+      }
+    ]
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Pickups.cs",
+    "js": "pickups.js",
+    "covers": 218,
+    "note": "+7 over the prior 211 — verified the old note's claim that 'the entire remaining gap is DOM/CSS' was slightly wrong: pickups.js:134,184,185,193,200,201,204 (7 single-line real host-interaction calls — game._groundAt, game.gear.set, game.foot.wearGear, w.carried[slot], w.setCarried, w.select, game.foot.pos/yaw) were already functionally represented by the pre-existing IHost interface (Combat/Pickups.cs's own abstraction over game.weapons/game.gear/game.foot/game._groundAt), just never individually cited to their JS origin line. Added doc-comment citations on each IHost member pinning this down — no behaviour changed, this moves 7 lines from 'uncited gap' to 'covered, now cited'. The remaining 61-line gap (pickups.js:1-13,20-28,101-103,126-128,142,170-172,216-223,258-279 by the naive citation count) is the surrounding #pickup-cards DOM/CSS of _card() — re-skimmed but NOT re-verified line-by-line this pass (the same way the first 7 lines turned out to be miscategorised, these 61 deserve a dedicated re-check before being formally excluded; not filing a proposed_excluded here to avoid repeating the exact mistake just found).",
+    "verified": "Read src/pickups.js in full; grepped unity/Assets/Scripts/UI/ for an existing ground-loot card widget (pickup/groundloot/lootcard) — none found, so no named Unity UI replacement exists yet for the remaining DOM block. Brace count 52/52 balanced."
+  },
+  {
+    "cs": "Assets/Scripts/Combat/CrashDents.cs",
+    "js": "dents.js",
+    "covers": 915,
+    "note": "+15 over the prior 900, and corrects a prior pass's over-count. The old note claimed ~40 lines of _ownGeometry were an unportable 'interleaved-buffer-splitting' exclusion; re-measured directly against src/dents.js:526-552 and the real interleaved-attribute-splitting block is only 13 lines (532-544) — the surrounding 14 lines (userData copy at 527-531, the computeVertexNormals-if-missing guard and orig/own bookkeeping at 545-552) were ALREADY represented by the existing OwnGeometry() method and are left as already-covered-within-900, not re-claimed, to avoid the double-dip the project's README warns about. The genuine new work found and ported: dents.js:443-453 (11 lines — the stale-BVH-for-bullet-raycasts rebuild after a dent changes topology; Unity's MeshCollider has no partial-refit API the way three-mesh-bvh does, so both the 'refit' and 'rebuild from scratch' JS cases collapse to the same fix — reassign-to-self on the MeshCollider, reusing the exact trick PlaneDamage.Rebake already uses for the cut-wing collider) and dents.js:576,582-584 (4 lines — Repair() now explicitly disposes the owned dented mesh clone and the dentPaint material clones before dropping references, matching this project's DestroyImmediate convention for per-instance meshes/materials, same as AirframeBreakup.cs:433-446).",
+    "verified": "Read src/dents.js:340-610 directly against the new Dent()/Repair()/OwnGeometry() code (quoted line ranges in this note); brace count 86/86 balanced. Not run through Unity -batchmode independently this pass. Remaining gap after this pass: 965 - 915 - 13(proposed exclusion below) = 37 lines not accounted for by either this pass or the prior 900 — reported honestly rather than papered over; most likely candidates (not yet verified) are scattered single-line citations inside _tessellate/_displace/_renormalize that the brace-matched function-level coverage already implements but has never individually line-cited, in the same pattern this pass just found in _ownGeometry — flagging for the next pass rather than guessing a number."
+  },
+  {
+    "js": "dents.js",
+    "proposed_excluded": [
+      {
+        "js": "dents.js",
+        "what": "_ownGeometry's interleaved-attribute-splitting loop (glTF buffers that pack position/normal/uv into one interleaved array get split into plain typed arrays)",
+        "lines": "532-544",
+        "excluded": 13,
+        "reason": "No Unity analogue needed — Mesh always exposes plain Vector3[]/Vector2[]/Color[] arrays regardless of how glTFast packed the source buffers, so there is nothing to split. Corrects the prior pass's '~40 lines' estimate, which conflated this block with surrounding already-covered bookkeeping (see this cs's own covers note)."
+      }
+    ]
+  },
+  {
+    "cs": "Assets/Scripts/Combat/Rockets.cs",
+    "js": "rockets.js",
+    "covers": 198,
+    "note": "No change to covers — Rockets.cs was NOT edited this pass (confirmed: file bytes unchanged from before this task started). This entry exists only to file the accounting for the 73-line gap (340 - 198(Rockets.cs) - 69(Fx/RocketTrailFx.cs) = 73), re-measured directly against the real file rather than trusting the task's approximate line numbers (which were close but not exact — e.g. 'rockets.js:36-57' is actually RocketTrail's particle shader, already covered under Fx/RocketTrailFx.cs's own 69-line claim, not a raycast). Confirmed instead: the raycast call itself is this.raycaster.set/.far/.intersectObjects at :239-242, the raycaster construction is at :143-145, and the target-gathering helper _targets() is at :225-231 (matches the task's number here). RocketLauncher.Rocket in the current C# is PURE DATA (Pos/Dir/Speed/Dist/Puff, no Transform/GameObject field at all) — confirming the visible rocket model genuinely has no Unity representation yet: the model-construction block is src/rockets.js:147-187 (41 lines, body+nose+fins+canvas-gradient glow-sprite texture — corrects the task's '~39 lines, 146-184' estimate by one line on each end), and its matching disposal is :328-335 (8 lines, tmpl.traverse + glowMat dispose), both genuinely blocked on the same missing 3D asset — NOT faked as a primitive mesh, reported instead. dispose()'s remaining lines (:326-327 live-rocket array/parent cleanup, :337 sound.dispose()) have no C# work to do: Rockets.cs holds no per-rocket GameObject to remove from a parent (so :326-327 has literally nothing to port against in this architecture) and RocketSound.dispose() on the JS side is itself an empty stub (:132) with no resource to release. :336 trail.dispose() is already claimed under Fx/RocketTrailFx.cs's own entry, not reclaimed here.",
+    "verified": "Read src/rockets.js in full against the unedited Rockets.cs; grepped for raycaster/intersectObjects/THREE.Group/fins/glowMat/noseMat/bodyMat to pin every line number quoted above exactly, rather than trusting the task's approximate ranges. No Unity run needed (no code changed in this file)."
+  },
+  {
+    "js": "rockets.js",
+    "proposed_excluded": [
+      {
+        "js": "rockets.js",
+        "what": "raycaster construction + the target-gathering helper _targets() + the actual per-frame raycast call (set/.far/.intersectObjects/.far=Infinity)",
+        "lines": "143-145,225-231,239-242",
+        "excluded": 14,
+        "reason": "Physics.Raycast + LayerMask (TargetMask, already a field on RocketLauncher) is the named Unity replacement for THREE.Raycaster.intersectObjects — same precedent as Combat/Shooting.cs's AimResolver.ResolveFireDirection."
+      },
+      {
+        "js": "rockets.js",
+        "what": "RocketSound.dispose() — an empty stub ({}), and dispose()'s matching this.sound.dispose() call",
+        "lines": "132,337",
+        "excluded": 2,
+        "reason": "Nothing to port — the JS method itself releases no resource. Trivial no-op on both sides."
+      },
+      {
+        "js": "rockets.js",
+        "what": "dispose()'s this.trail.dispose() call",
+        "lines": "336",
+        "excluded": 1,
+        "reason": "Already claimed under Fx/RocketTrailFx.cs's own Dispose/dispose pairing (see that file's existing port_units entry) — not reclaimed here to avoid double-counting across the two cs files."
+      }
+    ]
+  }
+]

@@ -1,0 +1,61 @@
+[
+  {
+    "cs": "Assets/Scripts/Core/NetClient.cs",
+    "js": "server/index.js + src/main.js (auth/token bits)",
+    "covers": 90,
+    "note": "HTTP client via UnityWebRequest for the whole backend contract named in scope: /api/auth/register|login|me(GET+PATCH)|logout, /api/health, /api/damage(GET/PUT/DELETE), /api/addresses(GET)+/import, /api/hero-state beacon. net.js itself has no fetch-based auth calls (those live in main.js, out of scope to edit) -- TokenStore reproduces src/main.js:67-101's localStorage/sessionStorage token handling so the Unity client can actually authenticate. Confirmed response shapes read-only against the live backend (curl localhost:3001/api/health).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Core/HeroLink.cs",
+    "js": "net.js",
+    "covers": 233,
+    "whole_file": true,
+    "note": "WebSocket hero-state link via System.Net.WebSockets.ClientWebSocket: open/close, save/flush/merge, exponential reconnect backoff, local JSON mirror (file under Application.persistentDataPath standing in for localStorage). sendBeacon has no Unity equivalent (documented in-code); the local mirror is what actually survives reliably, same as the JS relies on localStorage when the socket write is lost.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Core/Wind.cs",
+    "js": "wind.js",
+    "covers": 90,
+    "note": "CPU wind state (time/gust/heading/dir) ported exactly, incl. the GeoFrame X-mirror applied to the prevailing-wind direction constant. WindsockDriver ported from the consuming closure in src/airport.js (City, out of scope to edit) since the task explicitly asks for 'windsock points downwind and lifts with the gust' -- a reusable, City-agnostic function. The GLSL vertex displacement (makeWindy / WIND_VERTEX, ~35 lines) is shader work, out of scope by project convention; translated instead into Core/Shaders/WindDisplacement.hlsl as a documented, NOT-YET-WIRED HLSL function for a future Shader Graph Custom Function node.",
+    "verified": "WindProbe + tools/_probe_windmath.mjs -- gust at 5 time checkpoints (direct compare) + heading (compared against the JS probe's hand-mirrored expectation, since wind.heading itself is a game-frame value by design -- see Wind.cs's header)"
+  },
+  {
+    "cs": "Assets/Scripts/Core/Shaders/WindDisplacement.hlsl",
+    "js": "wind.js (WIND_VERTEX/WIND_HEAD GLSL strings, lines 52-86)",
+    "covers": 35,
+    "note": "Documented HLSL translation of the per-vertex sway math, for a Shader Graph Custom Function node. NOT wired into any material or Shader Graph asset (would require the Unity editor to author the graph) -- code only.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Core/PlacementEditor.cs",
+    "js": "placement.js",
+    "covers": 131,
+    "whole_file": true,
+    "note": "The lat/lon custom-model nudge tool (distinct from src/devmode.js's general gizmo, which Unity's editor replaces). Positions route through GeoFrame.FromLatLon/YawToUnity rather than re-deriving the mirror by hand. The HTML side panel is replaced by StatusText()/Flash plain strings for UI Toolkit (Phase 6) to bind later.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/Core/AudioFx.cs",
+    "js": "audiofx.js",
+    "covers": 1010,
+    "note": "DistanceModel (_loudAt/_darkAt/_wetAt), a biquad (RBJ cookbook -- the same formulas the Web Audio spec itself defines BiquadFilterNode with) + procedural burst/tone AudioClip baking standing in for WebAudio's live parameter automation, SampleBank, and essentially the full impact/weapon/foley library (hitConcrete, hitMetal, hitSkin, metalTear, hitPerspex, hitSoft, detonation, debrisRain, glassBreak, collapseRumble, hitWood, hitWater, hitGlassPane, ricochetWhine, casingDrop, gunReport, dryFire, mag/ak mag/rack, footstep+landing+synthStep w/ the gait tables, drawGun, railMotor/railClunk/slideRelease, MachineVoice+fanVoice). NOT ported: the convolution reverb (_cityIR/_closeIR + every reverb/ir send, ~90 lines) -- Unity's AudioSource has no convolution facility without a custom native DSP plugin; DistanceModel.WetAt is kept exact so a future AudioMixer-based reverb send has the right number to use. Added two conveniences beyond a literal line-for-line port: FxAudio.StepRoleFor/Footstep(surface,...)/Landing(surface,...) overloads so Character/Footsteps.cs does not need its own copy of the surface->bank-role table, and FxAudio.LoadAllBanksEditorOnly() (AssetDatabase-based, #if UNITY_EDITOR) which loads the 4 already-imported bank.json files so the 204 real recordings play during in-Editor Play testing with zero manual wiring.",
+    "verified": "AudioFxProbe + tools/_probe_audiofx.mjs -- DistanceModel's 3 curves + propagation delay at 9 distances, near and far. The ~40 impact-library functions and MachineVoice are NOT individually probed (they are mostly sequences of Burst/Tone calls with literal constants -- reviewed by hand against the JS line by line, not machine-verified)."
+  },
+  {
+    "cs": "Assets/Scripts/Core/EngineSound.cs",
+    "js": "sound.js",
+    "covers": 500,
+    "whole_file": true,
+    "note": "The RPM state machine (off/starting/running/stopping, PROP/JET profiles, voiceFor()) ported exactly. Audio realized with Unity idioms: two looping AudioSources (idle/run) sharing one AudioLowPassFilter (the JS's muffleFilter) on one GameObject; wind noise and the oscillator fallback each get their OWN GameObject so Unity's per-GameObject filter semantics don't cross-contaminate them (a real topology risk identified and fixed during this port -- see the class's Start() comments); the 3-sawtooth fallback is live DSP via OnAudioFilterRead (EngineFallbackOscillator) since its frequency varies continuously with RPM, unlike the baked one-shots in AudioFx.cs. Every WebAudio setTargetAtTime(...) becomes a per-frame one-pole exponential approach computed in Update(dt), with the SAME tau values the JS used.",
+    "verified": "EngineProbe + tools/_probe_sound.mjs -- RPM state machine for prop/jet/jet-afterburner profiles, 6 checkpoints each. Covers ignite->starting->running only: shutdown() short-circuits to state='off' without a live AudioContext in the JS itself, so the stopping decay curve cannot be observed from plain node (documented in both probe scripts) and was reviewed by hand instead."
+  },
+  {
+    "cs": "Assets/Scripts/Core/CrashSequence.cs",
+    "js": "crash.js",
+    "covers": 335,
+    "note": "The cinematic crash state machine (tumble/bounce/settle/burning), wreck + debris physics, and the Georgian death-screen trigger/strings (DeathScreenText -- Title='ჩამოვარდი', Subtitle='კორპუსი განადგურებულია', RestartButton='კიდევ ერთხელ ↻', carried byte-for-byte from index.html:260-265; no English 'WASTED' anywhere). Dependencies on fire.js/smoke.js (explicitly out of scope) and the pooled fx-light system are expressed as an optional CrashHooks bag so this class runs standalone with no VFX/Combat system wired yet. NOT ported: makeFireballMaterial's own GLSL shader (~65 lines, boiling 3D-noise-displaced geometry) -- shader work, out of scope; ApplyFireballLook drives a plain sphere's colour/alpha with the SAME timing formula instead (documented placeholder, exact numbers, flat instead of boiling). The YXZ Euler clamp in Settle() uses Unity's own eulerAngles extraction rather than a byte-exact YXZ decomposition match (documented approximation; the angles involved are small and cosmetic).",
+    "verified": "CrashProbe + tools/_probe_crashmath.mjs -- numerically proves BOTH handedness claims used in this file: the death-cam's cross product needs its operands SWAPPED (5 cases, confirmed: swapping matches the correctly-mirrored side vector, NOT swapping gives its negative), and the wreck's wall-bounce Vector3.Reflect needs NO swap at all (3 cases, confirmed mirror-invariant since it is purely dot-product based)."
+  }
+]

@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { patchClass } from './hotpatch.js';
 import { newGltfLoader } from './gltf.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
+// The two-bone arm solver, and the chains it needs. It lives in weapons.js
+// because a hand on a grip was the first thing that wanted it; it is not
+// private to weapons, and weapons.js imports nothing from here, so this is not
+// a cycle. foot.js's climb uses the same three.
+import { applyReachPose, findArmChain, findArmChainL } from './weapons.js';
 import { movesFor, loadMoves } from './anims.js';
 
 // WoW-style races = the hero's CLASS. The race decides the role, the run
@@ -237,6 +242,17 @@ const MANTLE_KEYS = [
   [1.00, 0, 0, 0, 0, 0, 0, 0, 0],
 ];
 const _keyv = new Array(8).fill(0);
+// A hand on a surface starts to let go at EDGE_REACH_FROM of the arm's length
+// and is gone by EDGE_REACH_TO -- the same numbers the climb lets go of a ledge
+// at (foot.js HAND_REACH_FROM/TO), because it is the same arm.
+const EDGE_REACH_FROM = 0.99;
+const EDGE_REACH_TO = 1.06;
+const _qe1 = new THREE.Quaternion();
+const _qe2 = new THREE.Quaternion();
+const _qe3 = new THREE.Quaternion();
+const _qe4 = new THREE.Quaternion();
+const _qe5 = new THREE.Vector3();
+const _ve1 = new THREE.Vector3();
 // A human's climbing dimensions, for whatever a body cannot measure on itself
 // (see climbMetrics). Mirrored in foot.js for a rig with no method at all.
 const CLIMB_MET_FALLBACK = {
@@ -393,6 +409,26 @@ const _av3 = new THREE.Vector3();
 const _aq1 = new THREE.Quaternion();
 const _aq2 = new THREE.Quaternion();
 
+// IS THIS STILL EXACTLY WHAT WE LEFT ON THE BONE? The whole pose stack turns on
+// that question (see _boneTwist): if the bone still holds our own value the
+// mixer stayed out this frame, and the base we recorded is still the clip's.
+//
+// It is asked of a quaternion against a straight COPY of itself, so the honest
+// test is "are these the same four numbers", and it has to be asked that way.
+// It used to be `a.angleTo(b) < 1e-6`, and angleTo is 2*acos(|dot|) -- for a
+// quaternion against its own copy that is 2*acos(|q|^2), which is zero only
+// while |q| is exactly 1. Every pose we write is a product of quaternions
+// (_aimQ alone multiplies four, and three's invert() is a conjugate, so the
+// norms multiply), and A NORM ERROR OF 1.3e-13 ALREADY READS AS 1e-6 OF ANGLE.
+// A few frames of that and the bone's own value looked to this test like the
+// animation's: the pose rebased off its own output, which is how a planted
+// foot came to wind round and round through a climb ("sometimes my foot
+// starting rotate"). Comparing components cannot drift, whatever the norm.
+function qSame(a, b) {
+  return Math.abs(a.x - b.x) < 1e-7 && Math.abs(a.y - b.y) < 1e-7
+    && Math.abs(a.z - b.z) < 1e-7 && Math.abs(a.w - b.w) < 1e-7;
+}
+
 // The bone-local rotation that lays a bone along `want` given that it lies along
 // `cur` now (both world directions) -- the same correction weapons.js's aimBone
 // writes straight onto the bone, HANDED BACK instead of written, so it can be
@@ -406,9 +442,9 @@ function _aimQ(bone, cur, want, out) {
   _aq1.setFromUnitVectors(_av1.normalize(), _av2.normalize());
   bone.matrixWorld.decompose(_av3, _aq2, _av3);
   _aq1.multiply(_aq2);                                   // the wanted world rotation
-  if (!bone.parent) return out.copy(_aq1);
+  if (!bone.parent) return out.copy(_aq1).normalize();
   bone.parent.matrixWorld.decompose(_av3, _aq2, _av3);
-  return out.copy(_aq2).invert().multiply(_aq1);         // ...in the parent's frame
+  return out.copy(_aq2).invert().multiply(_aq1).normalize();  // ...in the parent's frame
 }
 
 export class CharacterRig {
@@ -1952,6 +1988,90 @@ export class CharacterRig {
     }
   }
 
+  // ---- BOTH HANDS ON A SURFACE ----------------------------------------------
+  //
+  // "man i need u put fucken hands literaly on wings". A POSE cannot do this
+  // and neither can moving the body: measured on the wing ride, the two hands
+  // sat 0.38 m apart vertically while the wing under them differed by 0.05 --
+  // raise him until the low hand is clear and the high one is a third of a
+  // metre in the air, lower him until the high one touches and the other is
+  // through the skin. The arms have to SOLVE onto two points, which is what
+  // the climb does with a ledge (foot.js _handsOnLedge) and what this is: the
+  // same machinery, off the rig, for anything that needs a pair of hands put
+  // somewhere in the world.
+  //
+  // `targetL`/`targetR` are WORLD points (null skips that hand), `w` fades the
+  // whole thing 0..1. Call it AFTER whatever posed the body: it overwrites the
+  // arms, and a pose written afterwards would win.
+  //
+  // THE RELEASE IS OWNED HERE, which is the point of it being a method. Every
+  // bone it solves is written through _boneSet, so the pose stack knows the
+  // arms are ours and _releaseBones can hand them back; and at w < 0.02 it
+  // hands back ONLY the bones that still hold our own last solve. That matters
+  // because the body pose (setWingGrip) writes these same bones: releasing
+  // blind would undo the pose's arms on the frame the hands let go.
+  handsOnEdge(targetL, targetR, w = 1, { hook = null } = {}) {
+    const root = this.obj;
+    const held = (this._edgeHeld ??= new Map());
+    if (!(w > 0.02)) {
+      for (const [bone, q] of held) if (qSame(q, bone.quaternion)) this._releaseBone(bone);
+      held.clear();
+      return true;
+    }
+    const len = this.climbMetrics?.()?.armLen || 0.55;
+    const down = _qe5.set(0, 0, 0);       // (a vector, borrowed as scratch below)
+    let any = false;
+    let curl = 0;
+    for (const [side, target] of [['L', targetL], ['R', targetR]]) {
+      if (!target) continue;
+      const chain = side === 'R'
+        ? (this._armChain !== undefined ? this._armChain : (this._armChain = findArmChain(root)))
+        : (this._armChainL !== undefined ? this._armChainL : (this._armChainL = findArmChainL(root)));
+      const hand = this._handPoint?.(side) ?? this._rollRig?.()?.[side]?.hand;
+      if (!chain?.upper || !chain.fore || !hand || hand === chain.fore) continue;
+      chain.upper.updateWorldMatrix(true, false);
+      const S = _ve1.setFromMatrixPosition(chain.upper.matrixWorld);
+      // A HAND LETS GO WHEN THE ARM RUNS OUT, rather than stretching to a point
+      // it cannot reach. Traversing the wing, the outboard hand WILL run out --
+      // that is the move, not a fault to hide.
+      const wr = w * THREE.MathUtils.clamp(
+        (EDGE_REACH_TO * len - S.distanceTo(target))
+        / ((EDGE_REACH_TO - EDGE_REACH_FROM) * len), 0, 1);
+      if (!(wr > 0.01)) continue;
+      const preU = _qe1.copy(chain.upper.quaternion);
+      const preF = _qe2.copy(chain.fore.quaternion);
+      if (!applyReachPose(this, root, hand, target, null, null, chain)) continue;
+      const fU = _qe3.copy(chain.upper.quaternion);
+      const fF = _qe4.copy(chain.fore.quaternion);
+      // Faded, the arm goes back toward what the POSE just put there, not
+      // toward the clip: a hand that has run out of reach should return to the
+      // shape the body is holding, not to a standing idle.
+      if (wr < 0.999) { fU.slerp(preU, 1 - wr); fF.slerp(preF, 1 - wr); }
+      chain.upper.quaternion.copy(preU); this._boneSet(chain.upper, fU);
+      chain.fore.quaternion.copy(preF); this._boneSet(chain.fore, fF);
+      chain.upper.updateWorldMatrix(false, true);
+      for (const b of [chain.upper, chain.fore]) {
+        let q = held.get(b);
+        if (!q) held.set(b, (q = new THREE.Quaternion()));
+        q.copy(b.quaternion);
+      }
+      // ...AND THE HAND ITSELF CLOSES. A flat palm laid on a wing reads as not
+      // touching however exactly the wrist is placed. A body whose hand is one
+      // bone (the banana's) gets it bent over the surface; one with fingers
+      // curls them below.
+      const dir = hook
+        ? down.copy(hook)
+        : down.setFromMatrixColumn(root.matrixWorld, 1).normalize().negate();
+      this.setHandHook?.(side, dir, wr);
+      curl = Math.max(curl, wr);
+      any = true;
+    }
+    // One curl for both hands: this is a two-handed hold, and setGrip is a
+    // whole-hand-rig call.
+    if (curl > 0.01) this.setGrip?.(curl);
+    return any;
+  }
+
   // THE MITTEN BENT OVER THE EDGE. A body with fingers closes them on the lip
   // (setGrip); one whose hand is a single bone -- the banana's -- would hold the
   // edge with a hand that continues the forearm in a straight line, which is a
@@ -2005,6 +2125,143 @@ export class CharacterRig {
       // the opposite way from the slide, where it comes up out of a recline
       this._boneTwist(arms.neck ?? arms.head, k * 0.5);
     }
+    return true;
+  }
+
+  // ---- standing in a gale, and then flying in it ---------------------------
+  //
+  // The wind tunnel in src/crane.js blows down the slung Mustang's wing, and
+  // the user asked to stand on it: "i need personage when is on planes wing, i
+  // need it put hand on wind and move by wind, when it will be in tenter u
+  // will be in lie position". Two shapes, driven by how hard it is blowing;
+  // crane.js owns where the body IS (it writes the root transform), these own
+  // what the body is DOING. Same contract as every pose in here -- written
+  // after the mixer, through _boneTwist/_boneTurn, released at w < 0.02.
+
+  // A HAND INTO THE WIND. One arm up and forward into the stream, out from the
+  // ribs (a hand held into a gale is not a salute); the other tucked across the
+  // body; weight back on a bent knee with one foot behind, and the chest leaned
+  // into it. `side` picks the arm, `w` is the strength.
+  setWindBrace(w, side = 1) {
+    // _legRig, not _crouchRig: the latter refuses a body whose boots are parked
+    // off the shin -- the astronaut, which is the body most people are playing.
+    // The climb poses take the same route and carry the boots by hand.
+    const legs = this._legRig();
+    if (!legs) return false;
+    if (w < 0.02) { this._releaseBones(); return true; }
+    const arms = this._rollRig();
+    if (arms) this._calibrateArms(arms, legs.hips ?? legs.spine);
+    const k = AIR_FOLD * w * legs.sign;
+    const up = side > 0 ? 'R' : 'L';
+    const other = side > 0 ? 'L' : 'R';
+    // braced: one foot back under a bent knee, the way anybody stands in a gust
+    for (const s of ['L', 'R']) {
+      const l = legs[s];
+      const back = s === other ? 1.15 : 0.75;
+      this._boneTwist(l.thigh, k * 0.10 * back);
+      this._boneTwist(l.calf, k * 0.34 * back);
+      if (l.ankle) this._boneTwist(l.ankle, -k * 0.12 * back);
+    }
+    this._boneTwist(legs.spine, -k * 0.20);         // chest into the wind
+    if (arms) {
+      const a = AIR_FOLD * w * (arms.sign ?? 1);
+      const hand = (s) => arms[s].hand ?? arms[s].fore;
+      // PITCH AND ROLL IN ONE WRITE. Two _boneTwist calls on one bone throw the
+      // first away (see _boneTurn), and this arm needs both: forward and up
+      // into the stream, and out from the ribs.
+      this._boneTurn(arms[up].upper, -a * 1.30, 0,
+        this._turnToward(arms[up].upper, 0.30 * w, up === 'R' ? 'right' : 'left', hand(up), 2));
+      this._boneTwist(arms[up].fore, -a * 0.16);     // elbow soft, not locked
+      this._boneTurn(arms[other].upper, a * 0.16, 0,
+        this._turnToward(arms[other].upper, 0.08 * w, other === 'R' ? 'left' : 'right', hand(other), 2));
+      this._boneTwist(arms[other].fore, this._turnToward(arms[other].fore, 1.05 * w, 'fold'));
+      this._lookUp(0.22 * w);                        // face into it
+    }
+    this.settleFeet();      // a parked boot rides the end of its shin (no-op elsewhere)
+    return true;
+  }
+
+  // BODYFLIGHT. Once the stream has him his feet leave the wing and he is held
+  // in it, and the shape a body makes there is NOT setAirPose's long jump
+  // (both arms thrown forward, legs folded to land) -- it is the belly-to-earth
+  // arch every first-time flyer is taught: arms out to the sides and swept
+  // back, elbows bent up, shins up behind bent knees, back arched, head up.
+  // The arch is the whole thing: it is what makes it stable instead of a fall.
+  setFlyPose(w) {
+    const legs = this._legRig();           // see setWindBrace on which rig this is
+    if (!legs) return false;
+    if (w < 0.02) { this._releaseBones(); return true; }
+    const arms = this._rollRig();
+    if (arms) this._calibrateArms(arms, legs.hips ?? legs.spine);
+    const k = AIR_FOLD * w * legs.sign;
+    for (const s of ['L', 'R']) {
+      const l = legs[s];
+      this._boneTwist(l.thigh, k * 0.14);    // hips open, thighs a little back
+      this._boneTwist(l.calf, k * 0.46);     // shins up behind the knees
+      if (l.ankle) this._boneTwist(l.ankle, k * 0.18);   // toes trailing
+    }
+    this._boneTwist(legs.spine, k * 0.26);   // THE ARCH, chest and hips driven down
+    if (arms) {
+      const a = AIR_FOLD * w * (arms.sign ?? 1);
+      // ONCE AN ARM IS OUT TO THE SIDE IT LIES ALONG THE BODY'S LEFT-RIGHT AXIS,
+      // and a turn about that axis -- which is all _boneTwist can do -- moves it
+      // nowhere at all. That is why the first cut of this pose came out as two
+      // straight wings with no elbows in them. The sweep and the elbow are YAWS,
+      // about the body's vertical: by the right-hand rule a positive yaw takes
+      // the RIGHT arm forward and the left arm back, hence the per-side sign.
+      for (const s of ['L', 'R']) {
+        const hand = arms[s].hand ?? arms[s].fore;
+        const sgn = s === 'R' ? 1 : -1;
+        const out = this._turnToward(arms[s].upper, 1.15 * w, s === 'R' ? 'right' : 'left', hand, 2);
+        this._boneTurn(arms[s].upper, 0, -sgn * 0.22 * w, out);   // out, and swept back
+        this._boneTurn(arms[s].fore, 0, sgn * 0.95 * w, 0);       // forearms forward: the flyer's box
+      }
+      this._lookUp(0.45 * w);                // head up, eyes down the stream
+    }
+    this.settleFeet();
+    return true;
+  }
+
+  // HOLDING ON, which is the OPPOSITE pose to flying in it. Once the hero has
+  // his hands on the wing's leading edge and is streaming off it -- "he put
+  // hands on wing and flyin with plane like this" -- the arms go FORWARD, not
+  // out and back: both hands ahead of the head and a little apart, as if closed
+  // over an edge, elbows soft, the shoulders dragged up toward the ears by the
+  // load, the legs together and trailing, and a shallower arch than setFlyPose
+  // because he is being pulled straight rather than floating. `side` is the
+  // leading hand, which swaps when he crosses the fuselage onto the other wing.
+  //
+  // (There is no clavicle in _rollRig -- only the upper arm, forearm and hand --
+  // so the shrug is as much arm elevation as the shoulder will take rather than
+  // a shoulder write. The chest is deliberately left alone: it belongs to
+  // swingBody, and two writers on one bone means the first is thrown away.)
+  setWingGrip(w, side = 1) {
+    const legs = this._legRig();           // see setWindBrace on which rig this is
+    if (!legs) return false;
+    if (w < 0.02) { this._releaseBones(); return true; }
+    const arms = this._rollRig();
+    if (arms) this._calibrateArms(arms, legs.hips ?? legs.spine);
+    const k = AIR_FOLD * w * legs.sign;
+    for (const s of ['L', 'R']) {
+      const l = legs[s];
+      this._boneTwist(l.thigh, k * 0.07);    // together and trailing, not splayed
+      this._boneTwist(l.calf, k * 0.13);     // a hair of knee: a towed body is straight
+      if (l.ankle) this._boneTwist(l.ankle, k * 0.22);   // toes trailing
+    }
+    this._boneTwist(legs.spine, k * 0.12);   // a shallower arch than free flight
+    if (arms) {
+      const a = AIR_FOLD * w * (arms.sign ?? 1);
+      for (const s of ['L', 'R']) {
+        const hand = arms[s].hand ?? arms[s].fore;
+        const lead = s === (side > 0 ? 'R' : 'L') ? 1.08 : 0.92;
+        // hands out AHEAD, and a little apart so they are two grips and not one
+        this._boneTurn(arms[s].upper, -a * 1.42 * lead, 0,
+          this._turnToward(arms[s].upper, 0.12 * w, s === 'R' ? 'right' : 'left', hand, 2));
+        this._boneTwist(arms[s].fore, -a * 0.12);        // soft, taking the load
+      }
+      this._lookUp(0.30 * w);                // head up, looking along the edge
+    }
+    this.settleFeet();
     return true;
   }
 
@@ -2150,12 +2407,12 @@ export class CharacterRig {
       rec = { base: new THREE.Quaternion(), exit: new THREE.Quaternion(), has: false };
       this._posed.set(bone, rec);
     }
-    if (!(rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6)) rec.base.copy(bone.quaternion);
+    if (!(rec.has && qSame(rec.exit, bone.quaternion))) rec.base.copy(bone.quaternion);
     const axis = _v1.setFromMatrixColumn(this.obj.matrixWorld, 0).normalize();
     const p = bone.parent ? bone.parent.getWorldQuaternion(_q1) : _q1.identity();
     const d = _q2.setFromAxisAngle(axis, angle);
     const local = _q3.copy(p).invert().multiply(d).multiply(p);
-    bone.quaternion.copy(rec.base).premultiply(local);
+    bone.quaternion.copy(rec.base).premultiply(local).normalize();
     rec.exit.copy(bone.quaternion);
     rec.has = true;
   }
@@ -2185,6 +2442,13 @@ export class CharacterRig {
     if (want === 'back' || want === 'fwd') {
       d.setFromMatrixColumn(this.obj.matrixWorld, 2).normalize(); // +Z is behind
       if (want === 'fwd') d.negate();
+    } else if (want === 'right' || want === 'left') {
+      // OUT FROM THE RIBS -- an arm abducting. Asked for by the body's own
+      // side rather than as 'out', because which way out is depends on which
+      // arm it is and the caller is the one that knows. Pass col = 2 with it:
+      // a limb leaves the body by turning about the fore-aft axis.
+      d.setFromMatrixColumn(this.obj.matrixWorld, 0).normalize();
+      if (want === 'left') d.negate();
     } else if (want === 'up' || want === 'down') {
       d.setFromMatrixColumn(this.obj.matrixWorld, 1).normalize();
       if (want === 'down') d.negate();
@@ -2243,7 +2507,7 @@ export class CharacterRig {
   // clip's. Same reasoning as _boneTwist, read instead of written.
   _clipQ(bone) {
     const rec = this._posed.get(bone);
-    return rec && rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6
+    return rec && rec.has && qSame(rec.exit, bone.quaternion)
       ? rec.base : bone.quaternion;
   }
 
@@ -2256,8 +2520,8 @@ export class CharacterRig {
       rec = { base: new THREE.Quaternion(), exit: new THREE.Quaternion(), has: false };
       this._posed.set(bone, rec);
     }
-    if (!(rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6)) rec.base.copy(bone.quaternion);
-    bone.quaternion.copy(q);
+    if (!(rec.has && qSame(rec.exit, bone.quaternion))) rec.base.copy(bone.quaternion);
+    bone.quaternion.copy(q).normalize();
     rec.exit.copy(bone.quaternion);
     rec.has = true;
   }
@@ -2312,7 +2576,7 @@ export class CharacterRig {
       rec = { base: new THREE.Quaternion(), exit: new THREE.Quaternion(), has: false };
       this._posed.set(bone, rec);
     }
-    if (!(rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6)) rec.base.copy(bone.quaternion);
+    if (!(rec.has && qSame(rec.exit, bone.quaternion))) rec.base.copy(bone.quaternion);
     const d = _q8.identity();
     const turn = (col, a) => {
       if (!a) return;
@@ -2323,7 +2587,7 @@ export class CharacterRig {
     turn(0, pitch);
     turn(2, roll);
     const p = bone.parent ? bone.parent.getWorldQuaternion(_q9) : _q9.identity();
-    bone.quaternion.copy(rec.base).premultiply(_q7.copy(p).invert().multiply(d).multiply(p));
+    bone.quaternion.copy(rec.base).premultiply(_q7.copy(p).invert().multiply(d).multiply(p)).normalize();
     rec.exit.copy(bone.quaternion);
     rec.has = true;
   }
@@ -2337,10 +2601,10 @@ export class CharacterRig {
       rec = { base: new THREE.Quaternion(), exit: new THREE.Quaternion(), has: false };
       this._posed.set(bone, rec);
     }
-    if (!(rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6)) rec.base.copy(bone.quaternion);
+    if (!(rec.has && qSame(rec.exit, bone.quaternion))) rec.base.copy(bone.quaternion);
     const p = bone.parent ? bone.parent.getWorldQuaternion(_q9) : _q9.identity();
     const d = _q8.setFromAxisAngle(axis, angle);
-    bone.quaternion.copy(rec.base).premultiply(_q7.copy(p).invert().multiply(d).multiply(p));
+    bone.quaternion.copy(rec.base).premultiply(_q7.copy(p).invert().multiply(d).multiply(p)).normalize();
     rec.exit.copy(bone.quaternion);
     rec.has = true;
   }
@@ -2350,7 +2614,7 @@ export class CharacterRig {
   _releaseBone(bone) {
     const rec = this._posed.get(bone);
     if (!rec?.has) return;
-    if (rec.exit.angleTo(bone.quaternion) < 1e-6) bone.quaternion.copy(rec.base);
+    if (qSame(rec.exit, bone.quaternion)) bone.quaternion.copy(rec.base);
     rec.has = false;
   }
 
@@ -2367,10 +2631,60 @@ export class CharacterRig {
     }
     if (!this._posed.size) return;
     for (const [bone, rec] of this._posed) {
-      if (rec.has && rec.exit.angleTo(bone.quaternion) < 1e-6) bone.quaternion.copy(rec.base);
+      if (rec.has && qSame(rec.exit, bone.quaternion)) bone.quaternion.copy(rec.base);
       rec.has = false;
     }
   }
+
+  // ---- a pose that stays put ------------------------------------------------
+  //
+  // THE MIXER STOPS WRITING. Everything in here is built on one assumption:
+  // the animation mixer asserts the clip's own pose on every bone every frame,
+  // and the procedural poses are a twist off THAT (_boneTwist's base, read
+  // back out by _clipQ, handed over again by _releaseBones). It is true while
+  // a clip is running -- and it is false the moment the clip stops moving.
+  // three's PropertyMixer.apply compares the two accumulation buffers and
+  // skips the write when they match, so an animation held at one frame (which
+  // is exactly what a strapped-in pilot gets: updateSeated steps the mixer by
+  // ZERO so the idle's sway cannot leak into the hands) asserts itself once
+  // and then never again.
+  //
+  // After that the skeleton is only ever written by the pose stack, reading a
+  // bone it wrote itself last frame. A twist rebases off its own output; the
+  // two-bone solve on top of it lays the arm back along the line to the stick
+  // but cannot take out the ROLL the twist added about the bone's own axis,
+  // so the roll survives into the next frame and the next twist adds to it.
+  // The pilot's arms, shins and spine wind round and round, for ever.
+  // ("when i am sittin in plane, personage starts to rotate infinity")
+  //
+  // So when the clip is going to be held still, the pose it is held at is
+  // kept, and put back at the top of every frame before anything poses on it.
+  // The mixer is then irrelevant: the base is ours, it is the same every
+  // frame, and nothing can accumulate.
+  freezePose() {
+    const frozen = (this._frozen ??= new Map());
+    frozen.clear();
+    this.obj.traverse((o) => {
+      if (!o.isBone) return;
+      frozen.set(o, {
+        q: o.quaternion.clone(),
+        p: o.position.clone(),   // plantFoot and the climb move bones outright
+      });
+    });
+    return frozen.size;
+  }
+
+  restoreFrozen() {
+    const frozen = this._frozen;
+    if (!frozen?.size) return false;
+    for (const [bone, was] of frozen) {
+      bone.quaternion.copy(was.q);
+      bone.position.copy(was.p);
+    }
+    return true;
+  }
+
+  thawPose() { this._frozen?.clear(); }
 
   // Lowest ankle, in the rig's own frame (its origin is the ground).
   _ankleY() {

@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/City/GroveRockScatter.cs",
+  "js": "citymap.js",
+  "covers": 58,
+  "note": "_buildGroves (citymap.js:8186-8207) and _buildRocks (:8212-8262) — the scatter DECISION work: the two per-function fract-sin hashes, the wooded-cell subsample walk with its 0.35 threshold and half-cell jitter, the running counter that feeds that jitter, the 8-way round-robin bucketing, and one boulder's TRS (scale spread, independent Y squash, yaw). Both functions are LIVE (_buildGroves called from citymap.js:930 on a 2.5s timeout, _buildRocks from :897 in the stage list) — an earlier pass left them untriaged next to the dead _buildApartments/_buildHouses, so this records that they are real work. NOT claimed: the GLB loads themselves (chestnut_hero.glb, rock-0..7.glb) and the instanced draw, which belong to City/VegetationLoader.cs and City/ChunkedInstancer.cs and already exist. The three fract-sin hashes in this region of citymap.js use DIFFERENT constants (groves 45.3/88.1/3571.7, rocks 78.233/12.9898/43758.5453, trees 127.1/311.7/43758.5453) and reusing VegetationLoader.Rnd here would compile, look right, and scatter every grove and boulder in the wrong place — so each gets its own, computed in double.",
+  "verified": "unity/Assets/Editor/Probes/GroveRockProbe.cs vs tools/_probe_groverock.mjs, RUN and diffed: PASS, 38 values across 24/24 paired lines at float32 precision. The .mjs regexes the hash constants out of the real src/citymap.js rather than retyping them. The hash outputs are compared to TEN decimals deliberately, because grid indices reach ~170,000 and that is exactly where float32 stops agreeing with float64 — a 6-7 digit match would have been the bug, not a formatting artefact."
+ }
+]

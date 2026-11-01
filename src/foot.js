@@ -49,6 +49,19 @@ const CLIMB_OUT = 0.22;    // s of easing out of the mantle's pose when a climb
                            // second -- 0.7 m of chest travel -- and whipped the
                            // slung rifle hard enough to read as it falling off.
 const CLIMB_CLEAR = 1.7;   // m — headroom needed above a ledge to land on it
+// How fast the camera's AIM POINT follows the hero WHILE SOMETHING ELSE HAS
+// HIM (game.heldByWind). About a fifth of a second of trail, which takes a
+// four-hertz shake out of the picture without the camera losing him. On his
+// own feet there is no lag at all.
+const CAM_AIM_HELD = 5;
+const CAM_AIM_OUT = 0.35;  // s for that trail to be taken back up once he is free
+const CAM_AIM_SNAP = 120;  // ...by which point the aim is following him exactly
+const LEDGE_FLAT = 0.6;    // the up-component a surface needs before it counts
+                           // as a top to stand on rather than the side of
+                           // something — about 53° off horizontal. A boom, a
+                           // sloping girder or a cargo ramp answers a downward
+                           // probe at every height along its flank, and the
+                           // mantle then lays the body INTO it.
 // ASSASSIN'S CREED'S CLIMB. Four beats, each its own phase in _climbFrame:
 //   REACH  — the hands go to the lip and close on it; the body swings in under
 //            them (a hop up to them if they are higher than the arms reach);
@@ -707,7 +720,9 @@ export class OnFoot {
     }
     for (const rec of (g.targets?.list ?? [])) {
       const w = rec.wrapper;
-      if (!w || w === g.plane || !w.parent || rec.dead) continue;
+      // ...but not one hanging four metres up on a crane hook: there is no
+      // wing root to step onto (src/crane.js).
+      if (!w || w === g.plane || !w.parent || rec.dead || w.userData.noBoard) continue;
       w.getWorldPosition(_seatV);
       const d = this.pos.distanceTo(_seatV);
       if (d >= reach(w)) continue;
@@ -3820,7 +3835,15 @@ export class OnFoot {
     g.plane.add(this.rig.obj);
     this.rig.obj.rotation.set(0, 0, 0); // the body's -Z and the nose are the same way
     this.rig.obj.position.copy(seat);
-    this.rig.play('Idle');
+    // THE POSE THE SEAT IS BUILT ON. Cut to the idle (no crossfade -- a pilot
+    // strapping in is not a transition), step the mixer ONCE with a real dt
+    // so it actually writes that pose onto the bones, and keep it. From here
+    // on updateSeated puts it back every frame: see CharacterRig.freezePose
+    // for why the mixer cannot be relied on to do it.
+    this.rig.play('Idle', 0);
+    this.rig._releaseBones?.();       // give the standing pose's bones back first
+    this.rig.update(1 / 60);          // ...and let the clip assert itself once
+    this.rig.freezePose();
     this.seated = true;
     this._cockpit = g.plane.userData.cockpit;
     this._seatPan = new THREE.Vector3();   // where this body's pan ends up
@@ -3895,6 +3918,7 @@ export class OnFoot {
     }
     this.rig?.obj.parent?.remove(this.rig.obj);
     this.rig?.setSeated?.(0);         // hand the folded bones back
+    this.rig?.thawPose?.();           // ...and the clip owns them again
   }
 
   // Every frame the hero is flying. The mixer runs first (it owns every bone
@@ -3912,6 +3936,12 @@ export class OnFoot {
     // it asserting the same frame of the clip, which is what makes the base
     // _boneTwist reads identical frame to frame.
     this.rig.update(0);
+    // ...and because a mixer stepped by zero writes nothing (it asserted this
+    // pose once, when the hero sat down), the bones are put back by hand.
+    // Without this the seated twists and the solves onto the stick and the
+    // pedals read a skeleton they wrote themselves last frame and wind it
+    // round for ever.
+    this.rig.restoreFrozen();
     const g = this.game;
     const c = this._cockpit;
     const rig = this.rig;
@@ -5126,7 +5156,45 @@ export class OnFoot {
           baseYaw + (g.pistol?.swayYaw ?? 0), 0, 'YXZ'));
       g.camera.lookAt(g.camera.position.clone().addScaledVector(aimDir, 40));
     } else {
-      g.camera.lookAt(this.pos.x, this.pos.y + EYE - 0.5 * low, this.pos.z);
+      // WHERE IT LOOKS, which is not the same question as where it sits. The
+      // position above is lerped toward its target; this used to point the
+      // camera straight AT the hero every frame with no smoothing at all, so
+      // anything shaking the body went into the view's ORIENTATION untouched.
+      // On his own feet that is right -- it is his own motion and the camera
+      // should hold him exactly. But when the wind tunnel has him
+      // (game.heldByWind) the body is being shaken by something else at four
+      // hertz, and the shot can afford to trail it: "personage camera move
+      // more smoth when its on plane".
+      //
+      // The lag lives HERE, in the camera's own state, rather than in whatever
+      // is shaking him. Smoothing the camera from outside means handing the
+      // chase camera a lagged position which it then smooths AGAIN from its
+      // own previous one, compounding frame on frame -- measured at 1.3 m
+      // jumps when the other session tried it from crane.js.
+      const want = (this._camWant ??= new THREE.Vector3())
+        .set(this.pos.x, this.pos.y + EYE - 0.5 * low, this.pos.z);
+      // ON HIS OWN FEET THE AIM IS EXACT, not nearly exact. A lerp fast enough
+      // to look instant still trailed a sprinting hero by 11 cm, and that is a
+      // change to the camera everywhere else in the game in exchange for
+      // nothing -- the shake this is for only happens when something else has
+      // him. Held, it trails by a fifth of a second; let go, it is his again
+      // the same frame.
+      // ...and the lag is EASED OUT rather than dropped. Switching straight
+      // back to an exact aim on the frame the wind lets go moves the aim point
+      // by however far it was trailing -- measured at 23 cm, which is about
+      // two degrees of view in one frame, a visible flick at exactly the
+      // moment the player is being dropped. So the lag itself fades over
+      // CAM_AIM_OUT and the camera closes the gap smoothly instead.
+      const aim = (this._camAim ??= want.clone());
+      this._camLag = g.heldByWind ? 1
+        : Math.max(0, (this._camLag ?? 0) - dt / CAM_AIM_OUT);
+      if (this._camLag > 0.001) {
+        const rate = CAM_AIM_HELD + (CAM_AIM_SNAP - CAM_AIM_HELD) * (1 - this._camLag);
+        aim.lerp(want, 1 - Math.exp(-rate * dt));
+      } else {
+        aim.copy(want);          // his own again, exactly
+      }
+      g.camera.lookAt(aim.x, aim.y, aim.z);
     }
     // Aiming narrows the lens, like GTA: the target gets bigger without the
     // camera having to shove itself into the hero's back. Eased, not snapped --
@@ -5279,10 +5347,18 @@ export class OnFoot {
   // Is there a ledge ahead we could pull ourselves onto? Returns the world
   // point to end up standing on, or null.
   //
-  // Two probes, both necessary: cast DOWN from above and in front to find the
-  // top surface, then cast UP from that surface to make sure a body fits there.
-  // Without the second one the character mantles into the underside of a floor
-  // slab and ends up inside the building.
+  // FOUR probes now, and every one of them is a way of ending up inside
+  // something. Cast DOWN from above and in front for the top surface; check
+  // the surface is a FLOOR and not the flank of something (a crane's boom and
+  // its sloping sill girders answer the down-probe at every height, and the
+  // mantle then lays the body along a slope it cannot stand on); cast UP from
+  // it so a body fits there -- without that one the character mantles into the
+  // underside of a floor slab; and ask the same two questions again AT THE
+  // SPOT THE FEET ACTUALLY LAND, which is STAND_IN past the corner and used to
+  // be checked nowhere at all. That last one is the one that put the hero
+  // inside the warehouse crane: the probe found a 0.4 m girder flange, the
+  // climb agreed, and the mantle set him down 0.35 m further on, which is
+  // inside the box section.
   _findLedge(dirX, dirZ) {
     const g = this.game;
     const feet = this.pos.y;
@@ -5308,13 +5384,50 @@ export class OnFoot {
       const top = down[0].point.y;
       const rise = top - feet;
       if (rise <= STEP_UP || rise > CLIMB_MAX) continue;
+      // A LEDGE IS A FLOOR. The face a down-probe lands on is only a ledge if
+      // you could stand on it: anything steeper than LEDGE_FLAT is the side of
+      // the thing, and mantling onto it ends with the body half inside.
+      const fn = down[0].face
+        ? this._v4.copy(down[0].face.normal).transformDirection(down[0].object.matrixWorld)
+        : null;
+      if (fn && Math.abs(fn.y) < LEDGE_FLAT) continue;
       // headroom: a body has to fit standing on it
-      this._ray.set(new THREE.Vector3(px, top + 0.12, pz), new THREE.Vector3(0, 1, 0));
-      this._ray.far = CLIMB_CLEAR;
-      const up = this._ray.intersectObjects(near, true);
-      this._ray.far = Infinity;
-      if (up.length) continue;
-      return new THREE.Vector3(px + dirX * 0.35, top + 0.02, pz + dirZ * 0.35);
+      if (!this._roomOver(near, px, pz, top)) continue;
+      // ...AND WHERE THE FEET END UP, which is further in than the probe. If
+      // there is no floor within a step of `top` there (a parapet one brick
+      // wide, a girder flange, the edge of a wing) the body stands on the
+      // probe point instead of being set down past the far side of it.
+      const sx = px + dirX * 0.35;
+      const sz = pz + dirZ * 0.35;
+      const stand = this._topNear(near, sx, sz, top);
+      if (stand === null || !this._roomOver(near, sx, sz, stand)) {
+        return new THREE.Vector3(px, top + 0.02, pz);
+      }
+      return new THREE.Vector3(sx, stand + 0.02, sz);
+    }
+    return null;
+  }
+
+  // Is there CLIMB_CLEAR of air over (x, z) at height y? A body has to fit
+  // standing there.
+  _roomOver(near, x, z, y) {
+    this._ray.set(new THREE.Vector3(x, y + 0.12, z), _UP);
+    this._ray.far = CLIMB_CLEAR;
+    const up = this._ray.intersectObjects(near, true);
+    this._ray.far = Infinity;
+    return !up.length;
+  }
+
+  // The top surface at (x, z) that is within a step of `y` -- the same slab
+  // the lip belongs to, rather than the floor six metres below it. Null when
+  // the ledge does not continue this far in.
+  _topNear(near, x, z, y) {
+    this._ray.set(new THREE.Vector3(x, y + 0.9, z), _DOWN);
+    this._ray.far = 0.9 + STEP_UP;
+    const hit = this._ray.intersectObjects(near, true);
+    this._ray.far = Infinity;
+    for (const h of hit) {
+      if (Math.abs(h.point.y - y) <= STEP_UP) return h.point.y;
     }
     return null;
   }
@@ -5372,6 +5485,56 @@ export class OnFoot {
     // ---- getting into the aeroplane owns the frame --------------------------
     if (this._boardSeq) {
       this._climbStep(dt);
+      return;
+    }
+
+    // ---- SOMETHING ELSE OWNS THE BODY ---------------------------------------
+    // The warehouse's wind tunnel takes the hero off the wing and writes his
+    // position and his facing itself, every frame, AFTER this update:
+    // src/crane.js sets game.heldByWind to the stage it has him in ('ride',
+    // 'blown', 'fly') and clears it on every way out.
+    //
+    // Two writers on one body is not a blend, it is a race -- whichever ran
+    // last wins. The user's report was "again i cant move on wing": he pressed
+    // D, the rider moved him along the span, and this method put him back.
+    // So while the flag is up, everything here that moves the body stands
+    // down. What it still does is the part the rider cannot: step the clip,
+    // because the poses the rider writes go on TOP of the mixer and are lost
+    // if it has not run, and keep the camera on him.
+    if (g?.heldByWind) {
+      // AND A CLIMB IS PROBABLY HOW HE GOT THERE. The aeroplane hangs three
+      // metres up, so he cannot walk onto it -- he climbs. A climb owns the
+      // whole frame (the branch below returns), solves world-locked hands onto
+      // a ledge and drives the body along a planned path, so left running it
+      // would fight the rider for every frame and win half of them. Same for
+      // the other moves that own a frame.
+      if (this._climb) this._endClimb('abort');
+      if (this._roll) this._endRoll();
+      if (this._slide) this._endSlide();
+      if (this._dive) this._endDive();
+      if (this._cover) this._leaveCover('silent');
+      // Hand the body over in a state it can be given back in: no speed to
+      // carry, nothing falling, no buffered jump waiting to fire the moment
+      // the wind lets go.
+      this.speed = 0;
+      this.vy = 0;
+      this.grounded = false;
+      this._fallFrom = null;
+      this._jumpBuf = 0;
+      this._jumpWas = m.jump;
+      this._accV = 0;
+      this._speedWas = 0;
+      rig.play('Idle');
+      rig.update(dt);
+      rig.settleBody?.(dt);
+      // ...and the weapon still works. The rider owns the body, not the gun
+      // arm: the hold, the aim down the crosshair and the recoil all run here
+      // so he can shoot from wherever the wind has put him. The rider leaves
+      // the gun-side hand alone while something is held (src/crane.js
+      // handsOnEdge), so the two do not fight over it.
+      this._weaponFrame(dt, rig, 0);
+      this._rideSockets();
+      this._chaseCamera(dt, armed);
       return;
     }
 
@@ -5741,9 +5904,18 @@ export class OnFoot {
       // 1.05 m and the ray at 1.1 m passed clean over them. The second height
       // sits just above STEP_UP, so kerbs and stairs are still stepped onto
       // rather than bumped into, and anything taller than that stops you.
+      //
+      // (A BODY IS NOT A LINE, and something narrower than the hero -- a
+      // girder, a crane's leg, a lamp post -- can pass beside a single ray and
+      // be walked into shoulder-first. Two more rays a shoulder either side
+      // close that, and they cost 0.44 ms a frame on top of 0.47: they nearly
+      // DOUBLE the on-foot update, because each one walks every collider in
+      // the cell. Not paid until something is actually caught walking through
+      // a prop -- the climb was what put the hero inside the crane, and that
+      // is fixed in _findLedge.)
       let hits = [];
       for (const h of [1.1, STEP_UP + 0.1]) {
-        this._ray.set(this.pos.clone().add(new THREE.Vector3(0, h, 0)), dir);
+        this._ray.set(this._v4.copy(this.pos).addScaledVector(_UP, h), dir);
         this._ray.far = 0.8;
         const got = this._ray.intersectObjects(near, true);
         if (got.length && (!hits.length || got[0].distance < hits[0].distance)) hits = got;
@@ -6059,6 +6231,49 @@ export class OnFoot {
     if (this._stow || this._draw) this._moveArm(dt, rig);
     if (this._settle) this._updateSettle(dt);
 
+    // THE WEAPON ARM, every frame it is up (see _weaponFrame).
+    this._weaponFrame(dt, rig, cw);
+
+    // the holster sockets follow the strap the skin has bent
+    this._rideSockets();
+
+    this._chaseCamera(dt, armed);
+
+    // HUD: ground speed in km/h, altitude 0 — you're the altitude now.
+    g.ui.speed.textContent = Math.round(pace * 3.6);
+    g.ui.alt.textContent = 0;
+    const f = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const hRad = Math.atan2(-f.x, f.z);
+    let h = hRad * THREE.MathUtils.RAD2DEG;
+    if (h < 0) h += 360;
+    if (g.ui.compassDial) {
+      g.ui.compassDial.style.transform = `rotate(${-h}deg)`;
+      g.ui.compassDeg.textContent = `${Math.round(h)}°`;
+    }
+    g.mapui.update(this.pos.x, this.pos.z, hRad);
+
+    // Standing next to the cockpit: prompt to climb back in.
+    const nearPlane =
+      this.pos.distanceTo(g.plane.position) < Math.max(BOARD_DIST, g.halfSpan + 3);
+    if (nearPlane) g._setHint('Enter — თვითმფრინავში დაბრუნება ✈');
+  }
+
+  // ---- THE WEAPON ARM --------------------------------------------------
+  // Everything the hand that is holding something does: the hold, the clip
+  // the animation is playing, the tuck through a roll, the barrel laid on the
+  // crosshair, the support hand on a rifle's handguard, and the cover hold on
+  // top of all of it. Lifted out of update() for one reason: something else
+  // can own the BODY and the weapon still has to work.
+  //
+  // "when i am on wing i need u put hands on corner of wing, and i must shoot
+  //  on this position" -- while the wind tunnel has him (game.heldByWind,
+  //  src/crane.js) update() stands down at the top and returns, which left the
+  //  gun at whatever local transform it last had on the hand bone: no aim, no
+  //  hold, no recoil. The wind branch calls this instead, so the barrel still
+  //  follows the crosshair while the rider has the rest of him. `cw` is the
+  //  cover weight, which is zero in anybody else's hands.
+  _weaponFrame(dt, rig, cw = 0) {
+    const g = this.game;
     if (this.held && this._handBone) {
       const aiming = !!g.pistol?.aiming;
       const raw = g.pistol?.aimDir?.();
@@ -6222,29 +6437,6 @@ export class OnFoot {
     } else if (cw > 0.001 || this._coverArmsOn) {
       this._coverArmsBare(rig, cw);
     }
-
-    // the holster sockets follow the strap the skin has bent
-    this._rideSockets();
-
-    this._chaseCamera(dt, armed);
-
-    // HUD: ground speed in km/h, altitude 0 — you're the altitude now.
-    g.ui.speed.textContent = Math.round(pace * 3.6);
-    g.ui.alt.textContent = 0;
-    const f = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    const hRad = Math.atan2(-f.x, f.z);
-    let h = hRad * THREE.MathUtils.RAD2DEG;
-    if (h < 0) h += 360;
-    if (g.ui.compassDial) {
-      g.ui.compassDial.style.transform = `rotate(${-h}deg)`;
-      g.ui.compassDeg.textContent = `${Math.round(h)}°`;
-    }
-    g.mapui.update(this.pos.x, this.pos.z, hRad);
-
-    // Standing next to the cockpit: prompt to climb back in.
-    const nearPlane =
-      this.pos.distanceTo(g.plane.position) < Math.max(BOARD_DIST, g.halfSpan + 3);
-    if (nearPlane) g._setHint('Enter — თვითმფრინავში დაბრუნება ✈');
   }
 
   dispose() {

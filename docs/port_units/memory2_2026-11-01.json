@@ -1,0 +1,16 @@
+[
+ {
+  "cs": "Assets/Scripts/City/RoadBuilder.cs + CityGroundData.cs + ChunkedSurfaceBuilder.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-11-01",
+  "note": "FIX (memory pass 2): BuildRoadDeck streams the four layers through a sink (sink==null is byte-for-byte the old path for the probes), each ribbon tiled on arrival and destroyed before the next; RecalculateNormals still runs on each WHOLE ribbon (citymap.js:6547) so no seam can appear; PackTile = SNorm8x4 normals on the 13,339 road tiles (UVs float32 on purpose), bounds from exact min/max; CITYGROUND tile_layout packed=true verts=19521186 maxNormalErrDeg=0.3841. Peak 2.824 -> 1.857 GB; counts byte-identical; three non-river frames byte-identical."
+ },
+ {
+  "cs": "Assets/Scripts/City/CityRenderer.cs",
+  "js": "citymap.js",
+  "covers": 0,
+  "verified": "2026-11-01",
+  "note": "FIX (memory): ReleaseRichChunkMeshes - the runtime BuildRich copy of the 604 chunk meshes was unused (damage ranges index the baked chunk_<n>.asset); -51.8 MB, -603 meshes."
+ }
+]

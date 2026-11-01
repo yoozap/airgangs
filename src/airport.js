@@ -4,6 +4,7 @@ import { wind } from './wind.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WEAPON_DEFS, GEAR_DEFS } from './weapons.js';
 import { buildShed, SHED_LL, SHED_YAW } from './shed.js';
+import { buildWarehouseCrane } from './crane.js';
 
 // Tbilisi International Airport (TBS), built from real OSM geometry
 // (tools/fetch_airport.py → public/tbilisi/airport.json): the 3 km runway
@@ -489,6 +490,12 @@ export async function addAirport(citymap) {
       console.log(`warehouse: ${name} solid — ${tri.length / 9} triangles`);
       return col;
     };
+
+    // ---- the harbour crane at the back of the range -----------------------
+    // Its own file, because it brings an aeroplane with it: the crane stands
+    // on the 61 m of bare slab behind the range's backstop with a Mustang
+    // slung off its hook (src/crane.js).
+    buildWarehouseCrane(citymap, g);
 
     // ---- three work tables in the far corner ------------------------------
     // Added as children of the warehouse group, so they are positioned in the

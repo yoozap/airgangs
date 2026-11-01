@@ -1,0 +1,30 @@
+[
+ {
+  "cs": "Assets/Editor/Probes/TargetRingWireProbe.cs",
+  "js": "target.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "VERIFICATION ONLY, covers=0. Loads Game.unity, runs PlayableSceneBoot, ticks the real loop, selects a parked plane through the game's own Tab (Cycle) AND click (PickAt) paths, reads the live ring back: installed, registry 36 entries with HalfSpan, renderer enabled, ring dead under the plane (dXZ=0), floor+0.1000 m on the hall's WetConcrete slab (target.js:296), radius max(3, halfSpan*1.06) to 4 dp, 146 verts/432 indices (RingGeometry 72), off for your own machine, off when cleared. TARGETRINGWIRE RESULT=PASS."
+ },
+ {
+  "cs": "Assets/Scripts/Core/GameLoop.cs",
+  "js": "target.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX (no new coverage claimed; target.js:256-322 is claimed by UI/Target/TargetRingView.cs): the WoW floor ring was constructed only by a probe. EnsureTargetRing() one-shot self-install (:2027, EnsureHintLine's shape) from StageHudAndTargets; TickTargetRing() after _targets.Tick (:2035); ProbeRingFloor = RaycastAll down from (x,y+1,z), 14 m, nearest hit without a PlaneDamageRecord up its parents (target.js:287-294); BuildRingSnapshot ported onto GameLoop's nested registry (:2470, target.js:309-321) rather than retiring it (4 call sites read RecOf(Collider) off it; Combat/TargetRegistry stays because FootBoarding is built against its Rec). CombatWorldAdapter.cs:645 now carries HalfSpan per entry - without it every machine drew the same 6.36 m circle."
+ },
+ {
+  "cs": "Assets/Scripts/Combat/PlaneDamage.cs",
+  "js": "planedamage.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX: Refine's hit ray landed on the skin BEHIND the one shot - three.js's Raycaster honours DoubleSide, Unity's mesh queries drop back faces, so on an airframe whose outer skin is wound inward the round went 0.49 m (h6k) / 0.35 m (carpet) inside the wing and every downstream step worked perfectly on the wrong surface (tear written, material patched, nothing visible). Physics.queriesHitBackfaces saved/set/restored around that ONE query (:546-551; Ballistics' penetration walk and Exit() need culling), back-face normals flipped toward the shooter. Localised by a forced 0.15 m opening walked along each axis (HOLEFORCE: offY+0.35 changed=909 px, X/Z 0)."
+ },
+ {
+  "cs": "Assets/Shaders/PlaneHull.shader",
+  "js": "planedamage.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX: _TearInv (float4x4 in UnityPerMaterial) and _TearTex were declared only in HLSL, never in the Properties block, so once more than a handful of materials used the shader the values stopped reaching the GPU - h6k passed alone and failed after an225+il76 with IDENTICAL CPU state. Now _TearTex + _TearInv0..3 are Vector properties (:69-73), carried in the CBUFFER (:123), rebuilt into float4x4 in Vert (:167); PlaneDamage writes TearInv.GetRow(i) (:296-299). SRP Batcher and warmup were tested and ruled out first."
+ }
+]

@@ -1,0 +1,159 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of index.html:279-391 (#settingswin) + src/settings.js's SettingsUI.
+       Every Georgian string below is copied byte-for-byte from index.html;
+       see tools/_probe_ui.mjs / Assets/Editor/Probes/UiProbe.cs for the
+       cross-check that proves it. -->
+  <Style src="Settings.uss" />
+  <ui:VisualElement name="sw-overlay" class="sw-overlay">
+    <ui:VisualElement name="sw-frame" class="sw-frame">
+
+      <ui:VisualElement name="sw-head" class="sw-head">
+        <ui:Label name="sw-tag" class="sw-tag" text="◄ SETTINGS //" />
+        <ui:Label name="sw-title" class="sw-title" text="პარამეტრები" />
+        <ui:Button name="settings-close" text="✕" tooltip="დახურვა (Esc)" />
+      </ui:VisualElement>
+
+      <ui:VisualElement name="sw-tabs" class="sw-tabs">
+        <ui:Button name="sw-tab-gfx" class="sw-tab active" text="გრაფიკა" />
+        <ui:Button name="sw-tab-snd" class="sw-tab" text="ხმა" />
+        <ui:Button name="sw-tab-ctl" class="sw-tab" text="მართვა" />
+      </ui:VisualElement>
+
+      <!-- ============ გრაფიკა ============ -->
+      <ui:ScrollView name="sw-gfx" class="sw-page">
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="გრაფიკის ხარისხი" />
+            <ui:Label class="sw-note" text="რამდენად მკვეთრად დაიხატოს ქალაქი. თუ თამაში ეშვება&#10;ნელა — დაწიე. „ულტრა“ ყველაზე ლამაზია და ყველაზე მძიმე." />
+          </ui:VisualElement>
+          <ui:VisualElement name="set-quality" class="sw-seg">
+            <ui:Button name="q-low" text="დაბალი" />
+            <ui:Button name="q-med" text="საშუალო" />
+            <ui:Button name="q-high" text="მაღალი" />
+            <ui:Button name="q-ultra" class="active" text="ულტრა" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="მთელი ეკრანი" />
+            <ui:Label class="sw-note" text="თამაში მთელ ეკრანზე გაიშლება. გამოსვლა — Esc." />
+          </ui:VisualElement>
+          <ui:Button name="set-fullscreen" class="sw-toggle">
+            <ui:VisualElement class="sw-toggle-dot" />
+          </ui:Button>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <!-- ============ ხმა ============ -->
+      <ui:ScrollView name="sw-snd" class="sw-page hidden">
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="ძრავის ხმა" />
+            <ui:Label class="sw-note" text="თვითმფრინავის ძრავა, ტყვიამფრქვევი და აფეთქებები.&#10;ბრაუზერი ხმას პირველ დაწკაპუნებამდე არ უშვებს." />
+          </ui:VisualElement>
+          <ui:Button name="set-engine" class="sw-toggle">
+            <ui:VisualElement class="sw-toggle-dot" />
+          </ui:Button>
+        </ui:VisualElement>
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:VisualElement style="flex-direction: row; align-items: baseline;">
+              <ui:Label class="sw-row-label" text="ხმის დონე" />
+              <ui:Label name="set-vol-num" class="sw-val" text="70%" />
+            </ui:VisualElement>
+            <ui:Label class="sw-note" text="ყველა ხმის საერთო სიმაღლე." />
+          </ui:VisualElement>
+          <ui:SliderInt name="set-volume" class="sw-range" low-value="0" high-value="100" value="70" />
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <!-- ============ მართვა ============ -->
+      <ui:ScrollView name="sw-ctl" class="sw-page hidden">
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="მინი-რუკა" />
+            <ui:Label class="sw-note" text="მარცხნივ ქვემოთ მრგვალი რუკა — გიჩვენებს სად ხარ&#10;ქალაქში. დიდი რუკა — M." />
+          </ui:VisualElement>
+          <ui:Button name="set-minimap" class="sw-toggle on">
+            <ui:VisualElement class="sw-toggle-dot" />
+          </ui:Button>
+        </ui:VisualElement>
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="მართვის მინიშნებები" />
+            <ui:Label class="sw-note" text="ეკრანის ბოლოში მწვანე ტექსტი, რომელიც გეუბნება რომელი&#10;ღილაკი რას აკეთებს. თუ უკვე იცი — გამორთე." />
+          </ui:VisualElement>
+          <ui:Button name="set-hints" class="sw-toggle on">
+            <ui:VisualElement class="sw-toggle-dot" />
+          </ui:Button>
+        </ui:VisualElement>
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="იარაღის მხარე" />
+            <ui:Label class="sw-note" text="რომელი მხრიდან უყურებს კამერა იარაღს დამიზნებისას —&#10;როგორც Counter-Strike-ში მარჯვენა/მარცხენა ხელი." />
+          </ui:VisualElement>
+          <ui:VisualElement name="set-side" class="sw-seg">
+            <ui:Button name="side-right" class="active" text="მარჯვენა" />
+            <ui:Button name="side-left" text="მარცხენა" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="sw-row">
+          <ui:VisualElement style="flex-grow: 1; max-width: 62%;">
+            <ui:Label class="sw-row-label" text="ამოღებისას დამიზნება" />
+            <ui:Label class="sw-note" text="იარაღი ამოღებისთანავე მიზანში იღებს (PUBG-ის მსგავსად).&#10;მარჯვენა ღილაკი მაინც რთავს/თიშავს." />
+          </ui:VisualElement>
+          <ui:Button name="set-aimdraw" class="sw-toggle on">
+            <ui:VisualElement class="sw-toggle-dot" />
+          </ui:Button>
+        </ui:VisualElement>
+
+        <ui:Label class="sw-keys-title" text="თვითმფრინავში" />
+        <ui:VisualElement class="sw-keys">
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="W / Shift" /><ui:Label class="sw-key-text" text="გაზი — რაც მეტს იჭერ, მით უფრო სწრაფად მიდიხარ" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="S" /><ui:Label class="sw-key-text" text="მუხრუჭი, გაჩერების შემდეგ კი უკუსვლა" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="↑ / ↓" /><ui:Label class="sw-key-text" text="ცხვირი ზევით ან ქვევით — ასე აფრინდები და დაეშვები" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="← / →" /><ui:Label class="sw-key-text" text="ფრთებზე გადახრა (გვერდულად მოხვევა)" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="Q / E" /><ui:Label class="sw-key-text" text="ცხვირის მოტრიალება ადგილზე" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="1–0" /><ui:Label class="sw-key-text" text="უნარების ზოლი — 1 ტყვიამფრქვევი · 2 რაკეტები" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="SPACE" /><ui:Label class="sw-key-text" text="არჩეული იარაღით სროლა. შენობებს აქვთ ჯანმრთელობა — რაკეტა&#10;უფრო მალე ანგრევს ვიდრე ტყვიები" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="R" /><ui:Label class="sw-key-text" text="თვითმფრინავი თავიდან, მთელი და გამართული" /></ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:Label class="sw-keys-title" text="ფეხით (გმირით)" />
+        <ui:VisualElement class="sw-keys">
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="ENTER" /><ui:Label class="sw-key-text" text="გააჩერე თვითმფრინავი და გადმოდი. თვითმფრინავთან ახლოს&#10;ისევ Enter — ჩაჯდომა" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="W A S D" /><ui:Label class="sw-key-text" text="სირბილი. კამერა სადაც იყურება, იქით გარბიხარ" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="Shift" /><ui:Label class="sw-key-text" text="სპრინტი — ყველაზე სწრაფი სირბილი" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="Ctrl" /><ui:Label class="sw-key-text" text="ნაბიჯით სიარული — ნელა და წყნარად" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="SPACE" /><ui:Label class="sw-key-text" text="ხტომა. კიდეზე გადახტომა ცოტა გვიანაც მუშაობს" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="კედელთან მირბენა" /><ui:Label class="sw-key-text" text="დაბალ კედელზე, ყუთზე ან თვითმფრინავის ფრთაზე&#10;გმირი თვითონ აძვრება — უბრალოდ შეურბინე" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="1–8" /><ui:Label class="sw-key-text" text="იარაღის სლოტები. ჯერ ცარიელია — იარაღი რომ იშოვო, თავის&#10;სლოტში ჩაჯდება" /></ui:VisualElement>
+          <ui:VisualElement class="sw-keys-row"><ui:Label class="sw-key-chip" text="მაღლიდან ჩამოხტომა" /><ui:Label class="sw-key-text" text="7 მეტრამდე უვნებელია, უფრო მაღლიდან გტკივა,&#10;26 მეტრიდან კი — სიკვდილი" /></ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:Label class="sw-keys-title" text="საერთო" />
+        <ui:VisualElement class="sw-keys">
+          <ui:VisualElement class="sw-keys-row" style="flex-wrap: wrap;">
+            <ui:Label class="sw-key-chip" text="M" />
+            <ui:Label class="sw-key-text" text="დიდი რუკა ·" style="flex-grow: 0; margin-right: 10px;" />
+            <ui:Label class="sw-key-chip" text="T" />
+            <ui:Label class="sw-key-text" text="HQ გრაფიკა ·" style="flex-grow: 0; margin-right: 10px;" />
+            <ui:Label class="sw-key-chip" text="N" />
+            <ui:Label class="sw-key-text" text="ხმა ·" style="flex-grow: 0; margin-right: 10px;" />
+            <ui:Label class="sw-key-chip" text="Esc" />
+            <ui:Label class="sw-key-text" text="პარამეტრები" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <!-- CC BY/BY-SA attribution screen (docs/QUALITY_BAR.md: "no credits UI
+           to carry the attribution — it is only logged"). Always visible,
+           regardless of which tab is active, same as a real settings dialog's
+           footer link. -->
+      <ui:VisualElement name="sw-footer" class="sw-footer">
+        <ui:Button name="sw-credits-btn" class="sw-footer-link" text="კრედიტები და ლიცენზიები" />
+      </ui:VisualElement>
+
+    </ui:VisualElement>
+  </ui:VisualElement>
+</ui:UXML>

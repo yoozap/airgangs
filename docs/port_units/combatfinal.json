@@ -1,0 +1,9 @@
+[
+  {
+    "cs": "Assets/Scripts/Combat/RangeBootstrap.cs",
+    "js": "papertargets.js",
+    "covers": 3,
+    "verified": "compile clean; tools/_test_no_dead_events.py OK (no new dead delegates); the hook's single funnel proven by grep -- `Targets.Hit(` has exactly one production call site, RangeBootstrap.cs:TryRouteHit, so no second scoring path can exist",
+    "note": "The SCORE-CARD HOOK, src/papertargets.js:394-395 (`this._hide = 15; this._refresh(shot)`) and :474 (`this._refresh(null)` after reset()) -- the tail of hit() that shows the card off the SAME hit the card recorded. Three new members on RangeBootstrap: `static event Action<PaperTargets, PaperTargets.Card, PaperTargets.Shot> OnPaperScore` (invoked in TryRouteHit only when PaperTargets.Hit returned a shot, so card/shot are never null -- card is Targets.Active, which Hit has just assigned at PaperTargets.cs:351 == papertargets.js:393, already claimed there), `static PaperTargets LastScored` (the port's stand-in for the JS's single global `active`: src/game.js:172 builds ONE PaperTargets for the whole game, this port builds one per adopted range) and `static bool TryResetScored(out ScoreSnapshot)` (reset()'s default `card = this.active` -> ONE card, plus its `_refresh(null)`, with :462's `return false` and :521's `if (!el || !card) return` both reproduced). :395's 15s dwell is NOT re-implemented here -- UI/Combat/PaperTargetScoreView.cs already owns it, and TryResetScored deliberately returns a snapshot for its `Refresh` (no dwell restart) rather than `Show`, because the JS's reset() never assigns `_hide`. Claiming 3 lines only: :393 is PaperTargets.cs's, the DOM half is the view's. papertargets.js had 9 free before this."
+  }
+]

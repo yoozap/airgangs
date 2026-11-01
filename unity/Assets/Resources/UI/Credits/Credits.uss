@@ -1,0 +1,91 @@
+@import url("../Theme/CyberTheme.uss");
+/* ============================ NO em UNITS ============================
+ * USS has NO `em` unit, and the importer fails the WHOLE file on one — it
+ * leaves an EMPTY StyleSheet that still loads and still attaches, so the
+ * screen renders completely unstyled with no error anywhere. This file
+ * shipped with 0 rules until 2026-10-30; proven by
+ * Editor/Probes/UiShotProbe.cs's UISHEET line (rules=0). em converted to the
+ * px it meant (em == the element's own font-size). Do not reintroduce it.
+ * ===================================================================== */
+
+/* Credits screen — same frame/overlay/head pattern as Settings.uss (see that
+ * file's header for what USS cannot express: blur/clip-path/box-shadow,
+ * dropped the same way there). Kept visually consistent with the existing
+ * cyberpunk theme rather than inventing a new look for one screen. */
+
+.cr-overlay {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background-color: rgba(3, 6, 12, 0.6);
+  align-items: center;
+  justify-content: center;
+  display: none;
+}
+
+.cr-frame {
+  width: 620px;
+  max-width: 94%;
+  max-height: 86%;
+  background-color: rgba(4, 7, 13, 0.96);
+  border-width: 1px;
+  border-color: var(--line);
+}
+
+.cr-head {
+  flex-direction: row;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom-width: 1px;
+  border-bottom-color: var(--line);
+  background-color: rgba(63, 214, 255, 0.06);
+}
+.cr-head Label.cr-title {
+  font-size: 17px;
+  letter-spacing: 3px;
+  -unity-text-outline-width: 1px;
+  -unity-text-outline-color: rgba(63, 214, 255, 0.45);
+  flex-grow: 1;
+  margin-left: 12px;
+}
+.cr-tag { font-size: 10px; letter-spacing: 2px; color: var(--cyan); opacity: 0.75; }
+
+.cr-intro {
+  padding: 14px 22px 6px;
+  font-size: 12.5px;
+  white-space: normal;
+  color: rgba(215, 236, 247, 0.72);
+}
+
+.cr-list {
+  padding: 4px 22px 10px;
+  max-height: 480px;
+}
+
+/* one credit block, generated per CreditsData.Section in CreditsView.cs */
+.cr-section {
+  padding: 10px 0;
+  border-bottom-width: 1px;
+  border-bottom-color: rgba(63, 214, 255, 0.07);
+}
+.cr-section-head {
+  font-size: 12px;
+  -unity-font-style: bold;
+  letter-spacing: 1.44px;
+  color: var(--cyan);
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+.cr-section-body {
+  font-size: 12px;
+  white-space: normal;
+  color: rgba(215, 236, 247, 0.85);
+  -unity-font-style: normal;
+}
+
+.cr-footer {
+  padding: 10px 22px 14px;
+  font-size: 10.5px;
+  letter-spacing: 1.05px;
+  color: var(--dim);
+  -unity-text-align: middle-center;
+}

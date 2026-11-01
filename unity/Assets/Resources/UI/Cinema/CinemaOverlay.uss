@@ -1,0 +1,88 @@
+@import url("../Theme/CyberTheme.uss");
+
+/* Port of src/cinema.js:1891-1920's injected <style id="cinema-css"> (the
+ * part owned by THIS view — the `.cb`/`.cv`/`.cg`/`.cf`/`.ch` rules; the
+ * `body.cinema-mode` rules are a caller's job, see CinemaOverlay.uxml's own
+ * header). Same "approximate, document, move on" standard CyberTheme.uss's
+ * own header sets, re-applied here rather than invented fresh:
+ *
+ *   - `.cv`'s `radial-gradient(ellipse 72% 62% at 50% 50%, transparent 55%,
+ *     rgba(0,0,0,.34) 100%)` (cinema.js:1904-1906) has NO USS equivalent —
+ *     USS has no gradient syntax at all, same gap CyberTheme.uss's header
+ *     already names for the hull bars/quality buttons/compass dial, and the
+ *     SAME fix: approximate with a flat fill. Unlike those decorative bars,
+ *     though, one of this gradient's two stops is literally transparent, so
+ *     "the brighter stop" has no reading that keeps the frame-vignette
+ *     shape — going flat necessarily trades "dark at the edges, clear in
+ *     the middle" for "a little dark everywhere". Picked the visible stop's
+ *     OWN alpha (.34) rather than averaging it toward zero, so the overlay
+ *     still reads as "the film has a vignette" instead of vanishing
+ *     entirely; a 1D/radial gradient TEXTURE asset is the real fix if full
+ *     fidelity is ever wanted (same TODO CyberTheme.uss leaves for its own
+ *     gradients).
+ *   - `.cg`'s animated SVG feTurbulence noise (cinema.js:1907-1916) has two
+ *     gaps: (1) no `@keyframes` in USS at all (confirmed project-wide —
+ *     UI/Common/UiPulse.cs's header documents the same gap for the skill
+ *     bar's cc-shake/ab-fire/ab-ready animations and fixes it by ticking a
+ *     style property via VisualElement.schedule instead; CinemaLetterboxView
+ *     .cs does the identical thing for the grain's `translate`, stepped
+ *     exactly the way `steps(1)` holds each of the 5 keyframe values rather
+ *     than interpolating); (2) no procedural noise generator and no
+ *     background-repeat/tiling in USS, so the nearest supported thing is a
+ *     SINGLE runtime-generated static-noise Texture2D (built in
+ *     CinemaLetterboxView.cs, not an imported asset) stretched across the
+ *     element instead of the CSS's small tile repeated edge-to-edge — a
+ *     real visual difference (one noise field, not a repeating pattern)
+ *     documented here rather than silently dropped like a lesser effect
+ *     would be.
+ *   - `.ch`'s `transition: opacity .6s ease` (cinema.js:1919) DOES have a
+ *     USS equivalent (`transition-*` is supported, unlike box-shadow/
+ *     backdrop-filter/clip-path) so it carries over for real below, no
+ *     approximation needed.
+ */
+
+.cinema-overlay {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  display: none; /* CinemaLetterboxView.Open()/Close() toggles this */
+}
+
+.cb {
+  position: absolute;
+  left: 0; right: 0;
+  height: 0; /* written every frame from CinemaLetterboxMath.BarHeightPx */
+  background-color: rgba(0, 0, 0, 1);
+}
+.cb.t { top: 0; }
+.cb.b { bottom: 0; }
+
+.cv {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.34); /* flat approximation, see header */
+}
+
+.cg {
+  position: absolute;
+  left: -50%; top: -50%; right: -50%; bottom: -50%;
+  opacity: 0.055;
+  -unity-background-scale-mode: scale-and-crop; /* no tiling in USS, see header */
+}
+
+.cf {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 1);
+  opacity: 1; /* CinemaLetterboxView writes CinemaDirector.FadeAlpha here */
+}
+
+.ch {
+  position: absolute;
+  right: 14px; bottom: 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.4);
+  transition-property: opacity;
+  transition-duration: 0.6s;
+  transition-timing-function: ease;
+}

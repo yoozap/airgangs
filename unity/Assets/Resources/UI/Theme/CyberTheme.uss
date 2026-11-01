@@ -1,0 +1,40 @@
+/* ============ AIR GANGS OF GEORGIA — cyberpunk Tbilisi UI theme ============
+ * Ported byte-for-byte from src/style.css:3-17 (:root) and :1328
+ * (--stm, Share Tech Mono). USS custom properties ARE supported on :root in
+ * UI Toolkit, so these carry over as genuine variables, not just comments —
+ * every other .uss file in Assets/UI imports this one and uses var(--cyan)
+ * etc. exactly like the JS theme did.
+ *
+ * WHAT DID NOT CARRY OVER CLEANLY (see the port report for the full list):
+ *   - linear-gradient()/radial-gradient() backgrounds: USS has no CSS
+ *     gradient syntax. Every gradient fill in style.css (hull bars, quality
+ *     buttons, compass dial) is approximated here with a flat color — the
+ *     brighter of the two stops — and left as a TODO for a 1D gradient
+ *     texture asset if full fidelity is wanted.
+ *   - box-shadow / text-shadow: no USS equivalent. Glows are dropped;
+ *     text glows are approximated with -unity-text-outline-width/color,
+ *     which is a real (if visually different — crisp outline, not soft glow)
+ *     supported property.
+ *   - clip-path: polygon(...): replaced by Assets/Scripts/UI/Common/
+ *     AngledPanel.cs, which paints the same cut-corner shape with Painter2D
+ *     instead of clipping.
+ *   - backdrop-filter: blur(): no USS equivalent; dropped (affects only the
+ *     settings window overlay, which the JS itself notes blurs a STATIC
+ *     screen, never the live 3D canvas — see style.css:238-242).
+ */
+:root {
+  --bg0: #05070d;
+  --bg1: #0a0f1a;
+  --panel: rgba(8, 13, 24, 0.86);
+  --line: rgba(63, 214, 255, 0.28);
+  --line-dim: rgba(63, 214, 255, 0.14);
+  --cyan: #3fd6ff;
+  --cyan2: #7ceaff;
+  --mag: #ff3e8a;
+  --gold: #ffd257;
+  --text: #d7ecf7;
+  --dim: #6d8296;
+  /* src/hud.js:18 HALO pass — not a JS :root var, but used so pervasively
+     (every two-pass mark) it earns a token here too. */
+  --halo: rgba(4, 20, 30, 0.35);
+}

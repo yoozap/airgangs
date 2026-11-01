@@ -1,0 +1,16 @@
+[
+ {
+  "cs": "Assets/Scripts/Data/TerrainSampler.cs",
+  "js": "citymap.js",
+  "covers": 64,
+  "note": "RE-FILED by the coordinator 2026-10-27. This unit existed only in docs/port_manifest.json, with no backing file in docs/port_units/, as a legacy entry from before the per-agent claim files existed. A respelled-duplicate purge I added to merge_port_units.py dropped it on a 1-shared-file overlap with recovered.json's bundled 62-line estimate; the rule is now >=2 shared files AND recovered.json is excluded from evicting anything, but the manifest is not in git so the entry could not be restored from history. Re-filed here at its original covers so the provenance survives. NET EFFECT ON THE HEADLINE IS ZERO: citymap.js is already at its clamp ceiling (8552 lines - 107 excluded = 8445 budget), so these 99 lines are clamped off again.",
+  "verified": null
+ },
+ {
+  "cs": "Assets/Scripts/Data/CityData.cs",
+  "js": "citymap.js",
+  "covers": 35,
+  "note": "RE-FILED by the coordinator 2026-10-27, same cause as the TerrainSampler.cs entry beside it: a legacy manifest-only unit dropped by a too-loose duplicate purge, with no git history to restore from. Also clamped off again \u2014 citymap.js is at ceiling.",
+  "verified": null
+ }
+]

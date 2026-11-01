@@ -1,0 +1,44 @@
+[
+  {
+    "cs": "Assets/Scripts/City/ParkBuilder.cs",
+    "js": "parks.js",
+    "covers": 435,
+    "note": "Full data pipeline ported: path/stair spatial grid + faceNearestPath, the per-path procedural-furniture accumulator (trees/benches/lamps/beds, unfurnished parks only, src/parks.js:160-224) with the same sin-hash rnd(), real OSM benches/trees/canopy, draped alley+stair ribbon meshes, sport-pitch quads, ear-clipped pond meshes, stretched hedge-box mesh, fairground drop_tower/bumper_car/pirate_ship/train built from primitives (the JS itself uses primitives there, so this is the spec, not a shortfall), and zoo-animal spot positions. Places all 8 available Assets/Art/Parks FBX (playset/slide/monkeybar/parklamp/fountain/flower_gazania/flower_ursinia/celandine_01) as combined per-material meshes via AssetDatabase, not primitives. NOT covered: courtTexture()'s painted line/arc canvas (parks.js:83-122, ~40 lines — solid category colour only, ParkBuilder.CourtColor); carousel/big_wheel assembly (big_wheel is landmarks.js's BUILDERS.ferrisWheel, a different owner's class; carousel.glb was never imported); roller_coaster-with-track branch (parks.js:468-500 — dead in the current data, no park has a 'track' field, verified against parks.json); bench.glb/flowerbed.glb(stone+soil)/elephant.glb/giraffe.glb/chestnut.glb rendering — none are in Assets/Art/Parks, so positions are computed and counted (Trees, Benches, ZooElephants, ZooGiraffes) but not rendered, rather than faked with primitives.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/MetroBuilder.cs",
+    "js": "metro.js",
+    "covers": 187,
+    "note": "All placement math ported: the 5 hand-placed hero stations (Liberty Square/Galleria, Marjanishvili, Avlabari, Station Square, Rustaveli) with their GAME-frame [x,z,yaw] constants, the per-station totem offset formulas, every mapped entrance's atan2-derived yaw, the pav==='none' real-OSM-building portal path, and the shared totem+entrance loop for generic arch/hall stations. Every position goes through GeoFrame.ToUnity and every yaw (metro.json's own 23 stored yaws AND the 5 hero constants) through GeoFrame.YawToUnity. NOT covered: mSignTexture/namePlate/bluePlate/terminalPlate/drawM (metro.js:34-122, ~89 lines, canvas texture generation) and buildKit's actual mesh assembly (metro.js:170-200, ~30 lines) — the pavilion GLBs (public/models/metro/*.glb, models_raw/metro/*.glb) were never converted to FBX and imported into Assets/Art/ the way Parks and malls.fbx were; that asset-pipeline step is outside this file's 'new C# files only' scope. Placement.Kind carries the exact asset key (pavilion_arch/pavilion_hall/entrance/totem/galleria/rustaveli/marjanishvili/avlabari/station_square/name_board) a later pass resolves once the FBX lands.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/MallPlacer.cs",
+    "js": "malls.js",
+    "covers": 60,
+    "note": "Body placement (position only, zero rotation — tools/build_malls.py's own header: geometry authored directly in the game frame, placed with NO rotation) and real-name de-duplication (name, name 2, name 3...) fully ported. The entrance sign anchor is RECOMPUTED from malls.json's own 'poly' ring using the identical longest-edge + outward-normal algorithm tools/build_malls.py:142-162 uses, because the anchor normally travels as a Blender custom property ('sign', build_malls.py:192-193) that the bare tools/glb_batch_fbx.py export_scene.fbx call does not carry into Assets/Art/Props/malls.fbx. CheckAssetCoverage (editor-only) confirms how many of the 42 bid references actually resolve to a 'mall_{bid}' child transform in the imported FBX. NOT covered: malls.js:10-31 label() canvas texture (sign text rendering) and the literal GLTFLoader/node-traversal lines 36-66 (Unity consumes the already-imported FBX directly instead).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/ZoneBuilder.cs",
+    "js": "zones.js",
+    "covers": 50,
+    "note": "The data/query layer — toWorld (zones.js:41-58), the even-odd _inRing test (65-73), bbox-gated _hit (75-82), and zoneAt (85-88) — is fully ported, including the 'subzones.json is pre-sorted area-ascending, never re-sort' assumption the JS itself relies on. districts.json's raions are OSM admin_level=10 but that filter already ran in the Python extractor; there is no admin_level field left to check at this layer (same as zones.js). NOT covered (deliberately, UI-owner's job): the constructor's DOM/HUD wiring, the zone-label element, and update()/_announce()'s WoW-style zone-slam animation (zones.js:19-33, 90-118) — a UI pass should poll ZoneAt(x,z) every frame and render the result the way zones.js's update() does.",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/BoundaryWall.cs",
+    "js": "boundary.js",
+    "covers": 112,
+    "note": "Box derivation from mapmeta.json's cities.tbilisi bbox, the four-sided vertical+horizontal line-grid mesh builder (boundary.js:41-80, as a real MeshTopology.Lines Mesh instead of THREE.LineSegments), the proximity+pulse fade (83-92) and the position/velocity clamp (96-118, both the position-only and position+velocity overloads) are all ported. A consumer attaches each Wall.Mesh to a MeshRenderer with an additive unlit material and feeds Fade()'s per-wall opacity into it every frame, same division of labour as TerrainBuilder/BuildingBuilder (mesh+data here, GameObject/Material wiring elsewhere).",
+    "verified": null
+  },
+  {
+    "cs": "Assets/Scripts/City/ShopfrontBuilder.cs",
+    "js": "shopfronts.js",
+    "covers": 360,
+    "note": "The entire POI pipeline is ported: CAT_STYLE's 45 categories (colour + Georgian fallback label, extracted programmatically from the JS source so every Georgian byte matches exactly — not hand-typed), AWNING_CATS/CIVIC_CATS/MODULE_CATS, the 80 m grid flatten+bucket with the 'named' 30 m dedup check (shopfronts.js:99-137), the full wall-snap search against CityData.Buildings (139-185, GAME-frame throughout, mirrored once at the end), module/awning/canopy/cross/sign item construction (210-247) with real Georgian names (NameOf) and brand-book overrides (LookupBrand), and standalone McDonald's pad detection (346-353). Awning and fuel-canopy geometry is built as real combined Mesh data (no asset needed, hand-verified winding); the glass shopfront module needs Assets/Art/Props/facade_kit.fbx's 'win_shop' submesh, attached at the ModuleItem transforms by a later mesh-wiring pass. THE DECISIVE TEST: every ModuleItem/AwningItem/SignSpot carries NormalUnity (the outward wall normal, already mirrored) alongside YawUnity, so CityPropsProbe's SHOPNORM lines can assert dot(forward, normal) > 0 for 10 sampled shopfronts. NOT covered: the SignPool class (shopfronts.js:378-652, ~270 lines) — the pooled-canvas real-time sign rendering, brand mark-drawing (drawMark/drawBrand), and camera-distance pooling/reassignment (update()) are not ported; SignSpot carries everything SignPool would need (name, category, brand, position, yaw, outward normal) for a UI/rendering pass to consume.",
+    "verified": null
+  }
+]

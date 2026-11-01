@@ -1,0 +1,9 @@
+[
+ {
+  "cs": "Assets/Scripts/City/RoadBuilder.cs",
+  "js": "citymap.js",
+  "covers": 272,
+  "note": "citymap.js:6597-6868 `_buildRoads` — the draped asphalt/sidewalk/verge/painted-markings road deck, ported as RoadBuilder.BuildRoadDeck (RoadBuilder.cs:398) and called from CityLoader.cs:291, which cites citymap.js:871 as its call site. This is a SECOND claim on a file whose other claim is tagged js=roads.js. The work was never missing: that claim's own note has said 'ALSO covers src/citymap.js:6597-6868 (_buildRoads, ~272 lines)' all along, but the manifest keyed one JS tag per file so every citymap.js gap query missed it. THE COORDINATOR BRIEFED AN AGENT TO PORT THIS AS 'the largest unclaimed piece in the project' AND WAS WRONG — the agent verified it against the shipped code and refused to build a duplicate, which was the right call. Third instance of this artifact family (roads.js/bridges.js and characters.js/foot.js were the others); a sweep of every 'ALSO covers' note now confirms only these three ever existed, and tools/merge_port_units.py checks for new ones on every merge.",
+  "verified": "Verified by the coordinator directly, not taken from the agent's report: RoadBuilder.cs:398 declares BuildRoadDeck with the cited SW_MAX=3 and TEX_M=9 constants, and CityLoader.cs:291 calls it. The existing RoadProbe.cs already drape-verifies it against real road data. Additionally tools/_probe_cityroads.mjs was written and RUN (4/4 assertions pass): deck height off the TRIANGLE terrain sample agrees to 1e-4, the south sidewalk is all -Z and the north all +Z (the kerb-side check, which is where an unswapped cross product would flip it), and triangle-vs-bilinear height diverge by 1.22 m on the test cell — proving the check is not vacuous. Its C# counterpart CityRoadsProbe.cs is written but not yet run."
+ }
+]

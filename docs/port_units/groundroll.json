@@ -1,0 +1,23 @@
+[
+ {
+  "cs": "Assets/Scripts/Core/PlaneGroundRoll.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX (coverage unchanged): AttitudeJS() = the single read-back of a Unity transform in the JS Euler('YXZ') frame, pitch +asin(forward.y) (game.js:1657-1659, :1543), roll from transform.right (Cross(M·up, M·fwd) = M·right under a reflection, sign carries). Shipped -asin made the slope-align lerp positive feedback. Proven by a Node sim of game.js's ground roll (js vs csbug vs csfix arms) and frame-for-frame equality with the fixed Unity print; play-mode takeoff after Vr with fwdY +0.23 vs Node +0.233. Diag hook (null in the game) subscribed by Tests/PlayMode/FirstPlayModeRun.cs."
+ },
+ {
+  "cs": "Assets/Scripts/Core/PlaneRaycastWorld.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "FIX: OwnPlane/IsOwn/DropOwn exclude the own airframe from every world cast (game.js:834-836 keeps it out of world.collidables on purpose). Before: WALLHIT col=plane_shell dist=0.003 every 0.4 s, crash at 25 m/s; after: WALLHIT_COUNT=0."
+ },
+ {
+  "cs": "Assets/Scripts/Core/PlaneWallContact.cs",
+  "js": "game.js",
+  "covers": 0,
+  "verified": "2026-10-30",
+  "note": "Diag per-contact hook (sp/dist/headOn/n/collider/terrain), null in the game; it is what named the own-shell bug."
+ }
+]

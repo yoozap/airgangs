@@ -65,6 +65,14 @@ const SETTLE_MS = 2500;
 // simply switched off; the hall is 440 m long, so this still covers standing
 // at either bay looking in.
 const SHOW_DIST = 480; // m from the centre
+// ...and how close before the FURNITURE INSIDE one is drawn. Every parked
+// machine carries a full cockpit interior -- seat, tub, panel, 16 meshes --
+// and all 35 of them were being drawn, through the hall's walls, from out on
+// the runway: 560 meshes and 142k triangles that were 1,872 of the 4,652 draw
+// calls at the spawn (tools/_probe_drawcalls.mjs). You see a cockpit through
+// its canopy when you walk up to the aeroplane, so that is when it is drawn --
+// per machine, not per hall, because the hall is 440 m long.
+const KIT_DIST = 90; // m from the aeroplane itself
 
 // TANK and DPS are what the MACHINE is, not what the pilot is -- each plane
 // def in src/planes.js carries its own role, and that is what the two sides
@@ -141,8 +149,9 @@ class PlaneHall {
     const dz = camPos.z - this._centre.z;
     const d2 = dx * dx + dz * dz;
     if (this.fleet) {
-      const near = d2 < SHOW_DIST * SHOW_DIST;
+      const near = d2 < SHOW_DIST * SHOW_DIST && !this._walled(dx, dz);
       if (this.fleet.visible !== near) this.fleet.visible = near;
+      if (near) this._cockpits(camPos);
       return;
     }
     if (this.filled) return;
@@ -150,6 +159,63 @@ class PlaneHall {
     if (d2 > FILL_DIST * FILL_DIST) return;
     this.filled = true; // one shot, whatever happens below
     this._fill().catch((e) => console.warn('plane hall fill failed:', e?.message ?? e));
+  }
+
+  // IS THE SHED'S OWN WALL IN THE WAY? three has no occlusion culling, so a
+  // hall inside the radius draws all 35 machines through its side walls — and
+  // the spawn stands 210 m off one of them, outside a 128 m half-width, which
+  // is why every session begins paying for a fleet nobody can see.
+  //
+  // The safe region is not a radius: you can see straight down the lane from
+  // 400 m beyond a bay mouth. It was mapped rather than guessed
+  // (tools/_probe_hallvis.mjs renders each viewpoint with the fleet on and
+  // off and counts the pixels that differ): directly off a side wall the
+  // fleet is 0% of the frame at 60, 200 and 400 m and at 6, 12 and 80 m up,
+  // while the lane and the corners are 0.07-2.3%. So: hidden only when the
+  // camera is beyond a side wall AND between the two ends, with margin on
+  // both.
+  _walled(dx, dz) {
+    const a = (this._axes ??= (() => {
+      this.hall.updateMatrixWorld(true);
+      const e = this.hall.matrixWorld.elements;
+      const nx = Math.hypot(e[0], e[2]) || 1;
+      const nz = Math.hypot(e[8], e[10]) || 1;
+      const d = this.hall.userData.shedShell ?? {};
+      return {
+        ux: e[0] / nx, uz: e[2] / nx,       // the hall's own +x, in world
+        vx: e[8] / nz, vz: e[10] / nz,      // ...and its +z, down the lane
+        halfW: ((d.width ?? 190) / 2) * nx,
+        halfL: ((d.length ?? 440) / 2) * nz,
+      };
+    })());
+    const lx = dx * a.ux + dz * a.uz;
+    const lz = dx * a.vx + dz * a.vz;
+    return Math.abs(lx) > a.halfW + 40 && Math.abs(lz) < a.halfL * 0.85;
+  }
+
+  // Draw a parked aeroplane's cockpit interior only for someone close enough
+  // to look into it. The places are taken once -- a parked machine's matrix is
+  // frozen (matrixAutoUpdate = false) -- but the kit itself is read fresh every
+  // pass, because it arrives asynchronously out of one cached glTF.
+  //
+  // An aeroplane the hero has CLIMBED INTO is no longer the hall's: swapToPlane
+  // takes it out of the fleet and flies it, and its cached place here goes
+  // stale the moment it moves. Hiding a kit by a stale place would empty the
+  // cockpit the player is sitting in, so anything that has left the group is
+  // skipped.
+  _cockpits(camPos) {
+    const list = (this._kitPlaces ??= this.fleet.children.map((p) => {
+      const e = p.matrixWorld.elements;
+      return { p, x: e[12], z: e[14] };
+    }));
+    const r2 = KIT_DIST * KIT_DIST;
+    for (const k of list) {
+      if (k.p.parent !== this.fleet) continue;      // flown away: not ours
+      const kit = k.p.userData.cockpitKit;
+      if (!kit) continue;                           // still loading
+      const on = (camPos.x - k.x) ** 2 + (camPos.z - k.z) ** 2 < r2;
+      if (kit.visible !== on) kit.visible = on;
+    }
   }
 
   async _fill() {

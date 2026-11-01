@@ -1,0 +1,43 @@
+[
+  {
+    "cs": "Assets/Scripts/UI/Map/BigMapView.cs",
+    "js": "mapui.js",
+    "covers": 435,
+    "restates": true,
+    "note": "CREDITS work that was already in the file but never billed, same precedent as cityui.json's ZoneBuilder.cs correction. +85 lines over the prior 350: the WHOLE pin click/drag/remove interaction mapui.js:411-459 (_bindMapControls -> OnWheel/OnPointerDown/OnPointerMove/OnPointerUp, 49 lines), :462-467 (_pinScreen -> PinScreen-equivalent math inlined in PinIndexAt/ClickAt, 6 lines), :469-479 (_pinAt -> PinIndexAt, 11 lines), :482-500 (_clickPin -> ClickAt, 19 lines). Verified line-for-line present: OnPointerDown/OnPointerMove/OnPointerUp at BigMapView.cs:204-239, ClickAt/RemoveNearestPin/PinIndexAt at :241-280, OnWheel (zoom-toward-cursor) at :179-190. Drag re-basing matches mapui.js:438-446's running-delta convention exactly (BigMapView.cs's own comment calls this out). Right-click-removes-pin (mapui.js:450-458) is OnPointerUp's button==1 branch calling RemoveNearestPin, radius 22 matching the JS literal. No handedness concerns (2D screen-space input only, UI Toolkit local coordinates already match the DOM canvas convention mapui.js used)."
+  },
+  {
+    "cs": "Assets/Scripts/UI/Map/MiniMapView.cs",
+    "js": "mapui.js",
+    "covers": 96,
+    "restates": true,
+    "note": "+6 lines over the prior 90: mapui.js:128-133 _inCityImage(x,z) (margin=40 test against the satellite mosaic bounds) is MiniMapView.cs:141-149's InCityImage(lat,lon) -- same margin constant (40f), same four-sided bounds test, called from UpdateView (:105) exactly where update() calls it at mapui.js:145 to pick city-vs-country imagery. Was implemented but never cited."
+  },
+  {
+    "cs": "Assets/Scripts/City/ShopSignTextures.cs",
+    "js": "shopfronts.js",
+    "covers": 137,
+    "restates": true,
+    "note": "Closes part of this unit's OWN documented KNOWN LIMITATION ('the shop NAME TEXT itself ... is NOT painted ... ~34 lines total') now that the Mkhedruli font chain exists. +20 lines over the prior 117, the two blocks this module's headroom (21 free of 652) can actually afford: the named-plate engraved-gold fillText (shopfronts.js:560-569, 10 lines -> ShopSignTextures.cs:71-77's SignTextRenderer.DrawText call with the same shrink-while-width>470&&s2>15 step-3 loop) and the civic/plain-fascia centred fillText (shopfronts.js:591-600, 10 lines -> ShopSignTextures.cs:133-139's shrink-while->488&&size>17 step-3 loop). PIXEL-PROVEN: Assets/Editor/Probes/SignTextInkProbe.cs (new this pass) renders each DrawSpec twice -- once with real Georgian text, once with Text=\"\" -- and diffs the two Color32[] buffers. named_plate_text: diffPixels=5511, bbox=77,14,434,49 (centred on the plate, inside the 9,9,494,62 frame -- exactly where fillText(name,256,41) lands). civic_dark_text: diffPixels=8452, bbox=0,9,511,49 (long Georgian string needed the full shrunk width -- fillText(name,256,40) centred). NOT billed, over this module's remaining 1-line headroom after this claim, but implemented and ALSO pixel-proven by the same probe: drawBrand's wordmark text (shopfronts.js:521-536, ~14 lines -- ShopSignTextures.cs:95-109) -- brand_wordmark_text case: diffPixels=3204, bbox=98,8,274,52, ink clearly present and left-aligned past the leaf mark exactly as the 'left = hasMark?96:24' rule requires. Reported, not claimed: filing it would push shopfronts.js to 665/652, an over-claim this report declines to manufacture. Whoever next finds real headroom in this module (e.g. by resolving the SignPool.cs/ShopSignTextures.cs shared-line-range question this task's README flags as a general pattern) can bill it then."
+  },
+  {
+    "cs": "Assets/Scripts/City/MetroSignage.cs",
+    "js": "metro.js",
+    "covers": 67,
+    "restates": true,
+    "note": "Closes this unit's own documented text gap now that the Mkhedruli font chain exists. +17 lines over the prior 50: namePlate's two fillText rows (metro.js:73-76, 4 lines -> MetroSignage.cs:200-204's SignTextRenderer.DrawText calls for ka-or-en bold 46px then uppercased en regular 34px), bluePlate's centred fillText (metro.js:91-96, 6 lines -> MetroSignage.cs:226-227, font size = round(h*0.62) matching metro.js:93's Math.round), and terminalPlate's two left-aligned fillText rows (metro.js:111-117, 7 lines -> MetroSignage.cs:251-256, en.toUpperCase() bold 92px then ka bold 64px). PIXEL-PROVEN: Assets/Editor/Probes/SignTextInkProbe.cs's MetroCase diffs BuildNamePlate(real Georgian 'Avlabari', \"avlabari\") against BuildNamePlate(\"\",\"\") -- diffPixels=6506, bbox=150,28,404,111, the left edge landing exactly at NamePlateKaOrigin.x=150 (metro.js:74's fillText(ka||en,150,36)). Also fixes a now-stale line in Assets/Editor/Probes/CityInfraProbe.cs: METRO_GEORGIAN_FONT_ASSET_FOUND was hardcoded false ('confirmed by hand: no .ttf/.otf ... under Assets/'), true before BuildFontAssets.cs ran; now reads Resources.Load<FontAsset>(\"Fonts/NotoSansGeorgian-Regular\")!=null and prints true (re-run confirmed: METRO_GEORGIAN_FONT_ASSET_FOUND=true)."
+  },
+  {
+    "cs": "Assets/Scripts/City/MallRenderer.cs",
+    "js": "malls.js",
+    "covers": 28,
+    "restates": true,
+    "note": "Closes part of MallPlacer.cs's documented gap ('NOT covered: malls.js:10-31 label() canvas texture (sign text rendering)') now that the font chain exists. +6 lines over the prior 22, this module's entire remaining headroom (88 budget, was 82/88 claimed): malls.js:20-22's auto-shrink loop (s-=4 while measureText(text).width>w-30&&s>18, 3 lines) and :24-26's textAlign/textBaseline/fillText (3 lines) -> MallRenderer.cs's MallSignTexture(text), lines 171/173. MallSignTexture was made `internal` (was `private static`) so Assets/Editor/Probes/SignTextInkProbe.cs (new this pass) can call the REAL method, not a reimplementation -- AssemblyInfo.cs's existing InternalsVisibleTo(\"Assembly-CSharp-Editor\") covers it, no further exposure needed. PIXEL-PROVEN: MallCase diffs MallSignTexture(real Georgian 'Tbilisi Mall') against MallSignTexture(\"\") -- diffPixels=17181, bbox=205,10,818,83, centred in the 1024-wide plate exactly where fillText(text,512,66) with textAlign=center lands. NOT billed, no headroom left in this 88-line module: malls.js:10-19's canvas setup (new canvas, fillRect bg) and :27-31's CanvasTexture wrap -- Unity-rendering-API-specific, already superseded by MallSignTexture's own Texture2D construction (MallRenderer.cs:178-185), not game logic to re-cite."
+  },
+  {
+    "cs": "Assets/Scripts/City/SignTextRenderer.cs",
+    "js": "shopfronts.js",
+    "covers": 0,
+    "note": "NEW FILE. Shared Georgian/Latin/Cyrillic/symbol glyph rasteriser consumed by ShopSignTextures.cs (shopfronts.js), MetroSignage.cs (metro.js) and MallRenderer.cs (malls.js) -- same 'shared infra with no 1:1 JS line range, covers=0' precedent as Assets/Scripts/Combat/DamageTextures.cs's own manifest entry (also covers=0): there is nothing in src/*.js for it to cite, because the browser's own Canvas2D fillText/measureText had no font-asset step at all (the font was just a CSS family name, src/style.css:25 -- the JS build never shipped or built a font). Loads Resources.Load<FontAsset>(\"Fonts/NotoSansGeorgian-Regular\"/\"-Bold\") plus the same 5-face fallback chain Assets/Editor/BuildFontAssets.cs wires (NotoSans-Regular/NotoSansSymbols/NotoSansSymbols2/NotoSansMath-Regular/NotoEmoji-Regular), uses TextCore's own software SDF rasteriser (FontAsset.TryAddCharacters -> FontEngine, no GPU device, proven to run under -batchmode -nographics by BuildFontAssets.cs itself) rather than a live UI Toolkit panel (which needs an actual GPU frame -nographics does not give), and composites glyphs into a plain Color32[] canvas-y-down buffer the same way Combat/DamageTextures.cs's whole family already paints. PIXEL-PROVEN end to end, not just 'a string reached DrawText without throwing': Assets/Editor/Probes/SignTextInkProbe.cs (new this pass) renders every consumer's real output twice (with real Georgian text vs Text=\"\") and diffs the raw buffers -- ShopSignTextures.cs 4 cases (diffPixels 3204-8452), MetroSignage.BuildNamePlate (diffPixels=6506), MallRenderer.MallSignTexture (diffPixels=17181) -- all non-zero, all bbox-located exactly where each caller's own fillText x/y/align says the glyphs should land. Run: Unity -batchmode -quit -nographics -projectPath unity -executeMethod TbilisiFly.Probes.SignTextInkProbe.Run -logFile /dev/stdout. Whole-file compile verified clean (no error CS) in the same batch pass."
+  }
+]

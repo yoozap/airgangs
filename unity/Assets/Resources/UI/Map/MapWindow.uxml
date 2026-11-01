@@ -1,0 +1,27 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+  <!-- Port of index.html:242-258 (#mapwin). Georgian strings byte-for-byte:
+       the title bar text and the control hint line. BigMapView (the actual
+       zoomable/pannable map canvas) is inserted into #mapwin-body at
+       runtime by MapWindowView.cs, ahead of the hint label. -->
+  <Style src="Map.uss" />
+  <ui:VisualElement name="mapwin" class="mw-root hidden">
+    <ui:VisualElement name="mapwin-title" class="mw-title">
+      <ui:VisualElement class="mw-dot" />
+      <ui:Label class="mw-name" text="თბილისი // GRID-41.72N" />
+      <ui:Label class="mw-sub" text="ტაქტიკური რუკა" />
+      <ui:VisualElement class="mw-btns">
+        <ui:Button name="mapwin-full" class="mw-btn" text="⛶" tooltip="მთელ ეკრანზე / ფანჯარაში" />
+        <ui:Button name="mapwin-close" class="mw-btn mw-close" text="✕" tooltip="დახურვა (M)" />
+      </ui:VisualElement>
+    </ui:VisualElement>
+    <ui:VisualElement name="mapwin-body" class="mw-body">
+      <ui:Label name="mapwin-hint" class="mw-hint"
+        text="M / Esc — დახურვა · სქროლი — ზუმი · გადაათრიე — გადაადგილება · კლიკი — 📍 პინი · მარჯვენა კლიკი — პინის წაშლა" />
+    </ui:VisualElement>
+    <ui:VisualElement name="mapwin-resize" class="mw-resize" />
+    <ui:VisualElement class="mw-corner tl" />
+    <ui:VisualElement class="mw-corner tr" />
+    <ui:VisualElement class="mw-corner bl" />
+    <ui:VisualElement class="mw-corner br" />
+  </ui:VisualElement>
+</ui:UXML>

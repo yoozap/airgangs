@@ -1,0 +1,199 @@
+{
+ "makarov": [
+  "makarov_569174_0.wav"
+ ],
+ "beretta": [
+  "beretta_151066_0.wav",
+  "beretta_157970_0.wav",
+  "beretta_707777_0.wav",
+  "beretta_707777_1.wav"
+ ],
+ "ak47": [
+  "ak47_136399_0.wav",
+  "ak47_136399_1.wav",
+  "ak47_136399_2.wav",
+  "ak47_136399_3.wav",
+  "ak47_395572_0.wav",
+  "ak47_395572_1.wav",
+  "ak47_395572_2.wav",
+  "ak47_395572_3.wav",
+  "ak47_698984_0.wav",
+  "ak47_698984_1.wav",
+  "ak47_698984_2.wav",
+  "ak47_520934_0.wav"
+ ],
+ "imp_concrete": [
+  "imp_concrete_423107_0.wav",
+  "imp_concrete_150837_0.wav",
+  "imp_concrete_150837_1.wav",
+  "imp_concrete_150838_0.wav",
+  "imp_concrete_150838_1.wav",
+  "imp_concrete_150839_0.wav"
+ ],
+ "imp_metal": [
+  "imp_metal_182263_0.wav",
+  "imp_metal_182263_1.wav",
+  "imp_metal_351371_0.wav",
+  "imp_metal_399550_0.wav",
+  "imp_metal_399550_1.wav"
+ ],
+ "imp_wood": [
+  "imp_wood_237448_0.wav"
+ ],
+ "imp_dirt": [
+  "imp_dirt_319229_0.wav"
+ ],
+ "imp_water": [
+  "imp_water_675947_0.wav",
+  "imp_water_675947_1.wav",
+  "imp_water_675947_2.wav",
+  "imp_water_675947_3.wav"
+ ],
+ "ricochet": [
+  "ricochet_478345_0.wav",
+  "ricochet_30932_0.wav",
+  "ricochet_30932_1.wav",
+  "ricochet_345413_0.wav",
+  "ricochet_394187_0.wav"
+ ],
+ "casing": [
+  "casing_210102_0.wav",
+  "casing_210102_1.wav",
+  "casing_210102_2.wav"
+ ],
+ "mag_out": [
+  "mag_out_171620_0.wav",
+  "mag_out_171620_1.wav",
+  "mag_out_456195_0.wav",
+  "mag_out_456195_1.wav",
+  "mag_out_842729_0.wav",
+  "mag_out_842729_1.wav"
+ ],
+ "mag_in": [
+  "mag_in_171209_0.wav",
+  "mag_in_171209_1.wav",
+  "mag_in_171614_0.wav",
+  "mag_in_842729_0.wav",
+  "mag_in_842729_1.wav"
+ ],
+ "slide": [
+  "slide_151067_0.wav",
+  "slide_233320_0.wav",
+  "slide_854486_0.wav",
+  "slide_842731_0.wav",
+  "slide_842731_1.wav"
+ ],
+ "ak_rack": [
+  "ak_rack_851737_0.wav",
+  "ak_rack_171632_0.wav",
+  "ak_rack_142892_0.wav",
+  "ak_rack_142892_1.wav",
+  "ak_rack_543596_0.wav",
+  "ak_rack_543596_1.wav"
+ ],
+ "ak_mag_out": [
+  "ak_mag_out_851743_0.wav",
+  "ak_mag_out_851742_0.wav",
+  "ak_mag_out_851740_0.wav",
+  "ak_mag_out_851741_0.wav"
+ ],
+ "ak_mag_in": [
+  "ak_mag_in_851748_0.wav",
+  "ak_mag_in_851746_0.wav",
+  "ak_mag_in_851744_0.wav",
+  "ak_mag_in_851745_0.wav"
+ ],
+ "draw": [
+  "draw_377145_0.wav",
+  "draw_239959_0.wav",
+  "draw_239959_1.wav",
+  "draw_171617_0.wav",
+  "draw_755986_0.wav",
+  "draw_755986_1.wav",
+  "draw_725400_0.wav",
+  "draw_725400_1.wav"
+ ],
+ "step_concrete": [
+  "step_concrete_813622_0.wav",
+  "step_concrete_813622_1.wav",
+  "step_concrete_813622_2.wav",
+  "step_concrete_813622_3.wav",
+  "step_concrete_727367_0.wav",
+  "step_concrete_727367_1.wav",
+  "step_concrete_727367_2.wav",
+  "step_concrete_554380_0.wav",
+  "step_concrete_554380_1.wav",
+  "step_concrete_554380_2.wav",
+  "step_concrete_554380_3.wav"
+ ],
+ "step_grass": [
+  "step_grass_682128_0.wav",
+  "step_grass_682128_1.wav",
+  "step_grass_682128_2.wav",
+  "step_grass_682128_3.wav",
+  "step_grass_685286_0.wav",
+  "step_grass_685286_1.wav",
+  "step_grass_685286_2.wav",
+  "step_grass_685286_3.wav",
+  "step_grass_521587_0.wav",
+  "step_grass_521587_1.wav",
+  "step_grass_521587_2.wav",
+  "step_grass_521587_3.wav"
+ ],
+ "step_dirt": [
+  "step_dirt_353799_0.wav",
+  "step_dirt_353799_1.wav",
+  "step_dirt_353799_2.wav",
+  "step_dirt_353799_3.wav",
+  "step_dirt_682127_0.wav",
+  "step_dirt_682127_1.wav",
+  "step_dirt_682127_2.wav",
+  "step_dirt_682127_3.wav",
+  "step_dirt_521588_0.wav",
+  "step_dirt_521588_1.wav",
+  "step_dirt_521588_2.wav",
+  "step_dirt_521588_3.wav"
+ ],
+ "step_metal": [
+  "step_metal_834029_0.wav",
+  "step_metal_834029_1.wav",
+  "step_metal_834029_2.wav",
+  "step_metal_834029_3.wav",
+  "step_metal_698697_0.wav",
+  "step_metal_698697_1.wav",
+  "step_metal_698697_2.wav",
+  "step_metal_698697_3.wav",
+  "step_metal_463811_0.wav",
+  "step_metal_463811_1.wav",
+  "step_metal_463811_2.wav",
+  "step_metal_463811_3.wav"
+ ],
+ "step_wood": [
+  "step_wood_543685_0.wav",
+  "step_wood_543685_1.wav",
+  "step_wood_543685_2.wav",
+  "step_wood_543685_3.wav",
+  "step_wood_426620_0.wav",
+  "step_wood_426620_1.wav",
+  "step_wood_426620_2.wav",
+  "step_wood_426620_3.wav",
+  "step_wood_682774_0.wav",
+  "step_wood_682774_1.wav",
+  "step_wood_682774_2.wav",
+  "step_wood_682774_3.wav"
+ ],
+ "step_water": [
+  "step_water_861369_0.wav",
+  "step_water_861369_1.wav",
+  "step_water_861369_2.wav",
+  "step_water_861369_3.wav",
+  "step_water_531566_0.wav",
+  "step_water_531566_1.wav",
+  "step_water_531566_2.wav",
+  "step_water_531566_3.wav",
+  "step_water_106395_0.wav",
+  "step_water_106395_1.wav",
+  "step_water_106395_2.wav",
+  "step_water_106395_3.wav"
+ ]
+}
