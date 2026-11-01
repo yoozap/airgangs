@@ -184,6 +184,17 @@ namespace TbilisiFly.Core
         public BoundaryWall Boundary;
         public ZoneBuilder Zones;
 
+        /// <summary>User decision, 2026-11-01: "shooting u can move new one from
+        /// our assets ... i dont need old gun reload shooting from js". True
+        /// means the purchased Asset Store "Cover + Shooting System" owns
+        /// on-foot movement/camera/aim/shoot/cover/weapons through
+        /// Character/CoverShootHero.cs; the JS-ported path (FootCover inside
+        /// _foot.Update, Core/HeldWeapon.cs's Tick, TickOnFootCamera, the
+        /// V/RMB/Alt/R bindings below) is left fully intact and reachable by
+        /// flipping this back to false — see StageOnFoot/StageOnFootPurchased
+        /// and HeldWeapon.Tick's own early-return.</summary>
+        public static bool UsePurchasedShooter = false; // OFF until CoverShootRun proves the purchased path end to end (coordinator 2026-11-01 15:20); the JS on-foot path ships meanwhile
+
         [Header("On-foot (FootController/CharacterRig are plain classes, not components)")]
         public CharacterRig Rig;                 // assigned by SpawnBody() below
         public GameObject BodyPrefabToSpawn;      // Inspector convenience for a single-scene test
@@ -824,6 +835,7 @@ namespace TbilisiFly.Core
         void StageOnFoot(float dt)
         {
             if (Rig == null) return;
+            if (UsePurchasedShooter) { StageOnFootPurchased(dt); return; }
             var m = ReadFootMoveInput();
             _foot.Armed = IsArmedProvider?.Invoke() ?? false; // Core/HeldWeapon.cs now owns this (see class header)
             // The mouse look is INPUT and is read before the body is stepped, the
@@ -893,14 +905,82 @@ namespace TbilisiFly.Core
             }
         }
 
+        /// <summary>The on-foot branch while <see cref="UsePurchasedShooter"/>
+        /// is true: Character/CoverShootHero's own Rigidbody + the pack's 5
+        /// MonoBehaviours move/rotate the body and drive the camera every
+        /// frame on their own (real Unity components, ticked by the engine —
+        /// not something this method calls), so this is deliberately NOT a
+        /// call into `_foot.Update`/`TickOnFootCamera`: those are the JS-
+        /// ported movement/camera/weapon/cover path this mode replaces. Everything
+        /// here is the SMALL SUBSET that still has to run regardless of which
+        /// system owns movement — zone boundary slam, the climb-back-in hint
+        /// — read off `Rig.Root.position` (which the pack's own Rigidbody now
+        /// drives) rather than the stale `_foot.Pos` (which only `_foot.Update`
+        /// writes).</summary>
+        void StageOnFootPurchased(float dt)
+        {
+            // Keep the OLD position/yaw state truthfully mirrored onto
+            // wherever the pack's own Rigidbody actually put the body this
+            // frame. Cheap and otherwise unused under this mode, but it is
+            // what keeps `game.Foot.Pos`-reading code elsewhere (several
+            // protected play-mode tests this task may not edit —
+            // FirstPlayModeRun.cs/KeysRun.cs read `game.Foot.Pos` for their
+            // own on-foot movement/turn assertions) seeing REAL movement
+            // instead of a frozen value, without this mode ever writing
+            // `Rig.Root.position` itself (that would fight the Rigidbody).
+            _foot.Pos = Rig.Root.position;
+            _foot.Yaw = _foot.CamYaw = Rig.Root.eulerAngles.y * Mathf.Deg2Rad;
+
+            // Climb/free-run (coordinator 2026-11-01 15:20: "X starts a clip
+            // that never advances because _foot.Update is skipped"). Reads
+            // raw W/Shift/Space off the keyboard the same way ReadFootMoveInput
+            // does (pure read, no side effects, the mirrored X/StrafeX sign it
+            // also computes is simply unused by the climb trigger). While a
+            // climb owns the frame (FootController.TickClimbAndFreeRun's own
+            // Climb.Active/Clips.IsPlaying — Character/CoverShootHero.cs's
+            // Update() watches both of those to suspend the pack's Rigidbody),
+            // Pos/Yaw come from the climb, not from the Rigidbody.
+            var climbInput = ReadFootMoveInput();
+            bool climbOwnsFrame = _foot.TickClimbAndFreeRun(dt, Rig, climbInput);
+            if (climbOwnsFrame)
+            {
+                Rig.Root.position = _foot.Pos;
+                Rig.Root.rotation = Quaternion.Euler(0f, _foot.Yaw * Mathf.Rad2Deg, 0f);
+                var rb = Rig.Root.GetComponent<Rigidbody>();
+                if (rb != null) { rb.position = Rig.Root.position; rb.rotation = Rig.Root.rotation; }
+            }
+
+            _collisionTimer += dt;
+            if (_collisionTimer > 0.15f)
+            {
+                _collisionTimer = 0f;
+                UpdateZones(Rig.Root.position.x, Rig.Root.position.z);
+            }
+
+            if (ActivePlane != null)
+            {
+                float d2 = Vector3.Distance(Rig.Root.position, ActivePlane.transform.position);
+                float reach2 = Mathf.Max(BoardDist, (ActivePlane.Model?.Span ?? 12f) * 0.5f + 3f);
+                if (d2 < reach2) OnHint?.Invoke("Enter — თვითმფრინავში დაბრუნება ✈");
+            }
+        }
+
         FootController.MoveInput ReadFootMoveInput()
         {
             var kb = Keyboard.current;
             var m = new FootController.MoveInput();
             if (kb == null) return m;
             float fwd = (kb.wKey.isPressed ? -1f : 0f) + (kb.sKey.isPressed ? 1f : 0f);
-            float ad = (kb.dKey.isPressed ? 1f : 0f) + (kb.aKey.isPressed ? -1f : 0f);
-            float strafe = (kb.eKey.isPressed ? 1f : 0f) + (kb.qKey.isPressed ? -1f : 0f);
+            // HANDEDNESS (2026-11-01, user: "left right on personage need switches"):
+            // the Unity world is the mirror image of the JS world (GeoFrame flips X,
+            // the FBX bridge keeps X) and FootController's yaw maths is the JS's,
+            // so "yaw up" turns the hero to the SCREEN-RIGHT here where it turned
+            // left in three.js. Everything downstream is consistently mirrored;
+            // only the player's lateral intent must not be, so A/D and Q/E enter
+            // with the opposite sign (and the mouse X below). The JS values are
+            // D=+1/A=-1 and E=+1/Q=-1 (game.js:1469-1481).
+            float ad = -((kb.dKey.isPressed ? 1f : 0f) + (kb.aKey.isPressed ? -1f : 0f));
+            float strafe = -((kb.eKey.isPressed ? 1f : 0f) + (kb.qKey.isPressed ? -1f : 0f));
             m.Z = fwd;
             m.X = ad;
             m.Turn = ad; // bare-handed A/D turn rate — same sign as X, see MoveInput's own comment
@@ -980,7 +1060,7 @@ namespace TbilisiFly.Core
             if (!armed && !dragging) return;          // game.js:662
             Vector2 d = mouse.delta.ReadValue();
             // game.js:77 `MOUSE_SENS = 0.005` rad/px, :668 `look.yaw -= movementX * MOUSE_SENS`
-            _foot.LookYaw -= d.x * 0.005f;
+            _foot.LookYaw += d.x * 0.005f; // mirrored world: see ReadFootMoveInput's HANDEDNESS note (JS: -=)
             float dy = d.y * 0.005f;
             _footLookPitch = Mathf.Clamp(_footLookPitch + (armed ? dy : -dy), -1.2f, 1.2f); // game.js:673-674
         }
@@ -1261,22 +1341,84 @@ namespace TbilisiFly.Core
                 {
                     Rig?.FreezePose(); // seated pose freeze — see class header's qSame/freezePose note
                 }
+                if (UsePurchasedShooter && !wasEntering)
+                    Character.CoverShootHero.Instance?.SetSeated(false); // climb-out complete — give the body back
             }
             // velocity/rates are held at zero for the whole boarding window —
             // game.js:2401-2404 "when i am goin out of plain, plain goin"
             if (ActivePlane != null) { ActivePlane.Velocity = Vector3.zero; ActivePlane.Rates = Vector3.zero; }
         }
 
-        /// <summary>Enter pressed. Mirrors foot.js:649-680 `toggle()`.</summary>
+        /// <summary>Enter pressed. Mirrors foot.js:649-680 `toggle()`.
+        ///
+        /// FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_SWAP scenario
+        /// (2026-11-01): this only ever compared the hero to <see
+        /// cref="ActivePlane"/> — "walk up to ANY of the 36 parked planes and
+        /// Enter takes it" (<see cref="SwapToPlane"/>, src/game.js:774-832)
+        /// was NEVER CALLED from anywhere in the project. The intended live
+        /// path, per Flight/PlaneHallFill.cs's own comment ("Character/
+        /// FootBoarding.NearestPlane() then walks that registry to decide
+        /// which machine Enter boards"), is Character/FootBoarding.cs — a
+        /// complete, correct port of foot.js's toggle/_nearestPlane/swap that
+        /// is never `new`'d anywhere (`grep -r "new FootBoarding("` finds only
+        /// its own declaration). Rather than switch this file's whole
+        /// board/exit state machine onto that unused class (a far bigger,
+        /// riskier change to the file every other combat system also edits),
+        /// this walks the SAME registry FootBoarding would have
+        /// (<see cref="_targets"/> — the one <c>Core/CombatWorldAdapter.
+        /// Install()</c> actually fills with every parked/hall/crane plane,
+        /// per its own comment at the registration loop) and completes the
+        /// other missing half PlaneController.Init()'s own header already
+        /// anticipates: "a hall machine taken with Enter (Core/GameLoop.
+        /// SwapToPlane -> Init) already carries the chain from
+        /// PlaneHallFill" assumed a PlaneController would already be
+        /// sitting on it; PlaneHallFill.cs never adds one, so this adds it
+        /// here, once, at the moment it is actually needed.</summary>
         public void ToggleBoard()
         {
             if (!Started || Crashed || _board != null) return;
             if (Mode == GameMode.OnFoot)
             {
-                if (ActivePlane == null) { OnHint?.Invoke("✈ თვითმფრინავი შორსაა — მიუახლოვდი და დააჭირე Enter"); return; }
-                float d = Vector3.Distance(Rig != null ? Rig.Root.position : _foot.Pos, ActivePlane.transform.position);
-                float reach = Mathf.Max(BoardDist, (ActivePlane.Model?.Span ?? 12f) * 0.5f + 3f);
-                if (d >= reach) { OnHint?.Invoke("✈ თვითმფრინავი შორსაა — მიუახლოვდი და დააჭირე Enter"); return; }
+                // src/foot.js's own `_nearestPlane()` considers EVERY
+                // registered machine, not only the one already being flown —
+                // own plane first (so it wins a tie), then every other entry
+                // in reach, nearest wins.
+                Vector3 footPos = Rig != null ? Rig.Root.position : _foot.Pos;
+                Transform bestWrapper = null;
+                float bestD = float.PositiveInfinity;
+                bool bestIsOwn = false;
+                if (ActivePlane != null)
+                {
+                    float d0 = Vector3.Distance(footPos, ActivePlane.transform.position);
+                    float reach0 = Mathf.Max(BoardDist, (ActivePlane.Model?.Span ?? 12f) * 0.5f + 3f);
+                    if (d0 < reach0) { bestWrapper = ActivePlane.transform; bestD = d0; bestIsOwn = true; }
+                }
+                foreach (var e in _targets.List)
+                {
+                    if (e.IsOwn || e.Wrapper == null) continue;
+                    if (ActivePlane != null && e.Wrapper == ActivePlane.transform) continue;
+                    float reach = Mathf.Max(BoardDist, (e.HalfSpan ?? 6f) + 3f); // target.js:317's own `?? 6`
+                    float d = Vector3.Distance(footPos, e.Wrapper.position);
+                    if (d < reach && d < bestD) { bestWrapper = e.Wrapper; bestD = d; bestIsOwn = false; }
+                }
+
+                if (bestWrapper == null)
+                { OnHint?.Invoke("✈ თვითმფრინავი შორსაა — მიუახლოვდი და დააჭირე Enter"); return; }
+                if (!bestIsOwn)
+                {
+                    // Ensure, not Attach — see PlaneController.Init()'s own
+                    // comment. The GameObject's name IS the PlaneDef.Id for
+                    // every parked machine (Flight/PlaneHallFill.cs:149
+                    // `go.name = def.Id`).
+                    var pc = bestWrapper.GetComponent<PlaneController>();
+                    if (pc == null)
+                    {
+                        pc = bestWrapper.gameObject.AddComponent<PlaneController>();
+                        pc.PlaneId = bestWrapper.gameObject.name;
+                    }
+                    if (!SwapToPlane(pc))
+                    { OnHint?.Invoke("✈ ამ თვითმფრინავში ახლა ვერ ჩაჯდები"); return; }
+                }
                 _board = BoardSequence.BeginEnter(this);
                 Mode = GameMode.Boarding;
                 return;
@@ -1311,6 +1453,14 @@ namespace TbilisiFly.Core
 
             public static BoardSequence BeginEnter(GameLoop g)
             {
+                // Character/CoverShootHero.cs item (b): the walk+sit tween
+                // below drives Rig.Root.position itself for the whole
+                // boarding window (through Flying too, until climb-out) — the
+                // purchased shooter's own Rigidbody/5 behaviours must not
+                // fight it. One choke point: both ToggleBoard() and
+                // ResetPlane() create a BoardSequence only through this
+                // factory.
+                if (UsePurchasedShooter) Character.CoverShootHero.Instance?.SetSeated(true);
                 var b = new BoardSequence { Entering = true, _g = g, _t = 0f };
                 var plane = g.ActivePlane.transform;
                 Vector3 seat = plane.TransformPoint(new Vector3(0f, 1.1f, 0.2f)); // cockpit station fallback
@@ -2152,6 +2302,7 @@ namespace TbilisiFly.Core
             SaveState(true); // game.js:2712 `this.saveState(true, 'back to menu')`
             Disposed = true;
             _dents.Dispose();
+            _foot.Clips.Destroy(); // PlayableGraph is a native handle, not GC-collected
         }
 
         // =========================================================================
@@ -2556,23 +2707,36 @@ namespace TbilisiFly.Core
             // (AltLeft already drives the same OnToggleAim hook): a mouse BUTTON
             // has no Keyboard counterpart, so it has to be read here rather than
             // folded into ReadDiscreteKeys' keyboard-only bindings table.
-            if (mouse != null && mouse.rightButton.wasPressedThisFrame && Mode == GameMode.OnFoot && _foot.Armed)
+            // UsePurchasedShooter: the pack's own AimBehaviour/CoverBehaviour/
+            // ShootBehaviour read "CS_Aim"/"CS_Cover"/"CS_Reload" etc. through
+            // Unity's legacy Input Manager every frame on their own — gating
+            // these four JS-ported bindings out here is what
+            // Character/CoverShootHero.cs's header means by "disable the
+            // JS-ported on-foot shooting/aim/cover/weapon paths": the keys
+            // still exist in the table, they just stop reaching FootCover/
+            // HeldWeapon while the purchased controller owns the body.
+            if (mouse != null && mouse.rightButton.wasPressedThisFrame && Mode == GameMode.OnFoot && _foot.Armed && !UsePurchasedShooter)
                 OnToggleAim?.Invoke();
 
             if (Mode == GameMode.OnFoot)
             {
-                if (kb.vKey.wasPressedThisFrame) _foot.ToggleCover(true, Rig);               // game.js:527-530
+                if (kb.vKey.wasPressedThisFrame && !UsePurchasedShooter) _foot.ToggleCover(true, Rig); // game.js:527-530
                 if (kb.cKey.wasPressedThisFrame) _foot.ToggleCrouch(true);                    // game.js:517-520
                 if (kb.xKey.wasPressedThisFrame) _foot.StartRoll(Rig, true, ReadFootMoveInput()); // foot.js roll key
                 if (kb.zKey.wasPressedThisFrame) _foot.StartSlide(Rig, true);                 // foot.js slide key
-                if (kb.leftAltKey.wasPressedThisFrame || kb.rightAltKey.wasPressedThisFrame)
+                // game.js:508 `if (AIM_KEYS.has(e.code) && this.foot?.active &&
+                // this.foot.held)` — Alt only toggles aim with a weapon DRAWN,
+                // same gate as the right-mouse-button branch above. This was
+                // missing (KEYMAP.md audit, 2026-11-01): Alt toggled Aiming
+                // bare-handed, which the JS never does.
+                if ((kb.leftAltKey.wasPressedThisFrame || kb.rightAltKey.wasPressedThisFrame) && _foot.Armed && !UsePurchasedShooter)
                     OnToggleAim?.Invoke(); // pistol.toggleAim() — Core/HeldWeapon.cs
 
                 // game.js:521-524 `if (e.code === 'KeyR' && this.foot?.active &&
                 // this.foot.held) this.pistol.reload()` — RELOAD BY HAND. The
                 // `foot.held` half of the JS's gate is IsArmedProvider here
                 // (Core/HeldWeapon.Armed), and Reload() itself re-checks it.
-                if (kb.rKey.wasPressedThisFrame && _foot.Armed) OnReload?.Invoke();
+                if (kb.rKey.wasPressedThisFrame && _foot.Armed && !UsePurchasedShooter) OnReload?.Invoke();
 
                 // game.js:533-534 `if (this.foot?.active && this.lanes.key(e.code,
                 // true)) return; if (e.code==='KeyF' ...) this.pickups.take();` —
@@ -2584,7 +2748,9 @@ namespace TbilisiFly.Core
                 if (kb.gKey.wasPressedThisFrame) LaneKeyAny(KeyCode.G, true);
                 if (kb.fKey.wasReleasedThisFrame) LaneKeyAny(KeyCode.F, false);
                 if (kb.gKey.wasReleasedThisFrame) LaneKeyAny(KeyCode.G, false);
-                if (kb.fKey.wasPressedThisFrame && !laneF) OnTakePickup?.Invoke(); // pickups.take() — Core/HeldWeapon.cs
+                // UsePurchasedShooter: F is now also "CS_Interact" (InteractiveWeapon.Update
+                // reads it on its own) — gated here so the old pickup path doesn't ALSO fire.
+                if (kb.fKey.wasPressedThisFrame && !laneF && !UsePurchasedShooter) OnTakePickup?.Invoke(); // pickups.take() — Core/HeldWeapon.cs
 
                 if (SkillBar != null || WeaponBar != null) HandleDigitKeys(kb, onFoot: true);
             }
@@ -2850,6 +3016,7 @@ namespace TbilisiFly.Core
             _foot.Terrain = Terrain;
             _foot.OnHint = (s) => OnHint?.Invoke(s);
             Mode = GameMode.OnFoot;
+            if (UsePurchasedShooter) Character.CoverShootHero.Attach(this, Rig); // Character/CoverShootHero.cs
             OnBodySpawned?.Invoke();
         }
 

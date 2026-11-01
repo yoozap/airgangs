@@ -56,9 +56,10 @@ namespace TbilisiFly.Props
     //     WindTunnel.cs exposes the PHYSICS this rig drives (the swing
     //     rotation/position), for whoever builds the real rig to apply to a
     //     real strop InstancedMesh.
-    //   * building the actual cable TubeGeometry MESH (crane.js:624-625,
-    //     657-663) and the #fan-ctl DOM card (crane.js:758-865) — City/UI's
-    //     territory; CableFloor below gives the exact, already-floor-safe
+    //   * the #fan-ctl DOM card's visible half (crane.js:758-829) — City/UI's
+    //     territory (its B-key half, :833-840, is now read directly in
+    //     WarehouseFanSwitch.Update()). CableFloor below gives the exact,
+    //     already-floor-safe
     //     polyline such a mesh builder would sweep a tube along, and
     //     CableRoutes (further below) now gives that polyline's own CONTROL
     //     POINTS too (crane.js:630-655). The board/socket/button/lamp

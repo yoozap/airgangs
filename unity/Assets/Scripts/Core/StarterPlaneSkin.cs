@@ -123,7 +123,8 @@ namespace TbilisiFly.Core
             // Same call Editor/BuildPlayableScene.cs makes for the baked P-51,
             // flyable:true because this is the machine the pilot sits in.
             GameObject kit = LoadCockpitKit();
-            try { PlaneCockpitBaker.Bake(pc.gameObject, def, kit, flyable: true, out _); }
+            TbilisiFly.Character.PlaneCockpitRig cockpitRig = null;
+            try { cockpitRig = PlaneCockpitBaker.Bake(pc.gameObject, def, kit, flyable: true, out _); }
             catch (System.Exception e) { Debug.LogException(e); } // a missing cockpit must not cost the plane
 
             // ---- 4. the damage record is about the airframe, so it moves too -
@@ -144,6 +145,15 @@ namespace TbilisiFly.Core
                 rec.Dead = false;
                 rec.DisplayName = def.Name;                       // planedamage.js:1341
                 rec.IsPlayerOwn = true;
+                // FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_AIRPORT
+                // scenario (2026-11-01): Core/CombatWorldAdapter.AirframeHeight's
+                // own doc comment says it "excludes the cockpit kit explicitly"
+                // via rec.CockpitKit — but nothing anywhere (not here, not
+                // Editor/BuildPlayableScene.cs's bake of the original P-51)
+                // ever ASSIGNED that field for the hero's own plane, so the
+                // exclusion never actually ran for the one machine that
+                // matters to TryParkInShed's door-height fit check.
+                rec.CockpitKit = cockpitRig != null ? cockpitRig.CockpitKitValue : null;
             }
 
             // ---- 5. the flight rig is rebuilt from the new catalog row ------

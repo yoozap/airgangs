@@ -146,6 +146,33 @@ namespace TbilisiFly.Probes
             Debug.Log($"CRANEREST_CINEMA_FLASH_ON_FULL={CinemaLights.FlashIntensity(true, 0.045f):F4}");
             Debug.Log($"CRANEREST_CINEMA_FLASH_ON_HALF={CinemaLights.FlashIntensity(true, 0.0225f):F4}");
 
+            // ---- WarehouseFanSwitch.HandleBKey — crane.js:833-840 ----------
+            // Press()/CycleButton() (crane.js:821-828) already existed and
+            // were probe-verified by CraneProbe.cs; they had ZERO runtime
+            // callers until this pass wired HandleBKey() into Update(). This
+            // proves the GATE (near + pressed -> cycles; either false ->
+            // doesn't), independent of the Keyboard.current read Update()
+            // itself does (untestable outside PlayMode — see docs/PORT_STATUS.
+            // md's "KeysRun play-mode proof" item for that half).
+            {
+                var go = new GameObject("fanswitch_probe");
+                var sw = go.AddComponent<WarehouseFanSwitch>();
+                Debug.Log($"CRANEREST_BKEY_MODE0={sw.Mode}");
+                sw.NearSwitch = false;
+                sw.HandleBKey(true); // pressed, but NOT near -> no-op
+                Debug.Log($"CRANEREST_BKEY_FAR_PRESSED_MODE={sw.Mode}");
+                sw.NearSwitch = true;
+                sw.HandleBKey(false); // near, but NOT pressed -> no-op
+                Debug.Log($"CRANEREST_BKEY_NEAR_UNPRESSED_MODE={sw.Mode}");
+                sw.HandleBKey(true); // near AND pressed -> off->lo
+                Debug.Log($"CRANEREST_BKEY_NEAR_PRESSED_MODE1={sw.Mode}");
+                sw.HandleBKey(true); // lo->hi
+                Debug.Log($"CRANEREST_BKEY_NEAR_PRESSED_MODE2={sw.Mode}");
+                sw.HandleBKey(true); // hi->off, crane.js's own `(mode+1)%3`
+                Debug.Log($"CRANEREST_BKEY_NEAR_PRESSED_MODE3={sw.Mode}");
+                Object.DestroyImmediate(go);
+            }
+
             Debug.Log("CRANEREST_PROBE_DONE=1");
         }
     }

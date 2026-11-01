@@ -316,6 +316,28 @@ namespace TbilisiFly.Combat
             return o.sqrMagnitude > 1e-8f ? o.normalized : Vector3.forward;
         }
 
+        /// <summary>src/weapons.js:505-512 `chestForward` — the magazine-change
+        /// pose frame laid out in front of the CHEST rather than down the
+        /// crosshair (foot.js:6358's `const frame = reloading ? (chestForward(
+        /// ...) ?? aim) : aim;`): standing in the open the two are the same
+        /// thing, but in cover the hero faces out of the wall while the camera
+        /// looks along it, and quoting the reload against the aim put the
+        /// whole magazine change across the body (45-74% of the gun hand
+        /// inside the torso, tools/_probe_cornerarm.mjs). Same cross-product as
+        /// <see cref="ChestAxis"/> (which this reuses) but returns null on a
+        /// degenerate/near-vertical arm chain instead of falling back to
+        /// Vector3.forward, so the CALLER falls back to the raw aim direction —
+        /// exactly the JS's own `?? aim`, not a second silent default.</summary>
+        public static Vector3? ChestForward(Transform frame, Transform root)
+        {
+            var chain = FindArmChain(root);
+            if (!chain.Valid) return null;
+            var (up, right) = BodyAxes(frame, root, chain.Upper);
+            Vector3 o = Vector3.Cross(right, up);
+            o.y = 0f;
+            return o.sqrMagnitude > 1e-8f ? o.normalized : (Vector3?)null;
+        }
+
         // src/weapons.js:517 bodyFwd — the elbow's "forward": pure aim-line at x=0,
         // the body's own chest-forward by the time the shot is all the way across.
         public static Vector3 BodyFwd(Vector3 up, Vector3 right, Vector3 fwdAim, float x)

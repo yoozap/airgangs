@@ -33,14 +33,17 @@ namespace TbilisiFly.Core
     // the hold) is reproduced by GunPoseBlend.Apply, called every frame with
     // the same weight rule (reload: full pose; fire: an additive jolt off
     // RefAim/RefHip, half-strength and support-arm-only on a rifle).
-    // DEVIATION (flagged, not silent): foot.js's reload overlay uses
-    // chestForward() as the pose frame instead of the raw aim direction, and
-    // gates on `!this._roll && !this._slide && !this._dive` — those states
-    // live in FootController (Character/, off-limits to this pass). This file
-    // uses the plain aim direction in both cases and does not gate on
-    // roll/slide/dive, which is a defensible simplification (a reload or shot
-    // jolt landing while rolling is a rare, brief visual glitch, not a
-    // correctness bug) rather than a silent omission.
+    // CHESTFORWARD CLOSED (was flagged here as a deviation): the reload's
+    // pose frame is now Weapons.ChestForward(_game.Rig.ActGroup, Root) ??
+    // aim, matching foot.js:6358's `const frame = reloading ? (chestForward(
+    // ...) ?? aim) : aim;` exactly (src/weapons.js:505-512). ONE DEVIATION
+    // REMAINS, still flagged rather than silent: foot.js also gates the
+    // whole reload-jolt branch on `!this._roll && !this._slide && !this.
+    // _dive` — those states live in FootController (Character/, off-limits
+    // to this pass). This file does not gate on roll/slide/dive, which is a
+    // defensible simplification (a reload or shot jolt landing while rolling
+    // is a rare, brief visual glitch, not a correctness bug) rather than a
+    // silent omission.
     //
     // !!! FOUND WHILE WIRING, FLAGGED FOR WHOEVER NEXT OWNS Character/ !!!
     // Character/FootWeaponFrame.cs is a SECOND, MORE COMPLETE port of this
@@ -344,6 +347,16 @@ namespace TbilisiFly.Core
         // =====================================================================
         public void Tick(float dt)
         {
+            // Character/CoverShootHero.cs: the purchased Cover+Shoot asset
+            // owns on-foot aim/shoot/reload/weapon-draw while this flag is
+            // set (user decision, 2026-11-01) — this is registered on
+            // GameLoop.CombatSystems and ticks every frame regardless of
+            // Mode, unlike FootCover (which only runs inside _foot.Update,
+            // already skipped by StageOnFootPurchased), so it needs its own
+            // early-return to stay disabled: the arms/holster draw, the
+            // on-foot ReticleView toggle and the LMB fire/reload logic all
+            // live below this line.
+            if (GameLoop.UsePurchasedShooter) return;
             EnsurePickupUi();
             EnsureReticleUi();
             if (_game.Rig == null)
@@ -429,7 +442,15 @@ namespace TbilisiFly.Core
                             var refSnap = Gun.Reloading ? null : (Gun.Aiming ? arms.RefAim : arms.RefHip);
                             string only = (Gun.Reloading && rifle) ? "l"
                                 : (Gun.Reloading || Gun.Aiming || rifle ? null : "r");
-                            GunPoseBlend.Apply(_game.Rig.Root, BodySlots(_game.Rig), hand, aim,
+                            // src/foot.js:6358 `const frame = reloading ? (chestForward(...)
+                            // ?? aim) : aim;` — closes the DEVIATION flagged in this file's
+                            // own header: the magazine change now lays out in front of the
+                            // chest instead of down the crosshair, which is what keeps it
+                            // off the torso in cover (body to the wall, camera along it).
+                            Vector3? frame = Gun.Reloading
+                                ? (Weapons.ChestForward(_game.Rig.ActGroup, _game.Rig.Root) ?? aim)
+                                : aim;
+                            GunPoseBlend.Apply(_game.Rig.Root, BodySlots(_game.Rig), hand, frame,
                                 arms.Dirs, arms.DirsOk, rw, arms, only, refSnap);
                         }
                     }

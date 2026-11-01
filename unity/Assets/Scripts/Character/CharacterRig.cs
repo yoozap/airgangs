@@ -137,7 +137,15 @@ namespace TbilisiFly.Character
             Model = modelInstance.transform;
             Model.SetParent(AnimGroup, false);
             Model.localPosition = Vector3.zero;
-            Model.localRotation = Quaternion.identity;
+            // characters.js:467-468 `model.rotation.y = Math.PI + yaw`: the FACING
+            // is the root's local -Z everywhere on foot (FootController.cs:118/916
+            // `(-sin yaw, 0, -cos yaw)`, straight from foot.js:4819), while every
+            // bridged FBX body stands with its toes and eyes at local +Z
+            // (CharFacingProbe: TOES ... side=+Z on apple/banana/cherry/tomato).
+            // Without this turn the body walked away from the camera face-first
+            // ("apple is walking with backside", 2026-11-01) and the personage
+            // screen, whose holder already carries the JS's 180°, showed backs.
+            Model.localRotation = Quaternion.Euler(0f, 180f, 0f);
             Model.localScale = Vector3.one;
 
             Anim = modelInstance.GetComponentInChildren<Animator>();
@@ -145,6 +153,36 @@ namespace TbilisiFly.Character
             if (Anim != null) Anim.applyRootMotion = false; // characters.js never lets the clip move the root — physics does
 
             NormalizeHeight();
+            LogSpawnDiagnostic(modelInstance);
+        }
+
+        // characters.js:2847-2867 `makeCharacter`'s own diagnostic half: "say out
+        // loud what actually got loaded" — a body that reports 0 bones has no
+        // skeleton in its model and CANNOT move its arms or legs no matter what
+        // the locomotion code does, and a height off by >2cm means a stale/odd
+        // asset. This exact failure class (a model with no usable skeleton/avatar)
+        // was this port's single most expensive bug (.claude/skills/unity/SKILL.md,
+        // "A probe proves a CALCULATION, not that the calculation is REACHED" —
+        // IsHumanoid gated the whole pose rig on every body in the project for a
+        // time) — this is the loud, at-spawn version of that same check.
+        void LogSpawnDiagnostic(GameObject modelInstance)
+        {
+            int bones = 0;
+            var seen = new HashSet<Transform>();
+            foreach (var smr in modelInstance.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                foreach (var b in smr.bones)
+                    if (b != null && seen.Add(b)) bones++;
+            string clips = "";
+            if (Anim != null && Anim.runtimeAnimatorController != null)
+            {
+                var names = new List<string>();
+                foreach (var c in Anim.runtimeAnimatorController.animationClips) names.Add(c.name);
+                clips = string.Join(",", names);
+            }
+            string heightNote = Mathf.Abs(BodyHeight - CharacterRoster.HeroHeight) > 0.02f
+                ? $" — OFF, should be {CharacterRoster.HeroHeight}" : "";
+            string staticNote = bones == 0 ? " — STATIC MESH, limbs cannot move" : "";
+            Debug.Log($"personage {Id}: {bones} bones, clips [{clips}], {BodyHeight:F2} m tall{heightNote}{staticNote}");
         }
 
         // characters.js:456-464 — strip a weapon welded into the model; pickups

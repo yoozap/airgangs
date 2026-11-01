@@ -523,6 +523,12 @@ namespace TbilisiFly.Core
                 game.BreakupWorld = adapter;
                 var fxSink = new FxSink(fireSystem, impactFx, game);
                 impactFx.World = adapter;
+                // Combat/CoverShootBridge.cs — the purchased Cover+Shoot asset's
+                // ShootBehaviour.ShootWeapon reaches this same adapter through the
+                // bridge so an on-foot round damages buildings exactly like the
+                // belly gun/rockets do (see that file's header; DamageReachProbe's
+                // DMG_PATH is the production chain this now joins).
+                TbilisiFly.Combat.CoverShootBridge.DamageWorld = adapter;
 
                 var planeDamage = new PlaneDamage
                 {
@@ -929,6 +935,16 @@ namespace TbilisiFly.Core
                 // in their own negative band.
                 SetBurning = (key, pts, inten) => fireSystem.SetBurning(CrashBurnKey(key), pts, inten),
                 ClearBurning = key => fireSystem.ClearBurning(CrashBurnKey(key)),
+                // game.js:2654-2670 takeFxLight/freeFxLight — previously
+                // unassigned here, the ONE real BuildCrash call site, so every
+                // crash fireball fell through CrashSequence.TakeLight's fallback
+                // (`new GameObject("crash_fx_light"); AddComponent<Light>()`)
+                // and re-triggered the exact "a new PointLight recompiles EVERY
+                // material" shader-recompile freeze that Fx/FxLightPool.cs and
+                // GameLoop.TakeFxLight/FreeFxLight exist to prevent. The pool was
+                // fully built and reachable; this was the one missing wire.
+                TakeFxLight = (c, inten, range, decay) => game.TakeFxLight(c, inten, range, decay),
+                FreeFxLight = l => game.FreeFxLight(l),
                 // src/crash.js's `_showWasted()` calls — previously unassigned
                 // (CrashHooks.ShowWasted invoked at CrashSequence.cs:457/459,
                 // nothing ever set it). Same destination as GameLoop.cs:402/740's
@@ -1081,54 +1097,41 @@ namespace TbilisiFly.Core
             var plane = game.ActivePlane;
             bool onFoot = game.Mode == GameMode.OnFoot; // src/game.js:933 `const onFoot = !!this.foot?.active;`
             GameObject warehouse = GameObject.Find("warehouse"); // src/game.js:886/958 `o.userData?.shed` / `o.name === 'warehouse'`
-            float distToShed = Vector3.Distance(plane.transform.position, game.ShedSpawnPos);
-            if (distToShed < 250f)
+
+            // FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_AIRPORT
+            // scenario (2026-11-01): this used to branch on `distToShed < 250f`
+            // (measured against game.ShedSpawnPos — the plane's own EDITOR-
+            // BAKE-TIME spawn pose, Editor/BuildPlayableScene.cs:401, which
+            // Editor/BuildPlayableScene.cs's own comment already flags as
+            // stale) into a SECOND behaviour with no counterpart anywhere in
+            // src/game.js: "near the shed spawn, teleport to the real OSM
+            // runway instead of parking". src/game.js:929-984 `goAirport()`
+            // (and the identical game.js:536 `KeyH` binding) has exactly ONE
+            // behaviour — always try to park the machine home — regardless of
+            // where the hero currently is. Because the hero SPAWNS near home,
+            // every press of 🛬 right after boarding took the invented branch
+            // and sent the plane to the real airport runway, tens of
+            // kilometres from the warehouse (measured: dist=19681 m) — the
+            // opposite of "🛬 back to the airport / the warehouse"
+            // (HudButtonsView.cs's own tooltip). Removed; the one behaviour
+            // below is src/game.js:938-950 ported directly (try the shed,
+            // else the outside stand), with no toggle.
+            bool inside = warehouse != null && TryParkInShed(game, plane, warehouse);
+            if (!inside)
             {
-                try
-                {
-                    var ap = AirportBuilder.Load();
-                    AirportBuilder.BuildRunwayMain(ap, game.Terrain, out var main);
-                    if (main != null && main.Pts != null && main.Pts.Length >= 2)
-                    {
-                        Vector3 p0 = Data.GeoFrame.FromLatLon(main.Pts[0][0], main.Pts[0][1]);
-                        Vector3 p1 = Data.GeoFrame.FromLatLon(main.Pts[main.Pts.Length - 1][0], main.Pts[main.Pts.Length - 1][1]);
-                        Vector3 dir = p1 - p0; dir.y = 0f;
-                        dir = dir.sqrMagnitude < 1f ? Vector3.forward : dir.normalized;
-                        float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
-                        p0.y = game.Terrain.HeightAt(p0.x, p0.z) + 1.7f;
-                        plane.transform.SetPositionAndRotation(p0, Quaternion.Euler(0f, yaw, 0f));
-                        plane.Velocity = Vector3.zero;
-                        plane.Rates = Vector3.zero;
-                        game.OnHint?.Invoke("✈ თბილისის აეროპორტი");
-                        // game.js:951-954 `if (!onFoot) { this._setHint(...); this._snapCamera(); }`
-                        if (!onFoot) game.FlightCam?.SnapToPlane();
-                        if (onFoot && warehouse != null) TryStandAtWarehouseBench(game, warehouse);
-                        game.SaveState(true); // src/game.js:982 `this.saveState(true, 'airport')`
-                        return;
-                    }
-                }
-                catch (System.Exception e) { Debug.LogException(e); }
-                game.OnHint?.Invoke("✈ აეროპორტი ვერ მოიძებნა");
+                plane.transform.SetPositionAndRotation(game.ShedSpawnPos, game.ShedSpawnRot);
+                plane.Velocity = Vector3.zero;
+                plane.Rates = Vector3.zero;
+                // src/game.js:942-943 (the outside-the-bay fallback stand) —
+                // same two fields TryParkInShed zeroes above for its own branch.
+                plane.Airborne = false;
+                plane.Speed = 0f;
             }
-            else
-            {
-                bool inside = warehouse != null && TryParkInShed(game, plane, warehouse);
-                if (!inside)
-                {
-                    plane.transform.SetPositionAndRotation(game.ShedSpawnPos, game.ShedSpawnRot);
-                    plane.Velocity = Vector3.zero;
-                    plane.Rates = Vector3.zero;
-                    // src/game.js:942-943 (the outside-the-bay fallback stand) —
-                    // same two fields TryParkInShed zeroes above for its own branch.
-                    plane.Airborne = false;
-                    plane.Speed = 0f;
-                }
-                game.OnHint?.Invoke(inside ? "🛬 ანგარში დაბრუნება · თვითმფრინავი საწყობშია"
-                    : "🛬 ანგარში დაბრუნება · თვითმფრინავი სადგომზეა (კარში ვერ ეტევა)"); // src/game.js:978-981
-                // game.js:951-954, see above.
-                if (!onFoot) game.FlightCam?.SnapToPlane();
-                if (onFoot && warehouse != null) TryStandAtWarehouseBench(game, warehouse);
-            }
+            game.OnHint?.Invoke(inside ? "🛬 ანგარში დაბრუნება · თვითმფრინავი საწყობშია"
+                : "🛬 ანგარში დაბრუნება · თვითმფრინავი სადგომზეა (კარში ვერ ეტევა)"); // src/game.js:978-981
+            // game.js:951-954 `if (!onFoot) { this._setHint(...); this._snapCamera(); }`
+            if (!onFoot) game.FlightCam?.SnapToPlane();
+            if (onFoot && warehouse != null) TryStandAtWarehouseBench(game, warehouse);
             game.SaveState(true); // src/game.js:982 `this.saveState(true, 'airport')`
         }
 

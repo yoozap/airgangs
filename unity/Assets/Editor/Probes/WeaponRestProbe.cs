@@ -20,6 +20,8 @@ namespace TbilisiFly.Probes
     /// </summary>
     public static class WeaponRestProbe
     {
+        static string B(bool b) => b ? "true" : "false"; // lower-case — see the unity skill
+
         public static void Run()
         {
             // ---- src/shooting.js:31 FLASH_T + :366-371's scale formula --------
@@ -76,6 +78,26 @@ namespace TbilisiFly.Probes
             PrintAimAcross("ahead", new Vector3(0, 0, -1));
             PrintAimAcross("right", new Vector3(1, 0, 0));
             PrintAimAcross("left", new Vector3(-1, 0, 0));
+
+            // ---- src/weapons.js:505-512 chestForward -- the reload-pose frame
+            // HeldWeapon.cs now resolves as `ChestForward(ActGroup, Root) ?? aim`
+            // (foot.js:6358) instead of the raw aim direction, closing the
+            // DEVIATION flagged in that file's header. Same synthetic rig as
+            // AIMACROSS above, so BodyAxes's up/right are the SAME call this
+            // probe already proved. ----------------------------------------
+            {
+                var f = Weapons.ChestForward(root, root);
+                Debug.Log($"CHESTFWD id=rig has={B(f.HasValue)} " +
+                    $"x={(f?.x ?? 0f):F6} y={(f?.y ?? 0f):F6} z={(f?.z ?? 0f):F6}");
+            }
+            // No arm chain at all -> null, so the caller falls back to `aim`
+            // exactly like the JS's own `?? aim` (not a second silent default).
+            {
+                var bare = new GameObject("BareRoot").transform;
+                var f = Weapons.ChestForward(bare, bare);
+                Debug.Log($"CHESTFWD id=noarms has={B(f.HasValue)}");
+                Object.DestroyImmediate(bare.gameObject);
+            }
 
             Object.DestroyImmediate(root.gameObject);
         }

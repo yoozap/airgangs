@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json.Linq;
 using TbilisiFly.Data;
 using UnityEngine;
 
@@ -444,8 +446,20 @@ namespace TbilisiFly.City
             public int NRoofClutterSkippedPitched;
             /// <summary>Real-photograph facades (PhotoFacades.cs) — buildings whose
             /// walls were routed to a per-photo submesh instead of a WallMaterials
-            /// bucket. Should be 609 (PhotoFacades' own verified assignment count).</summary>
+            /// bucket. NOT the same number as PhotoFacades' assignment count (609):
+            /// a footprint that ALSO claims a kit model (panel/house/out/apt/shed)
+            /// `continue`s before this is ever checked (citymap.js:4661-4746 — every
+            /// kit-claim branch exits before `const pb` at :4746), so this is strictly
+            /// smaller. Measured by reimplementing the whole decision chain in Node
+            /// over the live production data (city.json/levels.json/parts.json/
+            /// malls.json/kit_meta.json): 273, cross-checked against this exact
+            /// method's own live log (see docs/open_items.json `photo-render-count-drift`
+            /// and CityRenderProbe.cs's assert_photoFacades comment).</summary>
             public int NPhotoBuildings;
+            /// <summary>Footprints skipped entirely because a real Blender mall model
+            /// stands there instead (citymap.js:4591 `this._mallBids?.has(bi)`) —
+            /// counted for visibility; these never reach TryClaim OR the photo check.</summary>
+            public int NMallSkipped;
             public PhotoFacades.Result Photo;
             // building-level DECISION counts (terrain-independent — comparable
             // 1:1 against tools/_probe_buildingquality.py's "relief" line,
@@ -468,6 +482,29 @@ namespace TbilisiFly.City
         }
 
         /// <summary>
+        /// citymap.js:841-846 `this._mallBids = new Set(this._mallList.map((e) =>
+        /// e.bid))` — the bare building-index set a real Blender mall model
+        /// (MallPlacer.cs/MallRenderer.cs) stands on top of, straight off
+        /// malls.json's own "bid" field (no filtering: 1:1 with the JSON, same
+        /// as MallPlacer.Build's placement count). Loaded directly rather than
+        /// through MallPlacer.Build to avoid that method's terrain/sign-anchor
+        /// work for what is here just a skip set.
+        /// </summary>
+        static HashSet<int> LoadMallBids(string path = null)
+        {
+            path ??= Path.Combine(Application.streamingAssetsPath, "tbilisi", "malls.json");
+            var set = new HashSet<int>();
+            if (!File.Exists(path)) return set;
+            try
+            {
+                var arr = JArray.Parse(File.ReadAllText(path));
+                foreach (var e in arr) set.Add(e["bid"].Value<int>());
+            }
+            catch (Exception ex) { Debug.LogWarning($"BLDRICH malls.json unreadable for mallBids skip ({ex.Message})"); }
+            return set;
+        }
+
+        /// <summary>
         /// Ported from the massing+material+relief part of src/citymap.js
         /// _buildBuildings (citymap.js:4061-5562). Everything that method does
         /// for photo facades (`pb`) is OUT OF SCOPE here — that is the other
@@ -481,13 +518,14 @@ namespace TbilisiFly.City
         /// </summary>
         public static RichResult BuildRich(CityData city, BuildingFacts facts = null, BuildingKit.Catalog kit = null,
                                             BuildingParts parts = null, WallMaterials.Catalog wallCat = null,
-                                            PhotoFacades.Result photo = null,
+                                            PhotoFacades.Result photo = null, HashSet<int> mallBids = null,
                                             int maxBuildings = int.MaxValue)
         {
             facts ??= BuildingFacts.Load();
             kit ??= BuildingKit.Catalog.Load();
             parts ??= BuildingParts.Load();
             wallCat ??= WallMaterials.Catalog.Load();
+            mallBids ??= LoadMallBids();
             if (photo == null)
             {
                 // Real-photograph facades (PhotoFacades.cs, verified separately by
@@ -539,6 +577,10 @@ namespace TbilisiFly.City
                     int vc = e.Flat.Length / 2;
                     if (vc < 3) continue;
                     int bi = e.Bi;
+                    // citymap.js:4591 — a real Blender mall model stands here instead
+                    // (MUST be checked before everything below, exactly like the JS:
+                    // a mall footprint never reaches TryClaim OR the photo check).
+                    if (mallBids.Contains(bi)) { result.NMallSkipped++; continue; }
 
                     // centroid in the GAME frame (unmirrored) — matches BuildingFacts/BuildingKit/WallMaterials convention
                     // DOUBLE accumulator — see the Ring Centroid note below.
@@ -917,7 +959,7 @@ namespace TbilisiFly.City
             Debug.Log($"BLDRICH chunks={result.Chunks.Count} extruded={result.NExtruded} " +
                       $"panel={result.Panels.Count} house={result.Houses.Count} out={result.Outs.Count} " +
                       $"apt={result.Apts.Count} shed={result.Sheds.Count} partsExpanded={result.NPartsExpanded} " +
-                      $"photo={result.NPhotoBuildings} " +
+                      $"photo={result.NPhotoBuildings} mallSkipped={result.NMallSkipped} " +
                       $"withFacts={result.NFacts} realHeight={result.NRealHeight} pitched={result.NPitched} coloured={result.NColoured} " +
                       $"balconies={result.Relief.Balconies.Count} windows={result.Relief.Windows.Count} " +
                       $"cornices={result.Relief.Cornices.Count} grilles={result.Relief.Grilles.Count} " +

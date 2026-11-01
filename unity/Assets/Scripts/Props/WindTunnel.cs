@@ -33,9 +33,12 @@ namespace TbilisiFly.Props
     //     (ClimbMetrics/HandsOnEdge/SetWindBrace/SetFlyPose/SetWingGrip),
     //     which unblocked that whole system. See WindRider.cs's own header
     //     for what it covers (the state machine, cornerAt's longest-run
-    //     search, measureBelly's real ray-against-baked-skin) and its one
-    //     remaining gap (the gun-arm preservation, which needs Combat
-    //     weapon-hand-bone tracking FootController does not expose).
+    //     search, measureBelly's real ray-against-baked-skin) — STALE NOTE
+    //     CORRECTED: this used to list the gun-arm preservation as its one
+    //     remaining gap; WindRider.cs's own header now says that is CLOSED
+    //     too (ResolveGunArmBones() against Combat.Weapons' public static
+    //     bone finders and FootController.Weapons/FootWeapons' already-
+    //     public surface — no Combat/ or Character/ edit was needed).
     //
     // ============================== HANDEDNESS ==============================
     // One true cross product: crane.js:1096 `axis = UP.cross(wind)`. Per

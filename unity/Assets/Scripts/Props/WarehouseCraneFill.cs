@@ -49,8 +49,12 @@ namespace TbilisiFly.Props
     // hall root.
     //
     // NOT PORTED, same boundary as every sibling bake file in this set:
-    //   * the #fan-ctl DOM control card (crane.js:758-865) — a UI/Hud concern
-    //     (agent 2's territory, not this pass's to touch). WarehouseFanSwitch
+    //   * the #fan-ctl DOM control card's VISIBLE half (crane.js:758-829,
+    //     state text + lo/hi buttons) — a UI/Hud concern (agent 2's
+    //     territory, not this pass's to touch); its B-key half (crane.js:
+    //     833-840) is now read in WarehouseFanSwitch.Update(), closing the
+    //     "Press()/CycleButton() had no runtime caller" half of this gap.
+    //     WarehouseFanSwitch
     //     exposes everything such a card needs (NearSwitch, Mode, Press()) as
     //     a plain public surface, the same seam FanLane-style cards use.
     //   * fan audio (MachineVoice.FanVoice(), Core/AudioFx.cs) — already a

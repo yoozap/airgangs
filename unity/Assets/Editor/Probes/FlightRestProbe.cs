@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using TbilisiFly.Data;
 using TbilisiFly.Flight;
 using UnityEditor;
 using UnityEngine;
@@ -75,6 +76,7 @@ namespace TbilisiFly.Probes
         {
             Propeller();
             PlanePhys();
+            PlanePhysSparks();
             PlaneHall();
             ProbeExit.Exit(0);
         }
@@ -212,10 +214,16 @@ namespace TbilisiFly.Probes
         // =====================================================================
         class NullWorld : IPlanePhysicsWorld
         {
+            // src/planephys.js:534 `_sparks` (ImpactFx) / :915 `_sparks` (Sweep)
+            // — both were unported before this pass. Counting here instead of
+            // no-op'ing lets PlanePhysSparks() assert the embers actually fired,
+            // not just that the surrounding math still runs.
+            public int EmberCount;
+            public bool ForceRaycastHit; // Sweep() needs World.RaycastWorld to report a hit at all
             public float? GroundAt(float x, float z, float refY, float maxDist) => null;
             public float CameraDistanceTo(Vector3 point) => 50f;
             public float SoundVolume() => 0.7f;
-            public void SpawnEmber(Vector3 at) { }
+            public void SpawnEmber(Vector3 at) { EmberCount++; }
             public void SpawnSmoke(Vector3 at, float size, float dark, float dur, float vy, float spread) { }
             public void Explosion(Vector3 at, float radius) { }
             public void Plume(Vector3 at, float radius, float strength) { }
@@ -225,7 +233,11 @@ namespace TbilisiFly.Probes
             public void DustBurst(Vector3 at, int count, float radius) { }
             public bool DamageBuilding(Vector3 point, Vector3 normal, float roundsEquivalent, out bool destroyed) { destroyed = false; return false; }
             public void SetCollidersEnabled(Transform wrapper, bool enabled_) { }
-            public bool RaycastWorld(Vector3 origin, Vector3 dir, float maxDist, out RaycastHit hit) { hit = default; return false; }
+            public bool RaycastWorld(Vector3 origin, Vector3 dir, float maxDist, out RaycastHit hit)
+            {
+                hit = default;
+                return ForceRaycastHit; // default RaycastHit.normal is zero -> Sweep's own -dir fallback (planephys.js:881-882)
+            }
         }
 
         static LooseAirframeActor MakeWreck(PlanePhysicsSystem sys, Vector3 pos, Vector3 vel)
@@ -293,6 +305,52 @@ namespace TbilisiFly.Probes
                     $"bvelx={b.Vel.x:F6} bvely={b.Vel.y:F6} bvelz={b.Vel.z:F6} " +
                     $"pvelx={r.PilotVelocity.x:F6} pvely={r.PilotVelocity.y:F6} pvelz={r.PilotVelocity.z:F6} " +
                     $"pdx={r.PilotPositionDelta.x:F6} pdy={r.PilotPositionDelta.y:F6} pdz={r.PilotPositionDelta.z:F6}");
+            }
+        }
+
+        // =====================================================================
+        // 2b. PLANEPHYS — the two `_sparks` call sites ImpactFx/Sweep were
+        // missing (src/planephys.js:534, :915) until this pass. See
+        // docs/port_units/misc_rest.json's planephys.js entry.
+        // =====================================================================
+        static void PlanePhysSparks()
+        {
+            var shellGo = new GameObject("shell_sparks_probe");
+            var shellBox = shellGo.AddComponent<BoxCollider>();
+            shellBox.center = Vector3.zero; shellBox.size = new Vector3(2, 2, 2);
+            var shell = new UnityEngine.Collider[] { shellBox };
+            PilotState Pilot(Vector3 vel) => new PilotState
+            {
+                Position = Vector3.zero, Rotation = Quaternion.identity,
+                Mass = 5000f, ColMult = 1.0f, HalfSpan = 2.5f, Size = 8f, Height = 3f,
+                Airborne = true, Speed = 0f, Vel = vel, Rates = Vector3.zero,
+            };
+
+            // ---- Case A: HitPlayer -> ImpactFx (planephys.js:534) ----
+            {
+                var world = new NullWorld();
+                var sys = new PlanePhysicsSystem(world);
+                var b = MakeWreck(sys, new Vector3(0, 0, -10), new Vector3(0, 0, 8));
+                var r = sys.HitPlayer(b, 1f / 30f, Pilot(Vector3.zero), shell, false);
+                // DentEOnPlayer = c.E * 0.5 (HitPlayerResult's own doc comment),
+                // and ImpactFx is called with spec = c.E / pilot.Mass — so the
+                // expected spark count is recoverable from the PUBLIC result
+                // alone, independent of ImpactFx's private internals.
+                float cE = r.DentEOnPlayer * 2f;
+                float spec = cE / Pilot(Vector3.zero).Mass;
+                float heavy = Mathf.Clamp01(spec / 600f);
+                int expect = 6 + JsMath.Round(22f * heavy);
+                Debug.Log($"SPARKS id=impactfx handled={B(r.Handled)} embers={world.EmberCount} expect={expect}");
+            }
+
+            // ---- Case B: Update -> Step -> Sweep (planephys.js:915), a fixed 8 ----
+            {
+                var world = new NullWorld { ForceRaycastHit = true };
+                var sys = new PlanePhysicsSystem(world);
+                var b = MakeWreck(sys, new Vector3(0, 0, -10), new Vector3(0, 0, 30));
+                sys.Bodies.Add(b);
+                sys.Update(1f / 30f);
+                Debug.Log($"SPARKS id=sweep embers={world.EmberCount} expect=8");
             }
         }
 

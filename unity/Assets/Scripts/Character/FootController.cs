@@ -246,6 +246,18 @@ namespace TbilisiFly.Character
         }
         RollState _roll; float _rollCd, _rollBuf; bool _rollWas; int _rollSide = -1;
 
+        // =====================================================================
+        // PARKOUR CLIPS — Threepeat pack, wired 2026-11-01 (user: "use from
+        // parkour set"). See ParkourClipPlayer's own header for the mechanism
+        // and ParkourClipLibrary for the imported subset. `Clips` is the one
+        // player shared by every move below; `_rollClipOwns`/`_climbClipPhase`
+        // are this file's own bookkeeping for WHICH move currently has it.
+        // =====================================================================
+        public readonly ParkourClipPlayer Clips = new ParkourClipPlayer();
+        bool _rollClipOwns;
+        string _climbClipPhase; // null | "hang" | "pull" | "mantle" — mirrors Climb.Phase while a clip is live
+        bool _letGoPending;     // C pressed while hanging — consumed by the next Climb.Tick call
+
         // ---- slide state (src/foot.js:4230-4302, 4627-4642, 5855-5876) ----
         sealed class SlideState { public float T, Blend; public bool Ending; public float Yaw; public int Side; }
         SlideState _slide; float _slideCd, _slideBuf; bool _slideWas; int _slideSide = -1;
@@ -356,6 +368,7 @@ namespace TbilisiFly.Character
             // (grounded, letGoPush) is irrelevant here because the lines below
             // force Grounded = true and Speed = 0 anyway.
             if (Climb.Active) Climb.EndClimb(rig, "abort", ref Pos);
+            Clips.Stop(); _rollClipOwns = false; _climbClipPhase = null; _letGoPending = false;
             _roll = null; _rollCd = 0f; _rollBuf = 0f; _rollWas = false;
             _slide = null; _slideCd = 0f; _slideBuf = 0f; _slideWas = false;
             _air = null;
@@ -403,7 +416,19 @@ namespace TbilisiFly.Character
         // =====================================================================
         public bool ToggleCrouch(bool active)
         {
-            if (!active || Climb.Active || _roll != null || _slide != null || !Grounded) return false;
+            // src/foot.js:5282 — C also LETS GO of a hang. foot.js reads
+            // `keys.has('KeyC')` directly inside the climb's own hang branch;
+            // this port's Climb.Tick takes an edge-triggered LetGoPressed
+            // instead, so the C-press is latched here (GameLoop calls
+            // ToggleCrouch(true) on every C down, climbing or not) and
+            // consumed by the very next Climb.Tick call — see the "climb owns
+            // the frame entirely" block below.
+            if (Climb.Active)
+            {
+                if (active && Climb.Phase == "hang") _letGoPending = true;
+                return false;
+            }
+            if (!active || _roll != null || _slide != null || !Grounded) return false;
             if (Cover.Active && Cover.State.Low) return false;
             Crouched = !Crouched;
             OnHint?.Invoke(Crouched
@@ -454,6 +479,20 @@ namespace TbilisiFly.Character
             };
             Crouched = false;
             Speed = _roll.V0;
+
+            // 2026-11-01 parkour pack: a real roll clip drives the limbs —
+            // RollPose (below) keeps spinning/translating ActGroup exactly as
+            // before (the world motion), it just skips FootPoses.SetRollTuck
+            // while the clip owns the shape. `air` (buffered roll-out-of-a-
+            // fall/dive) gets the fall-shaped clip; an ordinary grounded X
+            // dodge-roll gets the sprint-to-sprint one.
+            var rollClip = ParkourClipLibrary.Get(air ? ParkourClipLibrary.LandingFrontRoll : ParkourClipLibrary.MantleLowFrontRoll);
+            if (rig?.Anim != null && rollClip != null)
+            {
+                Clips.Play(rig.Anim, rollClip, loop: false, blendIn: 0.08f);
+                _rollClipOwns = true;
+            }
+            else _rollClipOwns = false;
             return true;
         }
 
@@ -466,6 +505,32 @@ namespace TbilisiFly.Character
             if (!Grounded) return false;
             if (!force && (_slideCd > 0f || Speed < RunSpeed * SlideMin)) return false;
             if (_dive != null) EndDive(rig);
+
+            // 2026-11-01 parkour pack: "Z slide → keep the slide, but when an
+            // obstacle of vault height is ahead use the vault-low clip" (this
+            // task's own brief). Reuses FootClimb's OWN ledge probe (the same
+            // one free-run/Space already calls) rather than a new raycast —
+            // Climb.Hold==false is exactly "a straight-through vault, not a
+            // real hang" (ClimbState.Hold's own doc), which is the vault-
+            // height band this brief means. A real climbable wall (Hold ==
+            // true) is too tall for Z to take, so that attempt is aborted and
+            // falls through to an ordinary slide.
+            if (!force)
+            {
+                Vector3 facingDir = new Vector3(-Mathf.Sin(Yaw), 0f, -Mathf.Cos(Yaw));
+                if (FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
+                    && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, new[] { facingDir }))
+                {
+                    if (!Climb.Hold)
+                    {
+                        _lastLead = Climb.Lead;
+                        _slideCd = SlideCdTime; // same cooldown courtesy a real slide would have left
+                        return true; // Climb (the vault path) now owns the body
+                    }
+                    Climb.EndClimb(rig, "abort", ref Pos); // too tall for a vault — ordinary slide below
+                }
+            }
+
             _slide = new SlideState
             {
                 T = 0f, Blend = blend, Ending = false,
@@ -632,7 +697,16 @@ namespace TbilisiFly.Character
         void RollPose(CharacterRig rig)
         {
             var r = _roll;
-            var ball = FootPoses.SetRollTuck(rig, r.Tuck) ?? new FootPoses.RollBall { Core = RollCoreFallback, R = RollCoreFallback };
+            // 2026-11-01 parkour pack: while a real roll clip owns the body,
+            // skip the crude procedural ball-tuck bone writer entirely — the
+            // clip already shapes the spine/legs/arms through a real human
+            // roll. Use a FIXED pivot (no tuck-driven pivot shrink) for the
+            // ActGroup spin math below; it is an approximation of where the
+            // body's own centre sits, not a visible bone pose.
+            bool clipOwns = _rollClipOwns && Clips.IsPlaying;
+            var ball = clipOwns
+                ? new FootPoses.RollBall { Core = RollCoreFallback, R = RollCoreFallback }
+                : FootPoses.SetRollTuck(rig, r.Tuck) ?? new FootPoses.RollBall { Core = RollCoreFallback, R = RollCoreFallback };
             float spin = 2f * Mathf.PI * r.P;
             float core = RollCoreFallback + (ball.Core - RollCoreFallback) * r.Tuck;
             float high = RollCoreFallback + (ball.R - RollCoreFallback) * r.Tuck;
@@ -660,6 +734,7 @@ namespace TbilisiFly.Character
 
         void EndRoll(CharacterRig rig)
         {
+            if (_rollClipOwns) { Clips.Stop(); _rollClipOwns = false; }
             _roll = null;
             _rollCd = RollCdTime;
             _strafing = false;
@@ -774,10 +849,127 @@ namespace TbilisiFly.Character
         }
 
         // =====================================================================
+        // CLIMB/FREE-RUN ONLY — for Core/GameLoop.cs's StageOnFootPurchased,
+        // which (while GameLoop.UsePurchasedShooter is true) never calls the
+        // full Update() below: the purchased Cover+Shoot asset's own
+        // Rigidbody/MoveBehaviour own ordinary ground movement, and running
+        // the whole monolith alongside it would fight that Rigidbody for
+        // Pos every frame. This is a DELIBERATE DUPLICATE of Update()'s own
+        // "---- free-run (Assassin's Creed high profile) + Space-climbs ----"
+        // and "---- climb owns the frame entirely ----" blocks just below
+        // (lines ~997-1091), not a refactor of them: the two call sites are
+        // mutually exclusive for the life of one GameLoop (the flag never
+        // flips mid-session), so sharing `Climb`/`Clips`/`_climbClipPhase`/
+        // `_letGoPending`/`_gY`/`_lastLead`/`_jumpBuf`/`_jumpWas`/`_coyote`
+        // between a shared method and Update() risked only one thing —
+        // Update() ALSO needs `_jumpBuf` for Cover.Tick a few lines before
+        // its own copy of this block runs, so hoisting the jump-edge
+        // bookkeeping out of Update() would shift exactly when Cover sees a
+        // buffered jump. Duplicating instead of extracting avoids that
+        // entirely, at the cost of keeping the two copies honest if either
+        // is ever touched again — both are tagged with this same comment.
+        //
+        // What is intentionally OMITTED from this copy: the plain-jump
+        // branch (Update()'s `else if (_jumpBuf > 0f && _coyote > 0f)`,
+        // which sets `Vy`/`_air` — fields nothing under the purchased path
+        // ever reads, since MoveBehaviour.jumpButton already owns ordinary
+        // jumping there with its own Rigidbody impulse).
+        //
+        // Returns true the frame a climb (or its reach/pull/mantle beats)
+        // owns Pos/Yaw — the caller must write them onto its own Rigidbody-
+        // backed transform that frame and skip its own movement entirely.
+        // =====================================================================
+        public bool TickClimbAndFreeRun(float dt, CharacterRig rig, MoveInput m)
+        {
+            bool jumpPressed = m.Jump && !_jumpWas;
+            _jumpWas = m.Jump;
+            if (jumpPressed) _jumpBuf = JumpBufferTime;
+            _jumpBuf = Mathf.Max(0f, _jumpBuf - dt);
+            _coyote = Grounded ? Coyote : Mathf.Max(0f, _coyote - dt);
+            if (_jumpBuf > 0f && Crouched && !Cover.Active) { Crouched = false; _jumpBuf = 0f; }
+
+            Vector3 facingDir = new Vector3(-Mathf.Sin(Yaw), 0f, -Mathf.Cos(Yaw));
+            bool freeRun = m.Z < 0f && (m.Sprint || !Grounded);
+            if (!Climb.Active)
+            {
+                var dirs = new System.Collections.Generic.List<Vector3> { facingDir };
+                if (_strafing && Mathf.Abs(Speed) > 0.5f) dirs.Add(new Vector3(-Mathf.Sin(_moveYaw), 0f, -Mathf.Cos(_moveYaw)));
+                if (freeRun && _roll == null && _slide == null && _dive == null && !Crouched
+                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
+                    && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
+                {
+                    _jumpBuf = 0f; _lastLead = Climb.Lead;
+                }
+                else if (_jumpBuf > 0f && _roll == null && _slide == null
+                    && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
+                    && Climb.TryStart(rig, Pos, Yaw, Grounded, _gY ?? Pos.y, _lastLead, dirs.ToArray()))
+                {
+                    _jumpBuf = 0f; _jumpWas = true; _lastLead = Climb.Lead;
+                }
+            }
+
+            if (Climb.Active)
+            {
+                string phase = Climb.Phase;
+                if (phase == "hang")
+                {
+                    if (_climbClipPhase != "hang")
+                    {
+                        var c = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedIdle);
+                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: true, blendIn: 0.15f);
+                        _climbClipPhase = "hang";
+                    }
+                }
+                else if (phase == "pull" || phase == "mantle")
+                {
+                    if (_climbClipPhase != "pull" && _climbClipPhase != "mantle")
+                    {
+                        AnimationClip c = !Climb.Hold
+                            ? ParkourClipLibrary.Get(ParkourClipLibrary.VaultLowKongShort)
+                            : (Climb.High < 0.5f ? ParkourClipLibrary.Get(ParkourClipLibrary.MantleLowClimbup)
+                                                  : ParkourClipLibrary.Get(ParkourClipLibrary.MantleHighClimbup));
+                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: false, blendIn: 0.1f);
+                    }
+                    _climbClipPhase = phase;
+                }
+                Climb.HangClipActive = Clips.IsPlaying && _climbClipPhase == "hang";
+                Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle");
+
+                bool letGo = _letGoPending; _letGoPending = false;
+                string exit = Climb.Tick(dt, rig, ref Pos, ref Yaw, new FootClimb.ClimbInput { MoveZ = m.Z, JumpPressed = jumpPressed, LetGoPressed = letGo });
+                if (exit != null)
+                {
+                    var (grounded, pushOff) = Climb.EndClimb(rig, exit, ref Pos);
+                    if (exit == "done") { Speed = 0f; Vy = 0f; Grounded = true; }
+                    else if (exit == "letgo") { Grounded = false; Vy = 0f; _fallFrom = Pos.y; }
+                    _accV = 0f; _speedWas = Speed; _turnV = 0f; _yawWas = Yaw;
+
+                    _climbClipPhase = null;
+                    if (exit == "letgo")
+                    {
+                        var dropClip = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedDrop);
+                        if (rig?.Anim != null && dropClip != null) Clips.Play(rig.Anim, dropClip, loop: false, blendIn: 0.06f);
+                    }
+                    else Clips.Stop();
+                }
+                return true;
+            }
+            Climb.TickClimbOut(dt, rig);
+            return false;
+        }
+
+        // =====================================================================
         // ONE FRAME — src/foot.js:5475-6259 update(). Call from LateUpdate.
         // =====================================================================
         public void Update(float dt, CharacterRig rig, MoveInput m)
         {
+            // Advance any parkour clip's blend-in/auto-stop BEFORE anything
+            // below reads bones as a pose "Base" — Unity has already written
+            // this frame's clip sample onto the Animator's bones by the time
+            // Update() runs (this port's own rule: Update() is called from
+            // LateUpdate, after the Animator). See ParkourClipPlayer.Tick.
+            Clips.Tick(dt);
+
             // src/foot.js:4746-4779 `_planeTargets()` — resolved ONCE per
             // frame (the JS calls it once and reuses the result for both the
             // ground probe and the cover wall-finder) and handed to both
@@ -945,7 +1137,44 @@ namespace TbilisiFly.Character
             // ---- climb owns the frame entirely ----
             if (Climb.Active)
             {
-                string exit = Climb.Tick(dt, rig, ref Pos, ref Yaw, new FootClimb.ClimbInput { MoveZ = m.Z, JumpPressed = jumpPressed, LetGoPressed = false });
+                // 2026-11-01 parkour pack: pick (once per phase) or keep the
+                // clip for THIS climb's current beat, and tell Climb whether
+                // it owns the hang/pull/mantle bone-shape this frame — see
+                // FootClimb.Tick's own HangClipActive/MantleClipActive gates
+                // and ParkourClipPlayer's header for why HandsOnLedge/
+                // PlantFoot/BodyPivot all keep working unchanged either way.
+                string phase = Climb.Phase;
+                if (phase == "hang")
+                {
+                    if (_climbClipPhase != "hang")
+                    {
+                        var c = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedIdle);
+                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: true, blendIn: 0.15f);
+                        _climbClipPhase = "hang";
+                    }
+                }
+                else if (phase == "pull" || phase == "mantle")
+                {
+                    if (_climbClipPhase != "pull" && _climbClipPhase != "mantle")
+                    {
+                        // !Hold = a straight-through vault (Z redirected into
+                        // this climb from StartSlide); Hold+High splits a real
+                        // climb's final beat into mantle-low vs mantle-high.
+                        AnimationClip c = !Climb.Hold
+                            ? ParkourClipLibrary.Get(ParkourClipLibrary.VaultLowKongShort)
+                            : (Climb.High < 0.5f ? ParkourClipLibrary.Get(ParkourClipLibrary.MantleLowClimbup)
+                                                  : ParkourClipLibrary.Get(ParkourClipLibrary.MantleHighClimbup));
+                        if (rig?.Anim != null && c != null) Clips.Play(rig.Anim, c, loop: false, blendIn: 0.1f);
+                    }
+                    _climbClipPhase = phase;
+                }
+                Climb.HangClipActive = Clips.IsPlaying && _climbClipPhase == "hang";
+                Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle");
+
+                // src/foot.js:5282 — C lets go of a hang; see ToggleCrouch's
+                // own note on why this is latched rather than read directly.
+                bool letGo = _letGoPending; _letGoPending = false;
+                string exit = Climb.Tick(dt, rig, ref Pos, ref Yaw, new FootClimb.ClimbInput { MoveZ = m.Z, JumpPressed = jumpPressed, LetGoPressed = letGo });
                 if (exit != null)
                 {
                     var (grounded, pushOff) = Climb.EndClimb(rig, exit, ref Pos);
@@ -955,6 +1184,18 @@ namespace TbilisiFly.Character
                     // run the SAME frame EndClimb does, before anything below
                     // reads _accV/_turnV off a `Speed` that was just zeroed.
                     _accV = 0f; _speedWas = Speed; _turnV = 0f; _yawWas = Yaw;
+
+                    _climbClipPhase = null;
+                    if (exit == "letgo")
+                    {
+                        // a quick release flourish — AirPose (next frame) ramps
+                        // its own influence in over AIR_IN (90 ms), so this is
+                        // visible for roughly that long before the fall pose
+                        // takes back over; a deliberate, documented scope cut.
+                        var dropClip = ParkourClipLibrary.Get(ParkourClipLibrary.LedgeGrabBracedDrop);
+                        if (rig?.Anim != null && dropClip != null) Clips.Play(rig.Anim, dropClip, loop: false, blendIn: 0.06f);
+                    }
+                    else Clips.Stop();
                 }
                 return; // the climb owns the whole frame, like foot.js:5542-5545
             }

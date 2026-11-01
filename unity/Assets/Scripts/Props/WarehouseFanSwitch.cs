@@ -23,10 +23,18 @@ namespace TbilisiFly.Props
     /// <see cref="WarehouseCraneFill.Build"/> — ONE MonoBehaviour per file,
     /// named after it (unity SKILL.md's hard rule).
     ///
-    /// NOT PORTED here (see WarehouseCraneFill.cs's class header): the
-    /// #fan-ctl DOM control card itself (a UI/Hud concern).
+    /// PARTIALLY CLOSED (this pass): crane.js:833-840's B-key cycle is now
+    /// read directly in Update() below, since Press()/CycleButton() (:821-828)
+    /// already existed, called voice.Click correctly, and had ZERO callers
+    /// anywhere outside Editor probes — the exact "finished code, no runtime
+    /// caller" shape. STILL NOT PORTED (see WarehouseCraneFill.cs's class
+    /// header): the visible #fan-ctl DOM card itself (state readout text +
+    /// lo/hi buttons, crane.js:758-829) — a UI Toolkit view on the
+    /// RangeLaneView.cs pattern, out of this pass's file scope.
     /// <see cref="NearSwitch"/>/<see cref="Mode"/>/
-    /// <see cref="Press"/> are the exact surface such a card would bind to.
+    /// <see cref="Press"/> are the exact surface such a card would bind to;
+    /// the switch itself now works without it, just silently (B does the
+    /// right thing with no on-screen confirmation yet).
     ///
     /// NOW WIRED (this pass): the wind_tunnel_flow haze sheets (<see
     /// cref="FlowRenderer"/>, built by WarehouseCraneFill.BuildFlowMesh off
@@ -81,7 +89,7 @@ namespace TbilisiFly.Props
         bool _initialized;
 
         public WarehouseCrane.FanSwitch.Setting Mode => _switch.Mode;
-        public bool NearSwitch { get; private set; }
+        public bool NearSwitch { get; internal set; } // internal setter: HandleBKeyProbe needs to force it
 
         /// <summary>crane.js:821-838 — the card's buttons / the B-cycle.</summary>
         public void Press(WarehouseCrane.FanSwitch.Setting m)
@@ -225,6 +233,26 @@ namespace TbilisiFly.Props
             // it", distance-gated exactly like the firing-point lane cards.
             if (_game != null && _game.Foot != null)
                 NearSwitch = (_game.Foot.Pos - transform.position).sqrMagnitude <= SwitchReach * SwitchReach;
+
+            // crane.js:833-840 — B, when standing at the board, walks round
+            // the three settings. The visual #fan-ctl card (state readout +
+            // lo/hi buttons) is still the documented UI/Hud scope-cut above;
+            // this closes the GAME-LOGIC half, which needed no UI: pressing B
+            // near the board now actually cycles the fans, matching Press()/
+            // CycleButton()'s own long-ready, previously uncalled surface.
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            HandleBKey(kb != null && kb.bKey.wasPressedThisFrame);
+        }
+
+        /// <summary>crane.js:834-839's gate, split out pure (no Keyboard
+        /// dependency) so a probe can drive it directly — the same
+        /// "mechanical extraction, zero behaviour change" split WindRider.
+        /// OnWing()/AdvanceOnWing() already use for an edit-mode-testable
+        /// surface. `pressed` is Update()'s own `kb.bKey.wasPressedThisFrame`;
+        /// everything NearSwitch-dependent is real, live state.</summary>
+        internal void HandleBKey(bool pressed)
+        {
+            if (NearSwitch && pressed) CycleButton();
         }
 
         void UpdateLamp() // crane.js:728-736 `setLamp()`

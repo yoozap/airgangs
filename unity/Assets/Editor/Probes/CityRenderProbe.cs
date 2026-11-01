@@ -22,10 +22,26 @@ namespace TbilisiFly.Probes
     /// </summary>
     public static class CityRenderProbe
     {
-        // The expected count is 319, NOT 609. 609 photos ARE assigned, but a footprint
-        // that also claims a kit model never reaches the photo lookup — each of the
-        // five kit-claim branches in src/citymap.js `continue`s before `const pb` is
-        // declared at line 4746. A kit claim beats a photo in the shipped JS game.
+        // The expected count is 273, NOT 609 and NOT the earlier-guessed 319. 609 photos
+        // ARE assigned (PhotoFacades.Assign, exclusive draw), but a footprint that also
+        // claims a kit model never reaches the photo lookup — each of the five kit-claim
+        // branches in src/citymap.js `continue`s before `const pb` is declared at line
+        // 4746 — AND a footprint wearing a real Blender mall model (citymap.js:4591
+        // `this._mallBids?.has(bi)`) never reaches TryClaim or the photo check either.
+        //
+        // 319 was never actually computed from the real data — nobody had run the JS's
+        // own decision chain over it. 273 comes from reimplementing that whole chain
+        // (pbOf exclusive assignment, DISTRICTS/cottage, parts expansion, the mallBids
+        // skip, and all five kit fits with the live unity/Assets/StreamingAssets/tbilisi/
+        // kit_meta.json dimensions) in Node over the live production data — city.json.gz,
+        // levels.json, parts.json, malls.json, textures/pb/manifest.json — 2026-11-01.
+        // Before BuildingBuilder.cs gained its own mallBids skip (added the same day —
+        // citymap.js:4591 had no C# equivalent), the Node reimplementation without that
+        // skip gave 276, matching this method's own live BLDRICH log EXACTLY at the time
+        // (photo=276) — proof the rest of the chain (fits, gates, catalogs, pbOf) was
+        // already faithful and the mallBids gap was the one real bug. With the skip
+        // applied on both sides the number is 273 (see docs/open_items.json
+        // `photo-render-count-drift`).
         public static void Run()
         {
             CityMaterials.Reset();
@@ -82,7 +98,7 @@ namespace TbilisiFly.Probes
             int photoAssigned = rich.Photo?.AssignedByBuilding.Count ?? 0;
             int photoUsedKeys = rich.Photo?.UsedPhotoKeys.Count ?? 0;
             Debug.Log($"CRP id=photo buildings={rich.NPhotoBuildings} assigned={photoAssigned} usedKeys={photoUsedKeys} " +
-                      $"attribution=\"{rich.Photo?.Attribution}\"");
+                      $"mallSkipped={rich.NMallSkipped} attribution=\"{rich.Photo?.Attribution}\"");
 
             // ---- building totals, for the "box vs real mesh" headline the brief asks for ----
             int totalBuildings = city.Buildings.Count;
@@ -94,11 +110,11 @@ namespace TbilisiFly.Probes
             bool passKit = report.ResolvedInstances > 150000;
             bool passMat = CityMaterials.CreatedCount > 20;
             bool passMissing = CityMaterials.MissingTextures.Count == 0;
-            bool passPhoto = rich.NPhotoBuildings == 319;
+            bool passPhoto = rich.NPhotoBuildings == 273;
             Debug.Log($"CRP id=assert_kitInstances value={report.ResolvedInstances} need>150000 result={(passKit ? "PASS" : "FAIL")}");
             Debug.Log($"CRP id=assert_materialsCreated value={CityMaterials.CreatedCount} need>20 result={(passMat ? "PASS" : "FAIL")}");
             Debug.Log($"CRP id=assert_noMissingTextures value={CityMaterials.MissingTextures.Count} need=0 result={(passMissing ? "PASS" : "FAIL")}");
-            Debug.Log($"CRP id=assert_photoFacades value={rich.NPhotoBuildings} need=319 result={(passPhoto ? "PASS" : "FAIL")}");
+            Debug.Log($"CRP id=assert_photoFacades value={rich.NPhotoBuildings} need=273 result={(passPhoto ? "PASS" : "FAIL")}");
             Debug.Log($"CRP id=assert_overall result={((passKit && passMat && passMissing && passPhoto) ? "PASS" : "FAIL")}");
 
             ProbeExit.Exit(0);

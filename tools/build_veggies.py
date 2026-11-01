@@ -305,8 +305,11 @@ def prepare_body(pid, cfg):
         bpy.data.images.remove(im)
     m, image = mat_textured(os.path.splitext(albedo)[0], albedo, normal)
     body.data.materials.append(m)
-    if pid in UPRIGHT:
-        stand_up(body, image, pid)
+    if pid in UPRIGHT or True:
+        if pid in UPRIGHT:
+            stand_up(body, image, pid)
+        else:
+            auto_yaw(body, image, pid)
         # re-stand on the floor after the vertices moved
         lo, hi = bbox([body])
         s2 = BODY_H / (hi.z - lo.z)
@@ -359,23 +362,69 @@ def auto_frame(P, me, image):
     rad = np.linalg.norm(P - cen[idx], axis=1)
     med = np.array([np.median(rad[idx == i]) if (idx == i).any() else 0.0 for i in range(nb)])
     stem = -axis if med[:3].mean() < med[-3:].mean() else axis
-    W, H = image.size
-    px = np.array(image.pixels[:]).reshape(H, W, 4)[:, :, :3]
-    uv = me.uv_layers.active.data
-    eyes = []
-    for poly in me.polygons:
-        u = np.mean([uv[li].uv[0] for li in poly.loop_indices])
-        v = np.mean([uv[li].uv[1] for li in poly.loop_indices])
-        col = px[int(v % 1.0 * (H - 1)), int(u % 1.0 * (W - 1))]
-        mx, mn = col.max(), col.min()
-        if (mn > 0.75 and mx - mn < 0.2) or mx < 0.15:
-            eyes.append(np.array(poly.center))
+    eyes, _nb, _nw = eye_polys(me, image)
     if len(eyes) < 10:
         raise RuntimeError(f"auto_frame: only {len(eyes)} eye polygons found")
     f = np.array(eyes).mean(axis=0) - c
     f -= (f @ axis) * axis
     f /= max(np.linalg.norm(f), 1e-9)
     return stem, f, len(eyes)
+
+
+def eye_polys(me, image):
+    """Centres of the polygons whose albedo at their UV centroid is pupil-black
+    or eye-white. Black first: a white body (onion, kiwi flesh) would drown the
+    sclera, the pupils are unique. Returns (centres, n_black, n_white)."""
+    import numpy as np
+    W, H = image.size
+    px = np.array(image.pixels[:]).reshape(H, W, 4)[:, :, :3]
+    uv = me.uv_layers.active.data
+    black, white = [], []
+    for poly in me.polygons:
+        u = np.mean([uv[li].uv[0] for li in poly.loop_indices])
+        v = np.mean([uv[li].uv[1] for li in poly.loop_indices])
+        col = px[int(v % 1.0 * (H - 1)), int(u % 1.0 * (W - 1))]
+        mx, mn = col.max(), col.min()
+        if mx < 0.15:
+            black.append(np.array(poly.center))
+        elif mn > 0.75 and mx - mn < 0.2:
+            white.append(np.array(poly.center))
+    pts = black if len(black) >= 10 else (black + white)
+    return pts, len(black), len(white)
+
+
+def auto_yaw(body, image, pid):
+    """2026-11-01 13:20, user: "my personages are not lokin fowart when i
+    choose them, i tryed appla and he is walkin with backside". The pack's
+    bodies rest at arbitrary yaws (the lineup showed kiwi, orange, plum, potato,
+    pepper with their backs to the camera). Rigid rotation about the vertical
+    axis ONLY, about the centroid, so the eyes look down -Y (the character's
+    front). Face untouched, nothing tilted."""
+    import numpy as np
+    me = body.data
+    P = np.array([[v.co.x, v.co.y, v.co.z] for v in me.vertices], dtype=np.float64)
+    c = P.mean(axis=0)
+    pts, nb, nw = eye_polys(me, image)
+    if len(pts) < 10:
+        print(f"AUTOYAW id={pid} eyePolys={len(pts)} black={nb} white={nw} SKIPPED (no eyes found)")
+        return
+    f = np.array(pts).mean(axis=0) - c
+    f[2] = 0.0
+    r = float(np.sqrt(((P[:, :2] - c[:2]) ** 2).sum(axis=1).mean()))
+    if np.linalg.norm(f) < 0.15 * r:
+        print(f"AUTOYAW id={pid} eyePolys={len(pts)} black={nb} white={nw} faceDir=({f[0]:.3f},{f[1]:.3f}) SKIPPED (eyes not off-centre: {np.linalg.norm(f):.3f} of r={r:.3f})")
+        return
+    # rotate about Z so that f -> (0,-1): angle from f to -Y
+    ang = math.atan2(-1.0, 0.0) - math.atan2(f[1], f[0])
+    ca, sa = math.cos(ang), math.sin(ang)
+    x, y = P[:, 0] - c[0], P[:, 1] - c[1]
+    P[:, 0] = c[0] + x * ca - y * sa
+    P[:, 1] = c[1] + x * sa + y * ca
+    for k, vert in enumerate(me.vertices):
+        vert.co = Vector(P[k])
+    me.update()
+    bpy.context.view_layer.update()
+    print(f"AUTOYAW id={pid} eyePolys={len(pts)} black={nb} white={nw} faceDir=({f[0]:.3f},{f[1]:.3f}) yawDeg={math.degrees(ang):.1f} face=untouched")
 
 
 def stand_up(body, image, pid):

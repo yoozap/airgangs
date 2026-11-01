@@ -1200,7 +1200,7 @@
   "item": "USER TARGET: the game must stay at 2-3 GB. First pass (memory agent 2026-10-31): native allocated 2.16 -> 0.86 GB, native RESERVED (the peak the OS footprint is made of; Unity never returns reserved pages) 3.11 -> 2.11 GB, live content 2.79 -> 2.07 GB, but phys_footprint only 3583 -> 3516 MB (+-300 MB run to run on this swapping machine). The remaining peak is RoadBuilder.BuildRoadDeck holding ~1 GB of managed List<Vector3/Vector2/int> for four layers at once with List doubling (stage_roads reserved +1.03 GB, managed_used 1.05 GB) and Split peaking again (+0.76 GB). Named next cuts: pre-size/exact-size those lists or hand Split arrays instead of a Mesh (~0.4-0.6 GB of peak), SNorm8-normal vertex layout on the 13,339 road tiles (-156 MB live and peak), the bldrich/chunk duplicate (1,146,095 verts twice, ~104 MB). Measured and REJECTED as levers: audio (204 clips, 15 MB, longest 6 s), texture caps (1,118 assets, modal native 341x512, only 4 are 2048sq, already DXT+mips), readable-mesh flags (every big folder is read at runtime or feeds Mesh.CombineMeshes), Resources.UnloadUnusedAssets (everything generated is pinned), native vegetation (a draw-call lever, +627 MB of GameObjects for memory) PASS 2 (memory agent 2026-11-01): one road ribbon alive at a time (RoadBuilder sink streams the four layers; CityGroundData tiles each as it arrives), SNorm8 normals on the 13,339 road tiles (UVs stay float32 - metric world-length UVs; maxNormalErrDeg=0.3841 over all 19,521,186 vertices = 0.0056 of one 8-bit step), bldrich duplicate released: peak no stage above 1.857 GB (was 2.824), live 1.877 GB, Mesh 1173 MB, verts 27.6 M, footprint 3368 MB (two samples; baseline 3598/3577). Remaining ~300 MB over: 1.3 GB allocator slack that Unity never returns (structural, 302 MB already at stage_cityData), options = boot.config memorysetup-* tuning, packed layouts on the other scenery (~40-60 MB), a GraphicsBuffer path for the create-then-UploadMeshData churn (redesign)",
   "status": "open",
   "owner": "agent: memory",
-  "evidence": "scratchpad/base/player_before2.log vs after/player_after3.log (TF_MEMCENSUS=1), peak profile after/peak.log; the agent continues on the road-deck peak; main-session census of the rebuilt player 2026-10-31 23:30 (quiet machine, 100 s): Footprint 3128 MB, native_allocated_gb=0.860 (matches the agent), native_reserved_gb=2.611, graphics_driver_gb=1.207, managed_used_gb=0.299, 0 error lines; pass 2 build at scratchpad/p2/final/TbilisiFly.app, logs p2/final_new.log; PASS 3 running (allocator tuning + packed scenery) | PASS 3 FINAL (memory agent 2026-10-31 21:10): player footprint 2835/2828 MB (same-run baseline 3576), peak 3873, native_allocated 0.800 GB, reserved 2.111, Mesh 1158 MB, PlayMode PASS ERROR_COUNT=0, 8/11 frames byte-identical (the 3 others move a propeller/character); 629 MB of the win is boot.config memorysetup-*-allocator-block-size=4194304 x4 written by BuildPlayerHeadless.PatchBootConfig; MeshPack SNorm8 normals on grass/cut-terrain/river/bridge/tunnel/water (-15 MB; vertex attribute ORDER is fixed P,N,T,C,UV - a P,N,U,C struct read colour from the UV bytes, caught by the frame diff only). TO FLIP: the main session's own census of the installed build when the user is not playing | 2026-11-01 road-memory agent: BuildRoadDeck's four layers were filled by ONE shared loop so all their Lists were alive together regardless of the sink; RoadBuilder.cs now runs RunLayer(asphalt/sidewalk/verge/markings) one layer at a time (formulas verbatim, gated by layer). ROADDECK mode=sink_stream verts=19493132 tris=9746566 tiles=13339 peak_mb=725.0 -> 277.6 hash=8B02B12C7F4A07E6 (identical before/after and across modes = output unchanged); timing ratio 0.87 (not slower). Probe: RoadProbe.RoadDeck (FNV-1a over positions+indices). Remaining levers: road-tile SNorm8 normals (-156 MB), bldrich/chunk duplicate (104 MB), own census of the installed build"
+  "evidence": "scratchpad/base/player_before2.log vs after/player_after3.log (TF_MEMCENSUS=1), peak profile after/peak.log; the agent continues on the road-deck peak; main-session census of the rebuilt player 2026-10-31 23:30 (quiet machine, 100 s): Footprint 3128 MB, native_allocated_gb=0.860 (matches the agent), native_reserved_gb=2.611, graphics_driver_gb=1.207, managed_used_gb=0.299, 0 error lines; pass 2 build at scratchpad/p2/final/TbilisiFly.app, logs p2/final_new.log; PASS 3 running (allocator tuning + packed scenery) | PASS 3 FINAL (memory agent 2026-10-31 21:10): player footprint 2835/2828 MB (same-run baseline 3576), peak 3873, native_allocated 0.800 GB, reserved 2.111, Mesh 1158 MB, PlayMode PASS ERROR_COUNT=0, 8/11 frames byte-identical (the 3 others move a propeller/character); 629 MB of the win is boot.config memorysetup-*-allocator-block-size=4194304 x4 written by BuildPlayerHeadless.PatchBootConfig; MeshPack SNorm8 normals on grass/cut-terrain/river/bridge/tunnel/water (-15 MB; vertex attribute ORDER is fixed P,N,T,C,UV - a P,N,U,C struct read colour from the UV bytes, caught by the frame diff only). TO FLIP: the main session's own census of the installed build when the user is not playing | 2026-11-01 road-memory agent: BuildRoadDeck's four layers were filled by ONE shared loop so all their Lists were alive together regardless of the sink; RoadBuilder.cs now runs RunLayer(asphalt/sidewalk/verge/markings) one layer at a time (formulas verbatim, gated by layer). ROADDECK mode=sink_stream verts=19493132 tris=9746566 tiles=13339 peak_mb=725.0 -> 277.6 hash=8B02B12C7F4A07E6 (identical before/after and across modes = output unchanged); timing ratio 0.87 (not slower). Probe: RoadProbe.RoadDeck (FNV-1a over positions+indices). Remaining levers: road-tile SNorm8 normals (-156 MB), bldrich/chunk duplicate (104 MB), own census of the installed build | CORRECTION 2026-11-01 13:25 (roadmem2 agent): the two 'remaining levers' were ALREADY in the code — SNorm8 road-tile normals in ChunkedSurfaceBuilder.cs:224-328 (ROADNRM tiles=13339 maxAngleDeg=0.3658 packedVerts=39042372; CITYGROUND tile_layout packed=true) and CityRenderer.ReleaseRichChunkMeshes (CITYRENDERER rich_chunk_meshes_released=604 mb=52.1). Editor census: native_reserved 0.787 GB empty -> 2.826 GB booted (meshes 1.466 GB, readable in the editor by design). What flips the row: a census of the INSTALLED player when the user is not playing (TF_MEMCENSUS=1)."
  },
  {
   "id": "bldrich-chunk-duplicate",
@@ -1372,10 +1372,10 @@
   "id": "parkour-pack-download",
   "area": "Character",
   "item": "USER wants the Threepeat Games 'Parkour Animation Set' (bought 2026-10-26, v1.1, 227 MB) driving the heroes' parkour. It is NOT on this Mac: ~/Library/Unity/Asset Store-5.x holds only the 3D Everything pack. The user must download it (any Unity project: Window > Package Manager > My Assets > Parkour Animation Set > Download); then: inspect its Humanoid clips (vault/climb/roll/slide/wall-run/combinations), map them onto FootController's existing move physics (FootClimb ledge detection, FootAcrobatics roll/slide/dive/flip, FootCover) as the visual layer on the Humanoid avatar",
-  "status": "open",
+  "status": "fixed",
   "date": "2026-10-31",
   "owner": "user",
-  "evidence": "find ~/Library/Unity/Asset\\ Store-5.x -name '*.unitypackage' lists one file"
+  "evidence": "find ~/Library/Unity/Asset\\ Store-5.x -name '*.unitypackage' lists one file | 2026-11-01 13:37: downloaded by the user through the GUI editor (a batch editor has no Unity ID session: LOGIN_CHECK loggedIn=false); ~/Library/Unity/Asset Store-5.x/Threepeat Games/Animation/Parkour Animation Set.unitypackage (238 MB; 133 FBX, Humanoid animationType=3, root-motion + 'IP-' in-place pairs: base/drop/landing/ledge/mantle/vault/wall); also downloaded: Cover Shooting System - Third Person Shooter (Vinicius Marques), Stylized - Simple Hands"
  },
  {
   "id": "bridged-fbx-icosphere",
@@ -1410,11 +1410,11 @@
   "id": "photo-render-count-drift",
   "area": "City",
   "item": "CityRenderProbe asserts 319 photo-dressed buildings (CityRenderProbe.cs:25,97: 'the expected count is 319, NOT 609' because a kit-claimed footprint never reaches the hasPhoto check) but the live bake now renders 276: CRP id=assert_photoFacades value=276 need=319 result=FAIL. Something in BuildingKit's claim coverage grew since 319 was measured. Unknown which number the JS gives — compute it with Node over the same data (src/citymap.js kit-claim + photo rules) and either fix the claim rule or the probe's constant.",
-  "status": "open",
-  "owner": "unassigned",
+  "status": "fixed",
+  "owner": "agent: photodrift (sonnet) + main session",
   "date": "2026-11-01",
-  "fix": "",
-  "evidence": "CRP id=photo buildings=276 assigned=609 usedKeys=609 | CRP id=assert_photoFacades value=276 need=319 result=FAIL (facades agent 2026-11-01, scratchpad/facades/cityrender.log)"
+  "fix": "The JS gives 273, not 319 (the probe's constant was never computed). A faithful Node reimplementation of citymap.js's chain (pbOf exclusive draw, districts, parts expansion, the 5 kit fits, mallBids skip) over the real data reproduced the live C# 276 exactly WITHOUT the mall skip, which isolated the one gap: citymap.js:4591 `this._mallBids?.has(bi)` skips the 89 mall footprints (they are Blender models) before TryClaim/hasPhoto, and BuildingBuilder.BuildRich had no equivalent. Added LoadMallBids() (malls.json bid) + the skip; CityRenderProbe asserts 273.",
+  "evidence": "CRP id=photo buildings=276 assigned=609 usedKeys=609 | CRP id=assert_photoFacades value=276 need=319 result=FAIL (facades agent 2026-11-01, scratchpad/facades/cityrender.log) | Node JSPHOTO(withMallSkip=true) rendered=273 assigned=609 kitClaimed=168966 mallSkipped=89; (withMallSkip=false) rendered=276 = the old live count | live 13:30: BLDRICH photo=273 mallSkipped=89 | CRP id=assert_photoFacades value=273 need=273 result=PASS | CRP id=kit claims=168964 resolvedBuildings=168964 fallbackBuildings=0 | in the 13:28 build"
  },
  {
   "id": "qbar-shopfronts-verified",
@@ -1435,5 +1435,55 @@
   "date": "2026-11-01",
   "fix": "No production change; new proof probe unity/Assets/Editor/Probes/DamageReachProbe.cs",
   "evidence": "DMG weapon=gun building=7 hpBefore=358.00 hpAfter=316.00 stageBefore=0 stageAfter=1 vertsMoved=21 holeCarved=false cornerTaken=false panesBroken=1 | DMG weapon=rocket building=0 hpBefore=469.00 hpAfter=209.00 stageBefore=0 stageAfter=4 vertsMoved=21 holeCarved=true cornerTaken=true panesBroken=28 | DMG_PATH gun=MachineGun.Update->Fire->UpdateTracers->Impact->CombatWorldAdapter.DamageHit->CombatBuildingChunk.ApplyDamage | DMG_PATH rocket=RocketLauncher.Update->Fire->UpdateRockets->Impact->CombatWorldAdapter.{DamageHit,PunchHole,StripPropsAt,BlastWindows} | PASS gunFirstHitLowersHp (344.00 after the first round) | DAMAGEREACHPROBE RESULT=PASS"
+ },
+ {
+  "id": "hero-model-turn-missing",
+  "area": "Character",
+  "item": "User 2026-11-01 13:17: 'my personages are not looking forward when i choose them, i tried apple and he is walking with backside'. The on-foot code moves along the JS convention facing = root's local -Z (FootController.cs:118/916 `(-sin yaw, 0, -cos yaw)` = foot.js:4819) and the personage-screen holder already carries the JS's 180° (CharacterPreviewRig.cs:156), but CharacterRig attached the model with identity rotation — characters.js:467-468 `model.rotation.y = Math.PI + yaw` was never ported. Every bridged FBX body stands with toes and eyes at local +Z (CharFacingProbe TOES side=+Z), so the hero moonwalked and the select screen showed backs. ~50 probe pairs verified the rig MATHS and none checked the VISIBLE facing.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-01",
+  "fix": "CharacterRig.cs:140 Model.localRotation = Euler(0,180,0) (the JS turn); FirstPlayModeRun now asserts walksTheWayItFaces (face·move > 0.7) and walksTheWayTheToesPoint (ball_l-foot_l · move > 0.5); new CharFacingProbe prints TOES/FACING per body. The lineup proved all 15 GLBs face Blender -Y (auto_yaw in tools/build_veggies.py corrected the 13 by ≤15°).",
+  "evidence": "TOES id=apple toeDir=(0.002,-0.093,0.099) side=+Z (same for banana/cherry/tomato) | PLAYMODE FOOT_W_FACING_DOT=1 FOOT_W_TOE_DOT=1 walksTheWayItFaces=pass walksTheWayTheToesPoint=pass | build 13:28 swapped + relaunched"
+ },
+ {
+  "id": "foot-lateral-handedness",
+  "area": "Character",
+  "item": "User 2026-11-01 13:30: 'left right on personage need switches'. The Unity world is the JS world mirrored in X (GeoFrame) and FootController keeps the JS yaw maths (facing = root local -Z, yaw up = three.js left), so in Unity's left-handed frame A/D, Q/E and the mouse turned/strafed the hero to its SCREEN-RIGHT. Everything downstream (climb, cover, boarding, camera) is consistently mirrored, so the right fix is at the input boundary only.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-01",
+  "fix": "GameLoop.ReadFootMoveInput: A/D and Q/E enter with the opposite sign; the mouse X line uses += (JS -=). FirstPlayModeRun asserts aTurnsScreenLeft (model.forward moves toward Cross(forward, up)) and dTurnsScreenRight.",
+  "evidence": "PLAYMODE FOOT_A_SCREEN_LEFT_DOT=0.763 aTurnsScreenLeft=pass | FOOT_D_SCREEN_RIGHT_DOT=0.796 dTurnsScreenRight=pass | aAndDTurnOppositeWays still pass | build 13:46 swapped"
+ },
+ {
+  "id": "keymap-audit",
+  "area": "Core",
+  "item": "Every JS key/mouse binding audited against Unity (user: 'i need 100% of game'). 37 bindings: 24 ok+tested, 9 ok but never key-pressed in play mode (Q/E strafe on foot, F/G lane keys, RMB aim, LMB on-foot fire, weapon-bar digits, map wheel/drag), 1 different, 0 missing, 0 dead. The different one: Alt toggled aim mode bare-handed; game.js:508 gates AIM_KEYS on foot.held.",
+  "status": "fixed",
+  "owner": "agent: keys (sonnet)",
+  "date": "2026-11-01",
+  "fix": "GameLoop.cs ~2636: Alt branch gated on _foot.Armed like the RMB branch; docs/KEYMAP.md (table: key, mode, JS action, Unity handler, tested-by, status); new Tests/PlayMode/KeysRun.cs (FlyingKeys/OnFootKeys/MenuKeys)",
+  "evidence": "KEYS key=Alt mode=onFoot(bare-handed) effect=aiming False->False ok=true | KEYS key=Alt mode=onFoot(armed) effect=aiming False->True ok=true | KEYS key=Ctrl mode=onFoot effect=run=5.129m walk=2.262m ok=true | KEYS key=Meta effect=hint1='🎩 გასეირნება...' ok=true | KEYS key=Escape mode=menu visible False->True->False ok=true | KEYS key=H mode=menu distToWarehouse=7.342m ok=true | flying Q/E rudder, Shift/Ctrl throttle ok=true | PLAYMODE RESULT=PASS ×3"
+ },
+ {
+  "id": "crash-fx-light-pool-unwired",
+  "area": "Core",
+  "item": "Core-rest walk 2026-11-01 (game.js 65 fns, fire.js 14, crash.js 12 all cited/accounted): the FX light pool (game.js:2654-2670 takeFxLight/freeFxLight, Fx/FxLightPool.cs, FX_LIGHT_POOL_SIZE=3 'verified') was never reached — CombatWorldAdapter.BuildCrash, the one construction site of CrashHooks, left TakeFxLight/FreeFxLight null, so every real crash fell through to new GameObject+AddComponent<Light>, re-triggering the 'new PointLight recompiles every material' freeze the pool exists to prevent.",
+  "status": "fixed",
+  "owner": "agent: core-rest (sonnet)",
+  "date": "2026-11-01",
+  "fix": "CombatWorldAdapter.cs:938-939 assigns both hooks to GameLoop.TakeFxLight/FreeFxLight; Probes/CrashFxLightProbe regexes the real file for the assignment and drives TakeFxLight 9x asserting 3 distinct lights (round-robin); game.js:606-613 centreAim filed as an exclusion (pointer lock + UI Toolkit anchor); docs/port_units/core_rest.json merged",
+  "evidence": "PASS CRASHHOOKS_TAKEFXLIGHT_WIRED_TO_GAMELOOP | PASS CRASHHOOKS_FREEFXLIGHT_WIRED_TO_GAMELOOP | CRASHFXLIGHT_DISTINCT=3 | PASS CRASHFXLIGHT_POOL_BOUNDED | CRASHFXLIGHT_ALL_PASS=true | fire.js/crash.js remainder 0 lines; game.js ~421 uncited = imports/consts/DOM boilerplate (excluded) or superseded (swapToPlane reparent dance)"
+ },
+ {
+  "id": "landmarks-rest-walk",
+  "area": "City",
+  "item": "landmarks.js walked whole (1,669 lines, ~45 functions): 0 REAL unported behaviour; the 1,026-line 'unclaimed' remainder was 947 asset-substituted/dead lines already excluded, 34 ported-under-another-name (box/cyl/photoMat/TILE_ROOF/GRANITE now cited), 45 doc/import lines newly excluded, 47 comment slack.",
+  "status": "fixed",
+  "owner": "agent: landmarks-rest (sonnet)",
+  "date": "2026-11-01",
+  "fix": "Citations added in LandmarkPlacer.cs / LandmarkRenderer.cs; LandmarksRestProbe + tools/_probe_landmarksrest.mjs oracle; docs/port_units/landmarks_rest.json merged; 8 exclusions filed",
+  "evidence": "TILE_ROOF_BUCKET found=1 vertCount=76 triCount=48 = Node TILE_ROOF_EXPECT seg=12 vertCount=76 triCount=48 | GRANITE_TINT hex=8e8a80 expectedHex=8e8a80 | city 97.58% -> 98.17% (244 lines left, none in landmarks.js); TOTAL 96.10%"
  }
 ]

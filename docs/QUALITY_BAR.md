@@ -28,17 +28,29 @@ not exist:
     `Graphics.RenderMeshInstanced` — no GameObject per building
   - 2,485 part volumes replacing flat boxes; 500,019 windows [STALE 2026-10-30: computed, NOT rendered -- zero production consumers of .Relief; see the facade-relief section], 160,000 balconies,
     41,785 cornices, 30,846 glass bands placed
-- **RESOLVED — 319 of 609 is CORRECT, and matches the JS.** This was investigated
-  and is NOT a port bug. In src/citymap.js each of the five kit-claim branches
-  (panel 4661, house 4687, out 4701, apt ~4715, shed 4731) ends in its own
+- **RESOLVED 2026-11-01 — 273 of 609 is CORRECT, and matches the JS. The earlier
+  "319" was ALSO never measured and was itself wrong** (docs/open_items.json
+  `photo-render-count-drift`: the live bake rendered 276 against a 319 assertion,
+  and "nobody knows which number the JS gives" — not a port bug, but the constant
+  itself had never been computed). In src/citymap.js each of the five kit-claim
+  branches (panel 4661, house 4687, out 4701, apt ~4715, shed 4731) ends in its own
   `continue;`, and `const pb = pbOf.get(bi) || null;` is declared ONCE at line 4746
   — *after* all five. So a kit-claimed footprint never reaches the photo lookup.
   There is even a developer comment at the shed test noting that someone tried to
   check `pb` inside a claim branch and it threw a temporal-dead-zone error, so it
   was left unconsulted. **A kit claim beats a photo in the shipped Three.js game**,
-  probably by accident, but really. The earlier "609" figure was an assumption
-  written into an agent brief, not a measured target; CityRenderProbe's assertion
-  has been corrected to 319.
+  probably by accident, but really. On top of that, citymap.js:4591 skips a
+  footprint ENTIRELY (never reaches TryClaim or the photo check) when a real
+  Blender mall model stands there (`this._mallBids?.has(bi)`) — BuildingBuilder.cs
+  had no equivalent skip, so up to 42 mall footprints were leaking into the kit-claim
+  and photo counts. Fixed (BuildingBuilder.cs: `LoadMallBids`/`NMallSkipped`). The
+  true number was found by reimplementing the whole decision chain (pbOf exclusive
+  assignment, DISTRICTS/cottage, parts expansion, the mallBids skip, all five kit
+  fits against the live kit_meta.json) in Node over the real production data; before
+  the mallBids fix it gave 276, matching the then-live BLDRICH log exactly — proof
+  the rest of the chain was already faithful. With the fix on both sides: 273.
+  CityRenderProbe's assertion is now 273. The earlier "609" figure was an assumption
+  written into an agent brief, not a measured target.
   If showing more real photographs is wanted, that is an IMPROVEMENT OVER PARITY
   and should be decided deliberately — not a port fix.
 - Still missing: no normal/roughness maps exist on disk for the 31 wall/roof tiles
@@ -71,9 +83,11 @@ not exist:
       dozen neighbours, which is the most visible kind of repetition in a dense block).
       VERIFIED 2026-11-01 (PhotoFacadeProbe): `PHOTO assigned=609 duplicates=0`,
       `PHOTO_RUNTIME caller=BuildPlayableScene.Run->BuildingBuilder.BuildRich bakesInto=Assets/Scenes/Game.unity`
-      (the bake IS the shipped path; CityRenderer.EnsureBuilt frees its chunks). OPEN
-      DRIFT: 276 photo buildings render where CityRenderProbe expects 319 — see
-      docs/open_items.json `photo-render-count-drift`
+      (the bake IS the shipped path; CityRenderer.EnsureBuilt frees its chunks).
+      CLOSED 2026-11-01: 273 photo buildings render, matching a faithful Node
+      reimplementation of the JS decision chain over the real data (including the
+      mallBids skip BuildingBuilder.cs was missing) — see docs/open_items.json
+      `photo-render-count-drift`
 - [x] **wall materials from real Tbilisi photo cuts** for buildings that lose the
       exclusive photo draw. VERIFIED 2026-11-01 (MaterialProbe): `WALLCUT buckets=24 bound=24`,
       `MATP id=assert_tileMapsComplete albedo=31 normal=31 mgs=31 result=PASS` — the

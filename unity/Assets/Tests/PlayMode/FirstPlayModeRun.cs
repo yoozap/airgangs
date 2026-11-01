@@ -791,10 +791,41 @@ namespace TbilisiFly.PlayModeTests
                 FactF("FOOT_W_DIST", wDist);
                 Fact("FOOT_AFTER_W_POS", V(game.Foot.Pos));
                 Check("wWalksTheHero", wDist > 0.5f, $"moved {F(wDist)} m in 90 frames of W");
+                // 2026-11-01: the body must walk the way it FACES (characters.js:467
+                // model turn). Facing = the model's forward after the rig's 180°;
+                // the toes (ball_l - foot_l) are the builder's own front marker.
+                if (wDist > 0.5f && game.Rig != null && game.Rig.Model != null)
+                {
+                    Vector3 moveDir = (game.Foot.Pos - footStart); moveDir.y = 0f; moveDir.Normalize();
+                    Vector3 face = game.Rig.Model.forward; face.y = 0f; face.Normalize();
+                    float faceDot = Vector3.Dot(moveDir, face);
+                    FactF("FOOT_W_FACING_DOT", faceDot);
+                    Transform fl = null, bl = null;
+                    foreach (var tr in game.Rig.Model.GetComponentsInChildren<Transform>(true)) { if (tr.name == "foot_l") fl = tr; if (tr.name == "ball_l") bl = tr; }
+                    if (fl != null && bl != null)
+                    {
+                        Vector3 toe = bl.position - fl.position; toe.y = 0f; toe.Normalize();
+                        FactF("FOOT_W_TOE_DOT", Vector3.Dot(moveDir, toe));
+                        Check("walksTheWayTheToesPoint", Vector3.Dot(moveDir, toe) > 0.5f, $"toe·move={F(Vector3.Dot(moveDir, toe))}");
+                    }
+                    Check("walksTheWayItFaces", faceDot > 0.7f, $"face·move={F(faceDot)} (negative = moonwalk)");
+                }
 
                 Vector3 afterW = game.Foot.Pos;
+                // SCREEN semantics (2026-11-01, "left right need switches"): the Unity
+                // world is the JS world's mirror image, so the yaw SIGN tests below
+                // say nothing about what the player sees. A must turn the body to
+                // its screen-LEFT = Unity's left-handed left = Cross(forward, up).
+                Vector3 fwdBeforeA = game.Rig != null && game.Rig.Model != null ? game.Rig.Model.forward : Vector3.forward; fwdBeforeA.y = 0f; fwdBeforeA.Normalize();
                 yield return Hold(45, Key.A);
                 aYaw = Mathf.Abs(Mathf.DeltaAngle(yaw0 * Mathf.Rad2Deg, game.Foot.CamYaw * Mathf.Rad2Deg));
+                if (game.Rig != null && game.Rig.Model != null)
+                {
+                    Vector3 fwdAfterA = game.Rig.Model.forward; fwdAfterA.y = 0f; fwdAfterA.Normalize();
+                    float leftDot = Vector3.Dot(fwdAfterA, Vector3.Cross(fwdBeforeA, Vector3.up));
+                    FactF("FOOT_A_SCREEN_LEFT_DOT", leftDot);
+                    Check("aTurnsScreenLeft", leftDot > 0.2f, $"after A the body's forward moved {(leftDot > 0f ? "left" : "RIGHT")} (dot {F(leftDot)})");
+                }
                 FactF("FOOT_A_TURN_DEG", aYaw);
                 FactF("FOOT_A_DIST", Vector3.Distance(afterW, game.Foot.Pos));
 
@@ -812,8 +843,16 @@ namespace TbilisiFly.PlayModeTests
                 Vector3 afterA = game.Foot.Pos;
                 float yawAfterA = game.Foot.CamYaw;
                 float signedA = Mathf.DeltaAngle(yaw0 * Mathf.Rad2Deg, yawAfterA * Mathf.Rad2Deg);
+                Vector3 fwdBeforeD = game.Rig != null && game.Rig.Model != null ? game.Rig.Model.forward : Vector3.forward; fwdBeforeD.y = 0f; fwdBeforeD.Normalize();
                 yield return Hold(45, Key.D);
                 float signedD = Mathf.DeltaAngle(yawAfterA * Mathf.Rad2Deg, game.Foot.CamYaw * Mathf.Rad2Deg);
+                if (game.Rig != null && game.Rig.Model != null)
+                {
+                    Vector3 fwdAfterD = game.Rig.Model.forward; fwdAfterD.y = 0f; fwdAfterD.Normalize();
+                    float rightDot = Vector3.Dot(fwdAfterD, Vector3.Cross(Vector3.up, fwdBeforeD));
+                    FactF("FOOT_D_SCREEN_RIGHT_DOT", rightDot);
+                    Check("dTurnsScreenRight", rightDot > 0.2f, $"after D the body's forward moved {(rightDot > 0f ? "right" : "LEFT")} (dot {F(rightDot)})");
+                }
                 FactF("FOOT_D_DIST", Vector3.Distance(afterA, game.Foot.Pos));
                 FactF("FOOT_A_TURN_SIGNED_DEG", signedA);
                 FactF("FOOT_D_TURN_SIGNED_DEG", signedD);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using TbilisiFly.Combat;
 using TbilisiFly.Core;
+using TbilisiFly.Data;
 using UnityEngine;
 // AudioFx.cs's impact-audio class is called FxAudio; alias it so the
 // `AudioFx.X` call sites here resolve without rewriting each one.
@@ -1114,6 +1115,11 @@ namespace TbilisiFly.Flight
                 AudioFx.Detonation(dist, vol, 0.3f + 0.7f * heavy);
                 World?.Explosion(point, 3f + 9f * heavy);
             }
+            // src/planephys.js:534 `this._sparks(point, 6 + Math.round(22 * heavy));`
+            // — a load-bearing loop bound (JsMath.Round, not Mathf.RoundToInt's
+            // round-to-even tie rule).
+            int sparkN = 6 + JsMath.Round(22f * heavy);
+            for (int i = 0; i < sparkN; i++) World?.SpawnEmber(point);
             World?.SpawnSmoke(point, 2f + 6f * heavy, 0.6f, 1.8f, 1.6f, 1.6f);
             World?.OnShake(0.1f + 0.3f * heavy, point.x, point.z);
         }
@@ -1234,6 +1240,8 @@ namespace TbilisiFly.Flight
             }
             AudioFx.HitMetal(dist, vol * 0.9f);
             World.DustBurst(hit.point, Mathf.Min(28, 8 + Mathf.RoundToInt(v / 8f)), 2f + headOn * 4f);
+            // src/planephys.js:915 `this._sparks(p, 8);`
+            for (int i = 0; i < 8; i++) World?.SpawnEmber(hit.point);
             if (spec > PlanePhysicsConst.Deadzone)
             {
                 bool killed = b.OnHurt?.Invoke(b, ((spec - PlanePhysicsConst.Deadzone) / PlanePhysicsConst.KWall) * b.ColMult) ?? false;

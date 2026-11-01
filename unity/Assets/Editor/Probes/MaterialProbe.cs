@@ -42,8 +42,10 @@ namespace TbilisiFly.Probes
         // citymap.js:4078 / PhotoFacades.BuildAttribution's exact clause, over
         // the WHOLE 609-photo manifest — the coordinator's correction: the
         // licence obligation attaches to every photograph that SHIPS in the
-        // build (609, 95 photographers), not to the 319 a kit claim currently
-        // lets through to render (CityRenderProbe's own assert_photoFacades).
+        // build (609, 95 photographers), not to the 273 a kit claim (plus the
+        // mallBids skip) currently lets through to render (CityRenderProbe's
+        // own assert_photoFacades — see docs/open_items.json
+        // `photo-render-count-drift`).
         const string ExpectedAttribution =
             "609 building photos by 95 Wikimedia Commons photographers " +
             "(CC BY/BY-SA/CC0 — full list: textures/pb/CREDITS.txt)";

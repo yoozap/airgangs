@@ -99,6 +99,65 @@ for (const name of ['addStorefronts', 'peaceBridge', 'ship']) {
   console.log(`CALL_SITES id=${name} n=${n}`);
 }
 
+// ---- 2026-11-01 full-file audit addendum: box()/cyl()/photoMat()/TILE_ROOF,
+// the last lines of landmarks.js with zero per-line citation anywhere in
+// unity/Assets (docs/port_units/landmarks_rest.json). All five are already
+// IMPLEMENTED (LandmarkPlacer.AddBox/AddCyl/TILE_ROOF/GRANITE,
+// LandmarkRenderer.FacadeOrTint) — this just proves the JS text they claim to
+// port still reads the way the citation says it does. ----------------------
+{
+  const m = matchOne(
+    /function box\(w, h, d, mat, x = 0, y = 0, z = 0\) \{/,
+    'BOX_SIG');
+  if (m) console.log('BOX_SIG match=1'); else console.log('BOX_SIG match=0');
+}
+{
+  const m = matchOne(
+    /function cyl\(r1, r2, h, mat, x = 0, y = 0, z = 0, seg = 10\) \{/,
+    'CYL_SIG');
+  if (m) console.log('CYL_SIG match=1'); else console.log('CYL_SIG match=0');
+}
+{
+  const m = matchOne(/const TILE_ROOF = lambert\((0x[0-9a-fA-F]+)\);/, 'TILE_ROOF');
+  if (m) console.log(`TILE_ROOF color=${m[1]}`);
+}
+// narikala()'s own roof cone — the ONE TILE_ROOF-tinted primitive in the
+// function (landmarks.js:1047) — gives AddCyl/AddCapFan's exact expected
+// vertex/triangle count to pair against LandmarksRestProbe.cs's
+// TILE_ROOF_BUCKET line: sides contribute 4 verts/2 tris per segment (no
+// vertex sharing, matching AddCyl's `b.V.Add` ×4 per iteration loop) and each
+// capped end contributes (seg+2) verts (1 centre + seg+1 perimeter)/seg tris
+// (AddCapFan) — V = 6*seg+4, T = 4*seg.
+{
+  const narikalaStart = src.indexOf('function narikala()');
+  const narikalaEnd = src.indexOf('function funicularStation()');
+  const block = src.slice(narikalaStart, narikalaEnd);
+  const m = block.match(/cyl\([\d.]+,\s*[\d.]+,\s*[\d.]+,\s*TILE_ROOF,\s*[\d.]+,\s*[\d.]+,\s*[\d.]+,\s*(\d+)\)/);
+  if (m) {
+    const seg = parseInt(m[1], 10);
+    console.log(`TILE_ROOF_EXPECT seg=${seg} vertCount=${6 * seg + 4} triCount=${4 * seg}`);
+  } else {
+    console.log('TILE_ROOF_EXPECT=MISSING');
+  }
+}
+// photoMat() body (landmarks.js:990-1006) — the four lines FacadeOrTint
+// (LandmarkRenderer.cs) ports: texture load, repeat wrapping, per-call tiling
+// and the map/color assignment. Printed as independent present=0/1 flags so a
+// future edit to any ONE of them is visible instead of one combined blob.
+{
+  const body = (src.match(/function photoMat\(file, rx, ry, tint = 0xcfc4ae\) \{[\s\S]*?\n\}/) || [''])[0];
+  const checks = {
+    PHOTOMAT_LOAD: /new THREE\.TextureLoader\(\)\.load\(`textures\/facades\/\$\{file\}`/,
+    PHOTOMAT_WRAP: /t\.wrapS = t\.wrapT = THREE\.RepeatWrapping;/,
+    PHOTOMAT_REPEAT: /t\.repeat\.set\(rx, ry\);/,
+    PHOTOMAT_MAP: /m\.map = t;/,
+    PHOTOMAT_FALLBACK: /catch \{/,
+  };
+  for (const [key, re] of Object.entries(checks)) {
+    console.log(`${key} present=${re.test(body) ? 1 : 0}`);
+  }
+}
+
 // ---- BRONZE / PATINA module consts (landmarks.js:1216-1217): declared, but
 // do either of the 10 statue builders (freedomMonument..pharnavaz,
 // 1254-1357) actually reference them? Expect 0 for both — if either comes

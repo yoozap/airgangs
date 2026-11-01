@@ -88,6 +88,39 @@ namespace TbilisiFly.Probes
                 Object.DestroyImmediate(root);
             }
 
+            // ---- 2026-11-01 full-file audit addendum: the last five
+            // previously-uncited landmarks.js lines (box()/cyl()/photoMat()/
+            // TILE_ROOF/GRANITE) — proof they are the real values/behaviour,
+            // pairing against tools/_probe_landmarksrest.mjs's
+            // TILE_ROOF/GRANITE/BOX_SIG/CYL_SIG/PHOTOMAT_* lines. -------------
+            {
+                // GRANITE (landmarks.js:1218) is already public via
+                // LandmarkPlacer.GraniteTint — direct value check.
+                var g = LandmarkPlacer.GraniteTint;
+                Debug.Log($"GRANITE_TINT hex={g.r:x2}{g.g:x2}{g.b:x2} expectedHex=8e8a80");
+
+                // TILE_ROOF (landmarks.js:1008) is private to LandmarkPlacer —
+                // proven indirectly through the one PUBLIC surface that uses
+                // it: narikala's own roof cone (BuildProcedural("narikala"),
+                // AddCyl(B(bufs, TILE_ROOF), ...) at landmarks.js:1047). A
+                // bucket whose tint equals 0x9a5a44 existing in that output
+                // proves both the hex value AND that it is reached.
+                var buckets = LandmarkPlacer.BuildProcedural("narikala");
+                bool found = false;
+                int vertCount = 0, triCount = 0;
+                foreach (var (mesh, tint) in buckets)
+                {
+                    if (tint.r == 0x9a && tint.g == 0x5a && tint.b == 0x44)
+                    {
+                        found = true;
+                        vertCount = mesh.vertexCount;
+                        triCount = mesh.triangles.Length / 3;
+                        break;
+                    }
+                }
+                Debug.Log($"TILE_ROOF_BUCKET found={(found ? 1 : 0)} vertCount={vertCount} triCount={triCount}");
+            }
+
             // ---- JusticeHouseMaterials.ApplyFixups: a synthetic hierarchy
             // with one opaque and one transparent URP/Lit material, mirroring
             // justiceHouse()'s `if (m && m.transparent) m.depthWrite = false`

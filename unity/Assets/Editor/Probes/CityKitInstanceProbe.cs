@@ -215,7 +215,7 @@ namespace TbilisiFly.Probes
             var kitCat = BuildingKit.Catalog.Load();
             var city = CityData.Load();
             var rich = BuildingBuilder.BuildRich(city, BuildingFacts.Load(), kitCat,
-                BuildingParts.Load(), WallMaterials.Catalog.Load(), null, 20000);
+                BuildingParts.Load(), WallMaterials.Catalog.Load(), null, maxBuildings: 20000);
             var report = new CityRenderer.ResolveReport();
             var batches = CityRenderer.BuildKitBatches(rich, kitCat, report);
             var proto = batches.FirstOrDefault(b => b.Tints != null && b.Tints.Length > 0);

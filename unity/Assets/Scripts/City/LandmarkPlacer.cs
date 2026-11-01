@@ -239,6 +239,10 @@ namespace TbilisiFly.City
         };
 
         // ---- shared tints (src/landmarks.js hex literals, ported verbatim) ----
+        // landmarks.js:1008 `const TILE_ROOF = lambert(0x9a5a44);` and :63 `const
+        // GOLD = new THREE.MeshStandardMaterial({ color: 0xd9b13b, ... })` — both
+        // previously used here with no per-line citation; closed by the
+        // landmarks.js full-file audit (docs/port_units/landmarks_rest.json).
         const uint TILE_ROOF = 0x9a5a44;
         const uint GOLD = 0xd9b13b;
 
@@ -304,7 +308,12 @@ namespace TbilisiFly.City
             return mesh;
         }
 
-        /// <summary>A box, centred at <paramref name="center"/>, with an optional
+        /// <summary>landmarks.js:69-75 `function box(w, h, d, mat, x=0, y=0, z=0)`
+        /// (THREE.BoxGeometry(w,h,d) + position.set) — the per-call rotation
+        /// JS applies afterwards with `.rotateY()`/`.rotateX()` on the returned
+        /// mesh is folded into this signature's own rotY/rotX instead, since C#
+        /// builds one shared merged mesh per tint rather than one mesh per box.
+        /// A box, centred at <paramref name="center"/>, with an optional
         /// LOCAL rotation about Y (narikala's wall groups) and/or X (a gabled
         /// roof panel's pitch — svetitskhoveli). Faces are built from an
         /// (normal, right, up) table with right×up = normal BY CONSTRUCTION, so
@@ -362,7 +371,9 @@ namespace TbilisiFly.City
             return p;
         }
 
-        /// <summary>THREE.CylinderGeometry(radiusTop, radiusBottom, height, seg)
+        /// <summary>landmarks.js:76-82 `function cyl(r1, r2, h, mat, x=0, y=0,
+        /// z=0, seg=10)` (THREE.CylinderGeometry(r1,r2,h,seg) + position.set).
+        /// THREE.CylinderGeometry(radiusTop, radiusBottom, height, seg)
         /// equivalent: capped both ends (every procedural landmark's cylinders
         /// have non-zero radii at both ends, so there is no open-ended case to
         /// handle here). Side winding and cap winding were each verified by a
@@ -708,6 +719,9 @@ namespace TbilisiFly.City
             public StatueSpot[] Spots;
         }
 
+        // landmarks.js:1218 `const GRANITE = lambert(0x8e8a80);` — previously
+        // used here (GraniteTint below) with no per-line citation; closed by
+        // the landmarks.js full-file audit (docs/port_units/landmarks_rest.json).
         const uint GRANITE = 0x8e8a80;
 
         public static readonly HeroStatueDef[] HeroStatues =

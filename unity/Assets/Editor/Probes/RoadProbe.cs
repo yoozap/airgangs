@@ -314,6 +314,22 @@ namespace TbilisiFly.Probes
                       $"peak_before_mb={peakOld / (1024.0 * 1024.0):F1} peak_after_mb={peakNew / (1024.0 * 1024.0):F1} " +
                       $"peak_saved_mb={(peakOld - peakNew) / (1024.0 * 1024.0):F1} time_ratio={timeRatio:F2}");
 
+            // =================================================================
+            // docs/open_items.json `memory-budget-3gb` lever 1 — SNorm8 road-
+            // tile normals. ChunkedSurfaceBuilder.Split (called on every one of
+            // the four ribbons above, both mode=sink_null and mode=sink_stream,
+            // via ChunkedSurfaceBuilder.Split in the loops above) ALREADY packs
+            // the Normal attribute as SNorm8 in PackTile and tracks the worst
+            // angular error any tile's packed normal introduced versus the
+            // float32 normal RecalculateNormals computed, across every vertex
+            // it has packed in THIS PROCESS — i.e. tilesB tiles, the real
+            // 13,339-tile road-tile count, not a fixture. Printed here rather
+            // than invented separately so the number is the one the real
+            // Split() calls above actually produced.
+            // =================================================================
+            Debug.Log($"ROADNRM tiles={tilesB} maxAngleDeg={ChunkedSurfaceBuilder.MaxNormalErrDeg:F4} " +
+                      $"packedVerts={ChunkedSurfaceBuilder.PackedVerts}");
+
             ProbeExit.Exit(0);
         }
 

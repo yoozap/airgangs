@@ -294,6 +294,166 @@ InputManager:
     axis: 0
     joyNum: 0
   - serializedVersion: 3
+    m_Name: CS_Sprint
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: left shift
+    altNegativeButton:
+    altPositiveButton: right shift
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Aim
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: mouse 1
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_AimShoulder
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: mouse 2
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Interact
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: f
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Change
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: tab
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Reload
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: r
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Drop
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: g
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_Cover
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton: v
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 1000
+    dead: 0.001
+    sensitivity: 1000
+    snap: 0
+    invert: 0
+    type: 0
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_AnalogX
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton:
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 0
+    dead: 0.19
+    sensitivity: 1
+    snap: 0
+    invert: 0
+    type: 2
+    axis: 0
+    joyNum: 0
+  - serializedVersion: 3
+    m_Name: CS_AnalogY
+    descriptiveName:
+    descriptiveNegativeName:
+    negativeButton:
+    positiveButton:
+    altNegativeButton:
+    altPositiveButton:
+    gravity: 0
+    dead: 0.19
+    sensitivity: 1
+    snap: 0
+    invert: 0
+    type: 2
+    axis: 1
+    joyNum: 0
+  - serializedVersion: 3
     m_Name: Enable Debug Button 1
     descriptiveName: 
     descriptiveNegativeName: 

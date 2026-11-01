@@ -134,6 +134,29 @@ namespace TbilisiFly.Character
         public bool Active => _c != null;
         public string Phase => _c?.Phase;
 
+        /// <summary>false = a straight-through VAULT (ClimbState.Hold's own
+        /// doc), true = a real held hang. FootController reads this (2026-11-01,
+        /// parkour pack wiring) to pick a vault-low clip vs. a mantle clip at
+        /// the same "pull"/"mantle" phase transition — see FootController's
+        /// own climb-clip block next to its `Climb.Tick` call.</summary>
+        public bool Hold => _c?.Hold ?? false;
+
+        /// <summary>0..1 "how tall a ledge this is" (ClimbState.High's own
+        /// doc) — FootController's mantle-low-vs-mantle-high clip pick.</summary>
+        public float High => _c?.High ?? 0f;
+
+        /// <summary>Set by FootController once a real parkour clip is driving
+        /// the pull/mantle beat this frame — <see cref="Tick"/> then skips its
+        /// own FootPoses.SetPullPose/SetMantlePose call so the clip's bones
+        /// are not fought (ActGroup's own BodyPivot lean and the world-locked
+        /// HandsOnLedge/PlantFoot/SettleFeet calls are UNCHANGED either way —
+        /// see ParkourClipPlayer's class header for why those compose on top
+        /// of a clip for free).</summary>
+        public bool MantleClipActive;
+
+        /// <summary>Same idea for the "hang" phase's SetHangPose.</summary>
+        public bool HangClipActive;
+
         /// <summary>src/foot.js `this._climbLead` — the leg that found the
         /// wall last time (callers alternate it across climbs). Null outside
         /// an active climb; FootController.cs keeps its own copy of the last
@@ -418,7 +441,12 @@ namespace TbilisiFly.Character
                 pos = c.Catch;
                 BodyPivot(rig, HangSwayX * Mathf.Sin(0.9f * c.T + 1f), HangSwayZ * Mathf.Sin(1.3f * c.T), c.Grip.y - c.Catch.y);
                 float tCapture = c.T;
-                keys = () => FootPoses.SetHangPose(rig, 1f, tCapture);
+                // 2026-11-01 parkour pack: a real ledge-grab-braced-idle clip
+                // owns the torso/legs while HangClipActive — HandsOnLedge
+                // below still solves the grip onto the fixed world point
+                // regardless (ParkourClipPlayer's header: it composes on top
+                // of whatever the Animator wrote, clip or not).
+                keys = HangClipActive ? (System.Action)null : () => FootPoses.SetHangPose(rig, 1f, tCapture);
                 handW = 1f;
                 _gripT = 1f;
                 if (input.MoveZ < 0f || input.JumpPressed || input.BoardAfter) StartPull(c, pos);
@@ -431,7 +459,11 @@ namespace TbilisiFly.Character
                 pos = new Vector3(c.Catch.x, c.Catch.y + c.Lift0 * PullLift(u), c.Catch.z);
                 BodyPivot(rig, -LeanTop * Ease01((u - 0.55f) / 0.45f), 0f, c.Met.HipY);
                 string lead = c.Lead;
-                keys = () => FootPoses.SetPullPose(rig, 1f, u, lead);
+                // 2026-11-01 parkour pack: MantleClipActive covers BOTH "pull"
+                // and "mantle" — a vault-low/mantle-low/mantle-high clip spans
+                // the pull-up-and-over as one continuous move, same as the
+                // "hang" gate above.
+                keys = MantleClipActive ? (System.Action)null : () => FootPoses.SetPullPose(rig, 1f, u, lead);
                 handW = 1f;
                 hint = FootWeapons.HintMix(HintHang, HintPull, Ease01(u / 0.6f)); // src/foot.js:478-483 hintMix, :5292
                 mix = Ease01((u - 0.85f) / 0.15f);
@@ -462,7 +494,7 @@ namespace TbilisiFly.Character
                     c.From.z + (c.To.z - c.From.z) * exz);
                 BodyPivot(rig, -LeanTop * (1f - Ease01(u / 0.7f)), 0f, c.Met.HipY);
                 string lead = c.Lead;
-                keys = () => FootPoses.SetMantlePose(rig, 1f, u, lead);
+                keys = MantleClipActive ? (System.Action)null : () => FootPoses.SetMantlePose(rig, 1f, u, lead);
                 handW = 1f - Ease01((u - 0.5f) / 0.3f);
                 hint = HintPress;
                 mix = 1f;
@@ -504,6 +536,7 @@ namespace TbilisiFly.Character
             if (how == "done") grounded = true;
             else if (how == "letgo") { if (c != null) pos -= c.Dir * 0.12f; _gripT = 0f; pushOff = true; }
             _c = null;
+            MantleClipActive = false; HangClipActive = false; // 2026-11-01 parkour pack: never leak into the next climb
             return (grounded, pushOff);
         }
 

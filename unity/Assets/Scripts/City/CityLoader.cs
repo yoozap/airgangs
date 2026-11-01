@@ -270,7 +270,7 @@ namespace TbilisiFly.City
             {
                 if (ctx.City == null) return;
                 onProgress?.Invoke("შენდება სახლები…"); // citymap.js:4950-ish progress text, see BuildRich's own per-chunk progress
-                ctx.Rich = BuildingBuilder.BuildRich(ctx.City, ctx.Facts, ctx.Kit, ctx.Parts, ctx.WallCat, null, ctx.MaxBuildings); // citymap.js:852
+                ctx.Rich = BuildingBuilder.BuildRich(ctx.City, ctx.Facts, ctx.Kit, ctx.Parts, ctx.WallCat, null, maxBuildings: ctx.MaxBuildings); // citymap.js:852 (named: BuildRich grew a mallBids parameter 2026-11-01)
                 // The six FacadeProps layers come straight off BuildRich now —
                 // docs/open_items.json `facade-props-pitched`, closed 2026-10-31.
                 // This stage used to re-derive them itself (see the deleted

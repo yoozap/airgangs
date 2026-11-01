@@ -17,16 +17,20 @@ namespace TbilisiFly.Props
     // Geometry.Blockage, the SAME formula already ported there; keeping one
     // copy rather than two was a deliberate choice, not an oversight).
     //
-    // NOT PORTED: hazeTexture()'s assignment and the flow mesh's placement
-    // in the crane's own frame (crane.js:1079-1087) — trivial transform-
-    // copy glue that needs a live Transform; and the per-frame visibility/
-    // opacity/scroll driving, which is WindTunnel.Step's own output
-    // (flowOpacity/scrollDx/scrollDy), already ported there — this file only
-    // builds the STATIC mesh those per-frame values are applied to (the UV
-    // scroll is a material offset, not a vertex rebuild, crane.js:1069 's
-    // `map: tex` with the per-frame scrollDx/Dy — mesh data here never
-    // changes frame to frame, exactly like the JS's own `mergeGeometries`
-    // built once in `windTunnel()`).
+    // STALE NOTE, CORRECTED: this used to say hazeTexture()'s assignment and
+    // the flow mesh's placement in the crane's own frame (crane.js:1079-1087)
+    // were not ported. They are now: WarehouseCraneFill.BuildFlowMesh builds
+    // the 'wind_tunnel_flow' GameObject off this file's pure mesh math,
+    // Shaders/WindFlow.shader reproduces the material (map/color 0xaecde6/
+    // AdditiveBlending/depthWrite off), and WarehouseFanSwitch.cs's
+    // FlowRenderer field is that Renderer, enabled/offset/opacity-driven every
+    // frame. The per-frame visibility/opacity/scroll driving itself
+    // (flowOpacity/scrollDx/scrollDy) is WindTunnel.Step's own output,
+    // already ported there — this file only builds the STATIC mesh those
+    // per-frame values are applied to (the UV scroll is a material offset,
+    // not a vertex rebuild, crane.js:1069's `map: tex` with the per-frame
+    // scrollDx/Dy — mesh data here never changes frame to frame, exactly
+    // like the JS's own `mergeGeometries` built once in `windTunnel()`).
     //
     // ============================== HANDEDNESS ==============================
     // No cross product anywhere in this file — every value is a scalar

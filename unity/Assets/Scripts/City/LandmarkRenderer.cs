@@ -402,6 +402,18 @@ namespace TbilisiFly.City
         // RealFacadeTextures.TilingFor — that one derives bays/floors for the
         // CITY's facade buckets, which is a different rule. Anisotropy is
         // LandmarkFacades.Anisotropy (8), landmarks.js:996's flat value.
+        //
+        // FacadeOrTint below is photoMat() itself (landmarks.js:990-1006,
+        // called from the 8 landmark builders at :1024-1175) ported line for
+        // line: TextureLoader().load (:993) -> ArtAssets.Load<Texture2D>;
+        // wrapS=wrapT=RepeatWrapping (:994) -> tex.wrapMode=Repeat; anisotropy
+        // (:996, cited above) -> tex.anisoLevel; repeat.set(rx,ry) (:997) ->
+        // mat.mainTextureScale; m.map=t (:998) -> mat.mainTexture; m.color.set
+        // (0xffffff) (:999) is a no-op here (a freshly-`new Material()` is
+        // already white); the try/catch tint-remains fallback (:992,1002-1004)
+        // is the MatLambert(tint) branch below when the texture file is
+        // missing. Previously uncited at the line level — closed by the
+        // landmarks.js full-file audit (docs/port_units/landmarks_rest.json).
         // --------------------------------------------------------------
         public int FacadeTextureCount { get; private set; }
         public int SignCount { get; private set; }
