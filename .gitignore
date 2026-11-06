@@ -23,3 +23,11 @@ unity/mono_crash*
 unity/UserSettings/
 .claude/settings.local.json
 undefined_*.png
+
+# Play-mode test runner garbage: Unity writes InitTestScene<random-guid>.unity into
+# Assets/ on every -runTests pass and does not always clean it up. Never version these.
+unity/Assets/InitTestScene*
+
+# Stray nested Unity project: a player build (Tbilisi.app) plus its own 1.2 GB Library
+# that got written to unity/Tbilisifly/ instead of build/. Pure output, never version it.
+unity/Tbilisifly/

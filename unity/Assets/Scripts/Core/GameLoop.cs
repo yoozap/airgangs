@@ -193,7 +193,7 @@ namespace TbilisiFly.Core
         /// V/RMB/Alt/R bindings below) is left fully intact and reachable by
         /// flipping this back to false — see StageOnFoot/StageOnFootPurchased
         /// and HeldWeapon.Tick's own early-return.</summary>
-        public static bool UsePurchasedShooter = true; // Flipped ON 2026-11-01 (coordinator's own standing order: "flip it to true in the same change as the green proof") — Tests/PlayMode/CoverShootRun.cs now reports PLAYMODE RESULT=PASS end to end (walk/strafe/pickup/aim/fire-with-HP-drop/cover-detect/reload/sprint/jump/board), with only cover_marker_found downgraded to an informational SKIP for a scene-geometry reason documented at that check's own site (no eligible same-floor, non-plane wall within 100 m of the test's current spawn — the cover ENGAGE mechanism itself is proven working via diagnostics). The old JS on-foot path (V/RMB/Alt/R bindings) stays fully intact and reachable by flipping this back to false.
+        public static bool UsePurchasedShooter = true; // Back ON 2026-11-02 23:xx — the user: "use our fucken asset. for covering and shooting, i need same cool physics to take guns in hands" — the pack now has its AnimatorController (CoverShootHero.Setup) and gets the warehouse guns as its own InteractiveWeapons (HeldWeapon.SetCarried); belt/back stow and the bar ride on top via ShootBehaviour.StowHook/DrawHook. (Earlier the same day: flipped OFF 2026-11-02 — the user: "check js game. we are takin fucken guns, ak in back and pistol in wrist place. in action bars we need see picked gun, and on click we are in aim mode ... make same with unity game". That IS the JS on-foot path below (HeldWeapon's arms/aim + FootWeapons' belt/back stow); the purchased pack gated all of it off. (Was: Flipped ON 2026-11-01 (coordinator's own standing order: "flip it to true in the same change as the green proof") — Tests/PlayMode/CoverShootRun.cs now reports PLAYMODE RESULT=PASS end to end (walk/strafe/pickup/aim/fire-with-HP-drop/cover-detect/reload/sprint/jump/board), with only cover_marker_found downgraded to an informational SKIP for a scene-geometry reason documented at that check's own site (no eligible same-floor, non-plane wall within 100 m of the test's current spawn — the cover ENGAGE mechanism itself is proven working via diagnostics). The old JS on-foot path (V/RMB/Alt/R bindings) stays fully intact and reachable by flipping this back to false.
 
         [Header("On-foot (FootController/CharacterRig are plain classes, not components)")]
         public CharacterRig Rig;                 // assigned by SpawnBody() below
@@ -275,6 +275,12 @@ namespace TbilisiFly.Core
         // invokes them now instead of doing nothing.
         public Action OnToggleAim;        // Combat/Shooting.cs's Pistol.ToggleAim()
         public Action OnTakePickup;       // Combat/Pickups.cs's Take()
+        /// <summary>The on-foot action bar's draw/holster, routed to whoever owns
+        /// the carried weapons (Core/HeldWeapon.cs's Select). slot 0 = bare hands
+        /// (skillbar.js:309 `foot.holster()`), 1-7 = draw that category
+        /// (skillbar.js:312 `foot.drawWeapon(held)`). Same "narrow delegate,
+        /// wired by CombatWorldAdapter" shape as OnTakePickup.</summary>
+        public Action<int> OnSelectWeaponSlot;
         /// <summary>src/game.js:521-524 — R reloads the pistol on foot
         /// (`this.pistol.reload()`). Combat/Shooting.cs's Pistol.Reload() was
         /// only ever reached by Fire()'s own dry-fire auto-reload, so a
@@ -368,6 +374,14 @@ namespace TbilisiFly.Core
 
         // on-foot look (Counter-Strike aim with a weapon out, drag-orbit bare-handed)
         float _footLookPitch;
+        // ---- the purchased pack's physics mirrored into the body/camera owner (2026-11-02) ----
+        float _csRecoilDeg;          // ThirdPersonOrbitCam.recoilAngle: set per shot, rises the view at 10/s, settles 5 deg/s
+        float _csCoverCamYaw;        // the camera's own yaw while the pack holds the body against a wall
+        bool _csCovering;
+        /// <summary>Camera yaw while the purchased pack is covering (tests steer it; players use the mouse).</summary>
+        public float CoverCamYaw { get => _csCoverCamYaw; set => _csCoverCamYaw = value; }
+        public bool CoverCameraOwned => _csCovering;
+        public float CsRecoilDeg => _csRecoilDeg;
         bool _lookDragging;
 
         /// <summary>Read/write access to the on-foot look pitch for Combat's
@@ -379,6 +393,8 @@ namespace TbilisiFly.Core
         float _flightLookYaw, _flightLookPitch; // only used if FlightCam is absent (see StageFlight)
 
         BoardSequence _board;
+        /// <summary>True while a board/climb-out sequence owns the body (Character/CoverShootHero reads it to gate the pack).</summary>
+        public bool Boarding => _board != null;
 
         // =========================================================================
         // ---- Unity lifecycle --------------------------------------------------
@@ -944,8 +960,28 @@ namespace TbilisiFly.Core
             _foot.NearbyPlaneShell = null;
 
             _foot.Update(dt, Rig, m);
+            TickPurchasedCoverFacing();
             Rig.Root.position = _foot.Pos;
             Rig.Root.rotation = Quaternion.Euler(0f, _foot.Yaw * Mathf.Rad2Deg, 0f);
+            // The pack's Locomotion/Strafing blend trees read `Speed` (its
+            // MoveBehaviour would write it, and this port deliberately does
+            // not add MoveBehaviour — FootController moves the root). H/V and
+            // Grounded are already written by BasicBehaviour.Update off the
+            // CoverShootInput shim; Speed is the one the body owner must feed.
+            if (Rig.Anim != null && Rig.Anim.runtimeAnimatorController != null)
+            {
+                float sp = _foot.RunSpeed > 0.01f ? Mathf.Clamp(Mathf.Abs(_foot.Speed) / _foot.RunSpeed, 0f, 1.5f) : 0f;
+                Rig.Anim.SetFloat("Speed", sp, 0.1f, dt);
+            }
+            // ThirdPersonOrbitCam.cs:78 `angleV = LerpAngle(angleV, angleV + recoilAngle, 10 dt)`
+            // and :124-127 (recoilAngle amortised 5 deg/s) — the pack's recoil
+            // bounce on the project's own camera pitch (positive = up).
+            if (_csRecoilDeg != 0f)
+            {
+                // FootLookPitch is POSITIVE LOOKING DOWN (TickChaseCamera: aimDir = Ry·Rx(-pitch)·back), so a kick UP subtracts.
+                FootLookPitch = _footLookPitch - _csRecoilDeg * Mathf.Min(1f, 10f * dt) * Mathf.Deg2Rad;
+                _csRecoilDeg = Mathf.MoveTowards(_csRecoilDeg, 0f, 5f * dt);
+            }
             TickOnFootCamera(dt);
 
             Footsteps?.Update(dt, new Footsteps.Query
@@ -968,6 +1004,45 @@ namespace TbilisiFly.Core
                 float reach2 = Mathf.Max(BoardDist, (ActivePlane.Model?.Span ?? 12f) * 0.5f + 3f);
                 if (d2 < reach2) OnHint?.Invoke("Enter — თვითმფრინავში დაბრუნება ✈");
             }
+        }
+
+        /// <summary>The pack's CoverBehaviour/AimBehaviour turn the body with
+        /// `MoveRotation`/`transform.rotation` writes that FootController (the
+        /// body owner, StageOnFootPurchased) overwrites every frame — and they
+        /// assume the body faces its transform's +Z, which this rig does not.
+        /// So the pack's intent is mirrored here instead: covering, the FACE
+        /// goes to +wall normal (CoverBehaviour.CoverManagement `Rotating(
+        /// coverWall.normal)` — back to the wall) while the camera orbits on its
+        /// own yaw; aiming from cover (corner peek / low-wall pop), the body
+        /// turns to the camera (AimBehaviour.Rotating) like anywhere else; the
+        /// camera keeps FootCover.CoverCamWall off the wall's face.</summary>
+        void TickPurchasedCoverFacing()
+        {
+            var hero = Character.CoverShootHero.Instance;
+            var cover = hero?.Cover;
+            bool covering = cover != null && cover.IsCovering;
+            bool aiming = hero?.Aim != null && hero.Aim.IsAiming;
+            if (covering && !_csCovering) _csCoverCamYaw = _foot.CamYaw; // entering: keep looking where we looked
+            if (covering)
+            {
+                Vector3 n = cover.CoverNormal; n.y = 0f;
+                if (n.sqrMagnitude > 0.25f)
+                {
+                    n.Normalize();
+                    float backToWall = Mathf.Atan2(-n.x, -n.z); // FootController heading (-sin yaw, 0, -cos yaw) == +n
+                    _foot.Yaw = aiming ? _csCoverCamYaw : backToWall;
+                    _foot.CamYaw = _csCoverCamYaw;
+                    _foot.LookYaw = 0f;
+                    var mk = hero.CoverMarker;
+                    _foot.ExternalCoverPlane = mk != null ? (mk.transform.position, n, 0f) : ((Vector3, Vector3, float)?)null;
+                }
+            }
+            else
+            {
+                if (_csCovering) _foot.Yaw = _foot.CamYaw; // leaving: the armed body faces the camera again
+                _foot.ExternalCoverPlane = null;
+            }
+            _csCovering = covering;
         }
 
         FootController.MoveInput ReadFootMoveInput()
@@ -1065,8 +1140,14 @@ namespace TbilisiFly.Core
             if (!armed && !dragging) return;          // game.js:662
             Vector2 d = mouse.delta.ReadValue();
             // game.js:77 `MOUSE_SENS = 0.005` rad/px, :668 `look.yaw -= movementX * MOUSE_SENS`
-            _foot.LookYaw += d.x * 0.005f; // mirrored world: see ReadFootMoveInput's HANDEDNESS note (JS: -=)
-            float dy = d.y * 0.005f;
+            if (_csCovering && UsePurchasedShooter) _csCoverCamYaw += d.x * 0.005f; // in the pack's cover the body stays on the wall; the camera alone orbits
+            else _foot.LookYaw += d.x * 0.005f; // mirrored world: see ReadFootMoveInput's HANDEDNESS note (JS: -=)
+            // game.js:672-674 `dy = e.movementY * MOUSE_SENS; pitch += armed ? dy : -dy`
+            // — DOM movementY is positive when the mouse moves DOWN; the Input
+            // System's delta.y is positive when it moves UP. Without this sign
+            // the armed aim was INVERTED (mouse forward = aim down; GunHandRun
+            // 02b/02c frames 2026-11-02: FootLookPitch +0.6 looks at the floor).
+            float dy = -d.y * 0.005f;
             _footLookPitch = Mathf.Clamp(_footLookPitch + (armed ? dy : -dy), -1.2f, 1.2f); // game.js:673-674
         }
 
@@ -2382,6 +2463,20 @@ namespace TbilisiFly.Core
             EnsureZoneUi();
             EnsureHintLine();
             HintLine?.SetVisible(Started); // game.js:1391 — same Started-only gate as HudChips
+
+            // THE TWO ACTION BARS, BY MODE (2026-11-02). Neither bar's
+            // SetVisible had a single caller anywhere in the project, so:
+            //   * WeaponBarView's constructor runs SetVisible(false)
+            //     ("skillbar.js:284 — starts hidden; this belongs on foot")
+            //     and nothing ever turned it back on, so the ON-FOOT bar was
+            //     permanently invisible — the user's "my skills not show"
+            //     after picking a gun up.
+            //   * SkillBarView has no initial hide at all, so the PLANE bar
+            //     was the one drawn on foot — backwards from the JS.
+            // skillbar.js swaps them on the mode, which is what this does.
+            bool barsOk = Started && !Crashed;
+            SkillBar?.SetVisible(barsOk && Mode != GameMode.OnFoot);
+            WeaponBar?.SetVisible(barsOk && Mode == GameMode.OnFoot);
             EnsureHitToast();
             HitToast?.Tick(dt); // src/guns.js:495-497 — the toast's own dwell countdown
             EnsureTargetRing();
@@ -2390,6 +2485,15 @@ namespace TbilisiFly.Core
 
             if (Hud != null)
             {
+                // src/hud.js:48-51 setVisible — "on foot, the whole HUD is
+                // meaningless" (HudView.SetVisible's own comment). That method
+                // existed with ZERO callers, and HudView.Visible is initialised
+                // true, so the pitch ladder, the gun reticle and the FPM were
+                // drawn over the hero on foot. The user hit it as "i see fucken
+                // plane aim when i am wih personage". Same dead-wiring class as
+                // GameLoop.OnHint's 15 invokes / 0 subscribers: the code was
+                // finished and correct and simply never reached.
+                Hud.SetVisible(Mode == GameMode.Flying);
                 var model = ActivePlane?.Model;
                 Hud.Tick(new HudData
                 {
@@ -2720,8 +2824,19 @@ namespace TbilisiFly.Core
             // JS-ported on-foot shooting/aim/cover/weapon paths": the keys
             // still exist in the table, they just stop reaching FootCover/
             // HeldWeapon while the purchased controller owns the body.
-            if (mouse != null && mouse.rightButton.wasPressedThisFrame && Mode == GameMode.OnFoot && _foot.Armed && !UsePurchasedShooter)
-                OnToggleAim?.Invoke();
+            if (mouse != null && mouse.rightButton.wasPressedThisFrame && Mode == GameMode.OnFoot && _foot.Armed)
+            {
+                if (UsePurchasedShooter)
+                    // 2026-11-02 (user: "i dont see aim and i cant shoot"): the pack
+                    // alone aims only while RMB is HELD (AimBehaviour.Update reads
+                    // CS_Aim as a level), so a right-CLICK aimed for 0.3 s and the
+                    // left-click that followed hit ShootWeapon's `!isAiming` gate.
+                    // The JS toggles aim on right-click (game.js:614-623) — route
+                    // the press into the same latch Alt already flips below.
+                    TbilisiFly.Character.CoverShootInput.ToggleAimLatch();
+                else
+                    OnToggleAim?.Invoke();
+            }
 
             if (Mode == GameMode.OnFoot)
             {
@@ -2771,9 +2886,23 @@ namespace TbilisiFly.Core
                 if (kb.gKey.wasPressedThisFrame) LaneKeyAny(KeyCode.G, true);
                 if (kb.fKey.wasReleasedThisFrame) LaneKeyAny(KeyCode.F, false);
                 if (kb.gKey.wasReleasedThisFrame) LaneKeyAny(KeyCode.G, false);
-                // UsePurchasedShooter: F is now also "CS_Interact" (InteractiveWeapon.Update
-                // reads it on its own) — gated here so the old pickup path doesn't ALSO fire.
-                if (kb.fKey.wasPressedThisFrame && !laneF && !UsePurchasedShooter) OnTakePickup?.Invoke(); // pickups.take() — Core/HeldWeapon.cs
+                // UsePurchasedShooter: F is also "CS_Interact", which
+                // InteractiveWeapon.Update reads on its own. This WAS gated
+                // `!UsePurchasedShooter` so the old pickup path could not also
+                // fire — but that left F dead on every gun the player can
+                // actually reach (user, 2026-11-02: "i cant take gun with f
+                // button"). The two pickup systems are DISJOINT in both type
+                // and place: the airport/warehouse guns carry Combat/Pickups'
+                // PickupTag (WarehouseInteriorFill.cs:407 — akm/beretta/makarov
+                // at z=-62..-65, i.e. at the spawn), while the pack's own
+                // InteractiveWeapon loot sits at z=258..282 behind a 1 m trigger
+                // radius. So with the gate on, the reachable guns had NO taker
+                // at all, and the pack's weapons were never approached — the
+                // player log shows OnPickupRangeChanged never firing once.
+                // Ungated: the old path takes PickupTag loot, the pack's own
+                // Update takes InteractiveWeapon loot, and they cannot collide
+                // because neither responds to the other's objects.
+                if (kb.fKey.wasPressedThisFrame && !laneF) OnTakePickup?.Invoke(); // pickups.take() — Core/HeldWeapon.cs
 
                 if (SkillBar != null || WeaponBar != null) HandleDigitKeys(kb, onFoot: true);
             }
@@ -3037,11 +3166,26 @@ namespace TbilisiFly.Core
             _foot.Yaw = _foot.CamYaw = yaw;
             _foot.LookYaw = 0f; // src/foot.js:3786-3787
             _foot.Terrain = Terrain;
+            _foot.BodyWidth = Rig.Aspect * Rig.BodyHeight; // widest extent, metres — the chase camera clears it
             _foot.OnHint = (s) => OnHint?.Invoke(s);
             Mode = GameMode.OnFoot;
-            if (UsePurchasedShooter) Character.CoverShootHero.Attach(this, Rig); // Character/CoverShootHero.cs
+            if (UsePurchasedShooter)
+            {
+                Character.CoverShootHero.Attach(this, Rig); // Character/CoverShootHero.cs
+                Combat.CoverShootBridge.CameraKick = deg => _csRecoilDeg = deg; // ShootBehaviour.ShootWeapon → our camera (see StageOnFootPurchased)
+                _csRecoilDeg = 0f; _csCovering = false;
+            }
             // hands/elbows stay outside the fruit hull under the purchased clips (Character/BodyClearance.cs)
-            Character.BodyClearanceLayer.Attach(Rig, () => Mode == GameMode.OnFoot && !_foot.Climb.Active);
+            // BodyClearance swings the whole arm outward to keep a hand out of the
+            // fruit (hands-outside-the-fruit commit). With the purchased pack
+            // armed, its aim/shoot/reload IK owns the arms — let it.
+            // ...but only while actually AIMING: at rest the pack holds the rifle
+            // across the chest, which on a 0.9 m fruit is INSIDE the body (GunHandRun
+            // 01_ak_in_hand: 0.125 m from the hand and invisible). Clearance keeps
+            // the hands — and the gun they hold — outside; the aim IK takes over
+            // the moment RMB is held.
+            Character.BodyClearanceLayer.Attach(Rig, () => Mode == GameMode.OnFoot && !_foot.Climb.Active
+                && !(UsePurchasedShooter && Character.CoverShootHero.Instance != null && Character.CoverShootHero.Instance.Aim != null && Character.CoverShootHero.Instance.Aim.IsAiming));
             OnBodySpawned?.Invoke();
         }
 

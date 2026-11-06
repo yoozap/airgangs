@@ -80,6 +80,14 @@ namespace TbilisiFly.UI.Map
             Busts = FromTable(LandmarkPlacer.BustPoints);
 
             style.flexGrow = 1;
+            // CLIP THE MOSAIC TO THE WINDOW (2026-11-02). _image is an
+            // absolutely-positioned child sized gw*s x gh*s, which at any zoom
+            // above fit is LARGER than this element — with no overflow rule it
+            // spilled outside the window frame and drew over the game (user
+            // screenshot 01:48: the satellite raster extended ~50 px past the
+            // panel's right border). MiniMapView.cs:70 already does this; the
+            // big map simply never got the same line.
+            style.overflow = Overflow.Hidden;
             pickingMode = PickingMode.Position;
 
             _image = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -289,6 +297,18 @@ namespace TbilisiFly.UI.Map
             var sat = _meta.Satellite;
             if (sat.Cols <= 0 || _cityTex == null) return;
             if (_cx < 0f) CenterOnPlayer();
+            // RE-CLAMP WITH THE REAL SIZE (2026-11-02). ClampCenter() was
+            // called only from the zoom/pan/centre handlers, never from the
+            // layout path. Those all run through resolvedStyle, which in UI
+            // Toolkit is NOT valid until after the first layout pass — so the
+            // clamp that first ran when the window opened used a zero/NaN
+            // width, left _cx uncentred, and nothing ever corrected it once
+            // the true size arrived. The mosaic then sat off to one side of
+            // the frame instead of centred (user screenshot 01:48: an ~867 px
+            // image placed at x=420 inside a ~1235 px panel, where centred is
+            // x=184). Clamping here fixes first-open AND window resize, and is
+            // idempotent, so the handlers that already call it are unaffected.
+            ClampCenter();
             float s = Scale();
             float gw = sat.Cols * MercatorProjection.TileSize, gh = sat.Rows * MercatorProjection.TileSize;
             _image.style.left = w / 2f - _cx * s;

@@ -140,10 +140,21 @@ namespace TbilisiFly.Character
             public FootPoses.ClimbMet Met;
             public float ReachDur, Hung, PullDur, MantleDur, Plant;
             public bool PlantIn, PlantOff, TopOn;
+
+            // ---- THE PURCHASED CLIP'S OWN MOTION (phase "clip") --------------
+            // Set by UseTrack() when the move has a baked root-motion track and
+            // this is a straight-through vault/mantle (never a held hang).
+            public ParkourRootTrack Track;
+            public Vector3 TrkFwd, TrkRight, TrkResid;
+            public float TrkKz, TrkKy, TrkDur;
         }
 
         ClimbState _c;
         public bool Active => _c != null;
+        /// <summary>The live climb — Tests/PlayMode/ParkourRun.cs reads the
+        /// track and its warp off this to prove the move followed the
+        /// purchased clip's own curve and not our old lerp.</summary>
+        public ClimbState State => _c;
         public string Phase => _c?.Phase;
 
         /// <summary>false = a straight-through VAULT (ClimbState.Hold's own
@@ -262,6 +273,93 @@ namespace TbilisiFly.Character
                 return true;
             }
             return false;
+        }
+
+        // =====================================================================
+        // DRIVE THE MOVE WITH THE PACK'S OWN MOTION (2026-11-06, user: "we are
+        // using our parkour asset, u need check demo, and make same for all our
+        // personages, i mean physic").
+        //
+        // Threepeat's demo scenes move the character by ROOT MOTION and nothing
+        // else. This port instead lerped the body From→Catch→To over three
+        // hand-tuned durations (CatchTime/PullRate/MantleTime) with hand-written
+        // easing curves, and played the clip on top as decoration — so the body
+        // never travelled the arc the animator authored and the feet never
+        // matched the ground.
+        //
+        // Here the clip is the authority for SHAPE and TIMING, and the measured
+        // obstacle is the authority for WHERE IT ENDS: the baked track is warped
+        // so its net displacement becomes the real From→To of this particular
+        // ledge (the pack ships no motion warping — its own manual, section
+        // 1.4.1, says to add exactly this), and the residual term guarantees the
+        // hero finishes standing precisely on the measured top rather than
+        // wherever a scaled curve happened to land. HandsOnLedge keeps running
+        // on top, which is the manual's section 1.4.2 hand IK.
+        //
+        // WHY THIS IS RIGHT FOR EVERY PERSONAGE: nothing here is a body
+        // constant. The track is the animator's motion, From/To are measured
+        // from the hero's own metrics and the wall in front of them, so a
+        // banana, a potato and a pear all run the same authored arc onto the
+        // same real ledge.
+        //
+        // Held hangs are deliberately NOT track-driven: a hang is interactive
+        // (the player decides when to pull, switch sides or let go), so no
+        // single clip's timeline owns it.
+        public bool UseTrack(ParkourRootTrack t)
+        {
+            var c = _c;
+            if (c == null || c.Hold || t == null || t.Len < 0.05f || t.P == null || t.P.Length < 2) return false;
+
+            Vector3 d = c.To - c.From;
+            Vector3 fwd = new Vector3(d.x, 0f, d.z);
+            float plan = fwd.magnitude;
+            fwd = plan > 1e-3f ? fwd / plan : c.Dir;
+            Vector3 right = new Vector3(-fwd.z, 0f, fwd.x);
+
+            // Only the ENGAGEMENT WINDOW is warped: the pack's moves are whole
+            // run-ups (mantle-low-frontroll-sprint-to-sprint covers 6.91 m, of
+            // which ~1 m is the climb), and squashing all of that onto our
+            // From→To crushed the clip to a third of its authored speed. See
+            // ParkourRootTrack.U0/U1.
+            Vector3 net = t.SpanNet;
+            float kz = Mathf.Abs(net.z) > 0.05f ? Mathf.Clamp(plan / net.z, 0.5f, 2.0f) : 1f;
+            float ky = Mathf.Abs(net.y) > 0.05f ? Mathf.Clamp(d.y / net.y, 0.5f, 2.0f) : 1f;
+            Vector3 raw = fwd * (net.z * kz) + right * (net.x * kz) + Vector3.up * (net.y * ky);
+
+            c.Track = t;
+            c.TrkFwd = fwd; c.TrkRight = right;
+            c.TrkKz = kz; c.TrkKy = ky;
+            c.TrkResid = d - raw;          // zero unless a clamp bit or the span was flat on an axis
+            // the clip plays 1:1 with the body over the window — no foot slide;
+            // a warped span takes proportionally longer or shorter, so the
+            // authored ground speed survives the warp too
+            c.TrkDur = t.SpanLen * Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0.05f, kz)), 0.7f, 1.5f);
+            c.Phase = "clip"; c.T = 0f;
+            c.TopOn = false; c.PlantIn = false; c.PlantOff = false; c.Plant = 0f;
+            Debug.Log($"CLIMB_TRACK stem={t.Stem} dur={c.TrkDur:F2} clipLen={t.Len:F2} span=[{t.U0:F2},{t.U1:F2}] kz={kz:F2} ky={ky:F2} rise={d.y:F2} fwd={plan:F2} spanNet=({net.x:F2},{net.y:F2},{net.z:F2}) resid={c.TrkResid.magnitude:F3} exit={t.ExitSpeed:F2}");
+            return true;
+        }
+
+        /// <summary>Seconds into the clip the track-driven move starts — the
+        /// authored run-up is skipped (FootController passes this to
+        /// ParkourClipPlayer.Play so the animation and the body agree).</summary>
+        public float TrackStartTime => _c != null && _c.Track != null ? _c.Track.U0 * _c.Track.Len : 0f;
+
+        /// <summary>The ground speed the clip is doing as it leaves the
+        /// obstacle, warped the same way the motion was — the hero runs out of
+        /// a mantle at the pace the animator gave it instead of stopping dead.</summary>
+        public float TrackExitSpeed => _c != null && _c.Track != null ? _c.Track.ExitSpeed * _c.TrkKz : 0f;
+
+        /// <summary>Where the track-driven move puts the body at normalised time
+        /// u — the warped clip curve, landing exactly on the measured top.</summary>
+        Vector3 TrackPos(ClimbState c, float u)
+        {
+            Vector3 p = c.Track.SampleSpan(u);
+            return c.From
+                 + c.TrkFwd * (p.z * c.TrkKz)
+                 + c.TrkRight * (p.x * c.TrkKz)
+                 + Vector3.up * (p.y * c.TrkKy)
+                 + c.TrkResid * Mathf.Clamp01(u);
         }
 
         // src/foot.js:4902-4918 _facePoint
@@ -432,7 +530,35 @@ namespace TbilisiFly.Character
             (Vector3 at, Vector3 knee, Vector3 toe)? plant = null;
             string exit = null;
 
-            if (c.Phase == "reach")
+            if (c.Phase == "clip")
+            {
+                // THE WHOLE MOVE IS ONE CLIP — see UseTrack above. Its own
+                // length is the duration, its own curve is the path, and the
+                // hands/feet helpers below run exactly as they do for a
+                // hand-driven pull+mantle so nothing downstream changes.
+                c.T += dt;
+                float u = Mathf.Clamp01(c.T / Mathf.Max(0.05f, c.TrkDur));
+                pos = TrackPos(c, u);
+                BodyPivot(rig, -LeanTop * (1f - Ease01(u / 0.7f)) * (1f - Ease01((u - 0.55f) / 0.45f)), 0f, c.Met.HipY);
+                string leadClip = c.Lead;
+                keys = MantleClipActive ? (System.Action)null
+                     : () => FootPoses.SetMantlePose(rig, 1f, u, leadClip);
+                handW = Ease01(u / 0.18f) * (1f - Ease01((u - 0.55f) / 0.3f));
+                hint = u < 0.5f ? FootWeapons.HintMix(HintHang, HintPull, Ease01(u / 0.5f)) : HintPress;
+                mix = Ease01((u - 0.45f) / 0.35f);
+                // the wall foot plants early, the top foot once the hips clear
+                if (!c.TopOn)
+                {
+                    if (u >= PlantAt && !c.PlantOff) c.PlantIn = true;
+                    if (u > 0.62f) c.PlantOff = true;
+                    if (c.PlantOff && c.Plant < 0.02f && u >= 0.7f) { c.TopOn = true; c.PlantOff = false; c.PlantIn = true; c.Plant = 0f; }
+                }
+                if (c.TopOn) plant = (c.PlantTop, c.KneeTop, c.ToeTop);
+                else if (c.PlantIn) plant = (c.PlantWall, c.KneeWall, c.ToeWall);
+                _gripT = 1f;
+                if (u >= 1f) { pos = c.To; exit = "done"; }
+            }
+            else if (c.Phase == "reach")
             {
                 c.T += dt / Mathf.Max(0.02f, c.ReachDur);
                 float k = Mathf.Min(1f, c.T);
@@ -547,6 +673,11 @@ namespace TbilisiFly.Character
         // =====================================================================
         public (bool grounded, bool letGoPush) EndClimb(CharacterRig rig, string how, ref Vector3 pos)
         {
+            // one line per climb: which way it ended and how far through the
+            // move it got — the track-driven phase is supposed to end at u=1,
+            // and anything else is somebody cutting the move short
+            if (_c != null)
+                Debug.Log($"CLIMB_END how={how} phase={_c.Phase} T={_c.T:F3} dur={_c.TrkDur:F3} u={(_c.TrkDur > 0f ? _c.T / _c.TrkDur : 0f):F2} track={(_c.Track != null ? _c.Track.Stem : "none")}");
             var c = _c;
             if (how == "done") Out = new ClimbOutState { T = 0f, Lead = c?.Lead ?? "R" };
             FootPoses.SetHangPose(rig, 0f); // _releaseBones at weight 0 — hands the whole climb back to the clip

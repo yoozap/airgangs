@@ -73,7 +73,18 @@ namespace TbilisiFly.UI.Common
             }
 
             var ps = doc.panelSettings;
-            ps.scaleMode = PanelScaleMode.ConstantPixelSize;
+            // SCALE WITH THE SCREEN (2026-11-02). This line used to force
+            // ConstantPixelSize at runtime, which also OVERRODE the asset's own
+            // setting — so editing TbilisiFlyPanelSettings.asset had no effect
+            // at all. At a literal pixel size the whole HUD is tiny on a retina
+            // display and nothing reflows, which is what the user reported as
+            // "skills are to little" and "fix my ui. with responsive".
+            // referenceResolution is the size the USS was authored against;
+            // match = 1 scales on HEIGHT so the bottom action bar and the top
+            // chips can never be clipped off a wider screen.
+            ps.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+            ps.referenceResolution = new Vector2Int(1200, 800);
+            ps.match = 1f;
             ps.scale = 1f;
             // Text crispness at the literal-pixel sizes style.css uses (down
             // to 9px labels, e.g. .hb-label, .tf-stats) depends on this
@@ -81,6 +92,7 @@ namespace TbilisiFly.UI.Common
             // default (1) unless a specific font asset says otherwise.
             ps.referenceSpritePixelsPerUnit = 100;
             ApplyFonts(ps);
+            ApplyStyleSheets(doc);
         }
 
         /// <summary>Points the panel at the Georgian font chain. Assets/Editor/
@@ -93,6 +105,41 @@ namespace TbilisiFly.UI.Common
         /// is no inspector slot to drag the asset into. If it is missing the
         /// panel keeps Unity's default face, which has no Mkhedruli at all, so
         /// the failure is loud rather than a silently English-looking UI.</summary>
+        /// <summary>Attach the USS the C#-built views are written against.
+        ///
+        /// FOUND 2026-11-02: there was not a single `styleSheets.Add` anywhere
+        /// in the runtime code. Every .uss under Resources/UI existed and only
+        /// an EDITOR probe ever read them. Views cloned from UXML pull their own
+        /// style sheet in through the .uxml, so they looked right — but the
+        /// views built entirely in C# (the action bars, the HUD furniture) got
+        /// NO rules at all. WeaponBarView/SkillBarView set only
+        /// `position: absolute` inline and take their bottom/left/size from
+        /// `.ab-root` in ActionBar.uss, so with no style sheet they sat at
+        /// (0,0) with ZERO size: present in the tree, "visible", and invisible
+        /// on screen. That is the user's "its no bar now in unity game".
+        ///
+        /// CyberTheme.uss goes on FIRST because it declares the --cyan/--panel
+        /// custom properties every other sheet resolves against (see
+        /// UI/Common/CyberTheme.cs's header on the C#/USS token split).
+        /// Only the sheets for C#-built views are added here; adding the
+        /// UXML-owned ones again would apply them twice.</summary>
+        static void ApplyStyleSheets(UIDocument doc)
+        {
+            var root = doc != null ? doc.rootVisualElement : null;
+            if (root == null) return;
+            foreach (var path in new[] { "UI/Theme/CyberTheme", "UI/SkillBar/ActionBar" })
+            {
+                var sheet = Resources.Load<StyleSheet>(path);
+                if (sheet == null)
+                {
+                    Debug.LogError($"UiBootstrap: Resources/{path}.uss missing — the views that "
+                        + "depend on it render unstyled, which for the action bars means zero size");
+                    continue;
+                }
+                if (!root.styleSheets.Contains(sheet)) root.styleSheets.Add(sheet);
+            }
+        }
+
         static void ApplyFonts(PanelSettings ps)
         {
             if (ps.textSettings != null) return;

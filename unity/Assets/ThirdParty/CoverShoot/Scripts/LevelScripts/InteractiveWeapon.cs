@@ -51,6 +51,18 @@ public class InteractiveWeapon : MonoBehaviour
 	private WeaponUIManager weaponHud;                        // Reference to on-screen weapon HUD.
 	private bool pickable;                                    // Boolean to store whether or not the weapon is pickable (player within radius).
 	private Transform pickupHUD;                              // Reference to the weapon pickup in-game label.
+	// Georgian pickup prompt (2026-11-02, user: "taking guns with F button
+	// will works too, coz last time it not worked" — pickup_armed already
+	// passes, so the MECHANISM works; the missing piece is the player ever
+	// being told F does something here at all). pickupHUD above is the
+	// stock pack's own in-world label transform, left permanently disabled
+	// (Georgian-UI-only rule, see class header) — this static event is what
+	// UI/Hud/CoverShootPromptView.cs actually listens to instead. Fired
+	// only on a real state CHANGE (not every OnTriggerStay frame) from
+	// TogglePickupHUD below, which both trigger callbacks already funnel
+	// through.
+	private bool _promptFired;
+	public static event System.Action<InteractiveWeapon, bool> OnPickupRangeChanged;
 
 	void Awake()
 	{
@@ -157,6 +169,11 @@ public class InteractiveWeapon : MonoBehaviour
 	// Draw in-game weapon pickup label.
 	private void TogglePickupHUD(bool toggle)
 	{
+		if (toggle != _promptFired)
+		{
+			_promptFired = toggle;
+			OnPickupRangeChanged?.Invoke(this, toggle);
+		}
 		pickupHUD.gameObject.SetActive(toggle);
 		if (toggle)
 		{
@@ -236,6 +253,18 @@ public class InteractiveWeapon : MonoBehaviour
 	}
 
 	// Reset the bullet parameters.
+	// TbilisiFly glue (2026-11-02): the same prep Update() does before
+	// AddWeapon when the PLAYER picks this up, for a weapon the project hands
+	// over itself (Core/HeldWeapon.cs bridges the warehouse loot into one).
+	public void PrepareForInventory()
+	{
+		if (rbody != null) rbody.isKinematic = true;
+		if (col != null) col.enabled = false;
+		if (interactiveRadius != null) Destroy(interactiveRadius);
+		pickable = false;
+		if (pickupHUD != null) TogglePickupHUD(false);
+	}
+
 	public void ResetBullets()
 	{
 		mag = fullMag;

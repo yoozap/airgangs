@@ -113,7 +113,7 @@ namespace TbilisiFly.Probes
             var lightGo = new GameObject("sun"); var light = lightGo.AddComponent<Light>(); light.type = LightType.Directional; light.intensity = 1.6f;
             lightGo.transform.rotation = Quaternion.Euler(45f, 30f, 0f);
             var camGo = new GameObject("shotcam"); var cam = camGo.AddComponent<Camera>(); cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.12f, 0.13f, 0.17f); cam.fieldOfView = 35f;
-            foreach (var id in new[] { "apple", "tomato", "orange" })
+            foreach (var id in new[] { "apple", "kiwi", "strawberry" })
             {
                 var go = Spawn(id, out var anim, out var hull);
                 if (go == null || anim == null || hull == null) { Debug.Log($"HANDCLEAR_SHOT body={id} error=spawn"); continue; }

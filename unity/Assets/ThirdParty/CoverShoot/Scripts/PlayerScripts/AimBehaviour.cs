@@ -81,12 +81,21 @@ public class AimBehaviour : GenericBehaviour
 	{
 		yield return new WaitForSeconds(0.05f);
 		// Aiming is not possible.
-		if (behaviourManager.GetTempLockStatus(this.behaviourCode) || behaviourManager.IsOverriding(this))
+		// TbilisiFly glue (2026-11-02): the stock `|| IsOverriding(this)` also
+		// refused to aim for the 0.35 s after aiming STOPPED — ToggleAimOff
+		// sets `aim = false` at once but only revokes this behaviour's override
+		// at its end — so a click that re-aimed inside that window (the JS
+		// click-to-aim-and-fire, ShootBehaviour.Update) was dropped. We are
+		// that stale overrider; re-entering is safe (OverrideWithBehaviour is a
+		// Contains() no-op and ToggleAimOff below keeps the override if aim is
+		// back on). Only a temp lock (a cover transition, a jump) still refuses.
+		if (behaviourManager.GetTempLockStatus(this.behaviourCode))
 			yield return false;
 
 		// Start aiming.
 		else
 		{
+			if (!aim) Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this, "AIM on latch={0}", CoverShootInput.AimLatched ? 1 : 0);
 			aim = true;
 			int signal = 1;
 			if (peekCorner)
@@ -106,6 +115,7 @@ public class AimBehaviour : GenericBehaviour
 	private IEnumerator ToggleAimOff()
 	{
 		aim = false;
+		Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this, "AIM off");
 		yield return new WaitForSeconds(0.3f);
 		// TbilisiFly glue: GetCamScript is null now (ThirdPersonOrbitCam was
 		// removed — Core/GameLoop.cs's own on-foot camera owns the camera
@@ -115,7 +125,7 @@ public class AimBehaviour : GenericBehaviour
 		behaviourManager.GetCamScript?.ResetTargetOffsets();
 		behaviourManager.GetCamScript?.ResetMaxVerticalAngle();
 		yield return new WaitForSeconds(0.05f);
-		behaviourManager.RevokeOverridingBehaviour(this);
+		if (!aim) behaviourManager.RevokeOverridingBehaviour(this); // TbilisiFly glue: re-aimed inside the window → the override stays
 	}
 
 	// LocalFixedUpdate overrides the virtual function of the base class.

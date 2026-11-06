@@ -105,6 +105,8 @@ namespace TbilisiFly.Combat
         readonly IHost _host;
         public Item Near { get; private set; }
         bool _scanned;
+        float _scanCd;                   // retry timer while nothing has been found yet
+        const float ScanRetry = 0.5f;    // s between scene-wide sweeps while empty
         float _t;
 
         public Pickups(IHost host) { _host = host; }
@@ -128,6 +130,31 @@ namespace TbilisiFly.Combat
                 });
             }
             _scanned = _items.Count > 0;
+            return _items.Count;
+        }
+
+        /// <summary>Scene-wide form of <see cref="Scan"/> — the faithful port of
+        /// src/pickups.js scanning the scene graph ROOT. Used by Update()
+        /// because the subtree form could only ever see loot parented under
+        /// whatever Transform HeldWeapon happened to be constructed with (see
+        /// Update's own note). Includes inactive objects for the same reason
+        /// Scan(root) passes `true`: loot can be spawned disabled.</summary>
+        public int ScanScene()
+        {
+            _items.Clear();
+            var tags = UnityEngine.Object.FindObjectsByType<PickupTag>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var tag in tags)
+            {
+                if (tag == null || tag.transform.parent == null) continue;
+                _items.Add(new Item
+                {
+                    Obj = tag.transform, Weapon = tag.Weapon, Gear = tag.Gear,
+                    HomeY = tag.transform.position.y, Phase = Random.value * 6.28f,
+                });
+            }
+            _scanned = _items.Count > 0;
+            if (_scanned) Debug.Log($"PICKUPSCAN found={_items.Count} (scene-wide)");
             return _items.Count;
         }
 
@@ -170,7 +197,29 @@ namespace TbilisiFly.Combat
 
         public void Update(float dt, Transform sceneRoot, Vector3 heroPos)
         {
-            if (!_scanned && sceneRoot != null) Scan(sceneRoot);
+            // SCAN THE WHOLE SCENE, NOT ONE SUBTREE (2026-11-02). This used to
+            // be `Scan(sceneRoot)`, and HeldWeapon passes the Transform it was
+            // built with — CombatWorldAdapter.cs:514's `new
+            // GameObject("CombatRuntime")`, a fresh EMPTY container for the
+            // combat runtime systems. Scan() sweeps
+            // root.GetComponentsInChildren<PickupTag>, so it only ever looked
+            // inside CombatRuntime, while every real piece of ground loot
+            // (the warehouse akm/beretta/makarov from
+            // Props/WarehouseInteriorFill.cs:407) lives under the WORLD
+            // hierarchy. It therefore found 0 items on every frame forever:
+            // Near stayed null, no "F" card was ever drawn, and TakeNearest()
+            // had nothing to take. The user hit it as "when i am goin to gun i
+            // dont see press F key ... mby its problem with warehouse" — which
+            // was the right instinct.
+            // src/pickups.js scans the THREE scene graph root, so the faithful
+            // port is scene-wide, not a subtree. Throttled while empty because
+            // Scan() leaves _scanned false until it finds something, and a
+            // scene-wide sweep every frame is not free.
+            if (!_scanned)
+            {
+                _scanCd -= dt;
+                if (_scanCd <= 0f) { _scanCd = ScanRetry; ScanScene(); }
+            }
             _t += dt;
 
             var near = new List<(float d, Item it)>();

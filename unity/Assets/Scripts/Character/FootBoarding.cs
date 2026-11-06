@@ -1102,12 +1102,30 @@ namespace TbilisiFly.Character
                 }
                 else
                 {
-                    var b = r.bounds;
-                    Vector3 c = b.center, e = b.extents;
+                    // FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's
+                    // FLOW_AIRPORT scenario (2026-11-01), same bug class, a
+                    // different file: `r.bounds` is ALREADY a world-space
+                    // AABB of the mesh after its CURRENT rotation (the
+                    // aeroplane's, here, via rig.Root being parented into the
+                    // cockpit) — folding those corners through `toLocal`
+                    // (which also rotates) is an AABB of an AABB, and it only
+                    // ever grows, differently depending on the plane's
+                    // attitude at measurement time. Exactly the SkinnedMesh-
+                    // Renderer branch above already gets this right (bakes
+                    // real vertices through `toLocal * localToWorldMatrix`,
+                    // ONE transform, no intermediate world AABB); this does
+                    // the same thing with the mesh's own LOCAL bounds instead
+                    // of its full vertex set (cheaper, and still correct even
+                    // for an isReadable:0 mesh, unlike `.vertices`).
+                    var mf = r.GetComponent<MeshFilter>();
+                    if (mf == null || mf.sharedMesh == null) continue; // nothing reliable to fold
+                    Matrix4x4 m = toLocal * r.transform.localToWorldMatrix; // ONE composed transform
+                    Bounds lb = mf.sharedMesh.bounds; // LOCAL to the mesh, never world
+                    Vector3 c = lb.center, e = lb.extents;
                     for (int xi = -1; xi <= 1; xi += 2)
                         for (int yi = -1; yi <= 1; yi += 2)
                             for (int zi = -1; zi <= 1; zi += 2)
-                                Fold(toLocal.MultiplyPoint3x4(c + Vector3.Scale(e, new Vector3(xi, yi, zi))));
+                                Fold(m.MultiplyPoint3x4(c + Vector3.Scale(e, new Vector3(xi, yi, zi))));
                 }
             }
             if (!has) return null;

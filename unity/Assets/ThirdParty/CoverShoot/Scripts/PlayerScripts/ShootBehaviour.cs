@@ -50,9 +50,32 @@ public class ShootBehaviour : GenericBehaviour
 	// header), so gameplay state that used to be read off an Animator bool
 	// is exposed as plain C# properties instead.
 	private bool _reloading;                                      // Mirrors reloadBool's SetBool calls below — see IsReloading.
+	private float _pendingFireUntil;                               // TbilisiFly glue: a click that arrived before aim engaged — fires as soon as AimBehaviour reports aiming (see Update).
 	private float _reloadTimer;                                   // Counts down to EndReloadWeapon() — see Update()'s own note.
 	const float ReloadSeconds = 1.6f;                              // A reasonable pistol/rifle reload duration (no animation length to read without a controller).
-	public bool HasWeapon => activeWeapon > 0;                     // Core/GameLoop.cs's StageOnFootPurchased feeds this into _foot.Armed.
+	public bool HasWeapon => activeWeapon > 0;
+	// ---- TbilisiFly glue (2026-11-02): the JS belt/back stow + the on-foot bar ----
+	// StowHook: asked when a weapon leaves the hand; return true to PARK it
+	// (belt holster / back sling, renderers on) instead of the stock
+	// SetActive(false). DrawHook: told when a weapon goes back to the hand so
+	// the stow can let go of it. Wired by Core/CombatWorldAdapter.cs to
+	// Core/HeldWeapon.cs's StowPack/DrawPack.
+	public static System.Func<InteractiveWeapon, bool> StowHook;
+	public static System.Action<InteractiveWeapon> DrawHook;
+	public InteractiveWeapon ActiveWeapon => (weapons != null && activeWeapon > 0 && activeWeapon < weapons.Count) ? weapons[activeWeapon] : null;
+	public InteractiveWeapon WeaponInSlot(int slot) { EnsureInit(); return (weapons != null && slot > 0 && slot < weapons.Count) ? weapons[slot] : null; }
+	public bool IsReloadingNow => _reloading;
+	/// <summary>Non-toggling slot select for the project's own bar/digit keys
+	/// (skillbar.js:312 draw / :309 holster): 0 = bare hands, 1 = SHORT, 2 = LONG.
+	/// The toggle itself lives in UI/SkillBar/WeaponBarView.Select.</summary>
+	public void SelectSlot(int slot)
+	{
+		EnsureInit();
+		if (weapons == null || slot < 0 || slot >= weapons.Count) return;
+		if (slot == 0) { if (activeWeapon != 0) ChangeWeapon(activeWeapon, 0); return; }
+		if (weapons[slot] == null || activeWeapon == slot) return;
+		ChangeWeapon(activeWeapon, slot);
+	}                     // Core/GameLoop.cs's StageOnFootPurchased feeds this into _foot.Armed.
 	public bool IsReloading => _reloading;
 	private int weaponTypeInt;                                     // Animator variable related to the weapon type.
 	private int changeWeaponTrigger;                               // Animator trigger for changing weapon.
@@ -68,6 +91,16 @@ public class ShootBehaviour : GenericBehaviour
 	private Vector3 castRelativeOrigin;                            // Position of neck to cast for blocked aim test.
 	private Dictionary<InteractiveWeapon.WeaponType, int> slotMap; // Map to designate weapon types to inventory slots.
 	private Transform hips, spine, chest, rightHand, leftArm;      // Avatar bone transforms.
+	private Transform neckBone;                                    // TbilisiFly glue: live neck for the blocked-aim cast (was a frozen world offset).
+	// TbilisiFly glue (2026-11-02): this rig FACES ROOT-LOCAL -Z (FootController
+	// heading = (-sin yaw, 0, -cos yaw); CoverBehaviour.facingSourceNegativeZ
+	// says the same), so the body's RIGHT is -transform.right. The aim-pitch
+	// IK below rotates the chest about the body's right axis — with the raw
+	// transform.right it pitched the torso UP when the camera looked DOWN.
+	public bool facingNegativeZ;
+	/// <summary>Aim-pitch IK applications (proof the pass is reached — Character/CoverShootIkRelay.cs).</summary>
+	public int IkApplied;
+	public bool IsAimBlocked => isAimBlocked;
 	private Vector3 initialRootRotation;                           // Initial root bone local rotation.
 	private Vector3 initialHipsRotation;                           // Initial hips rotation related to the root bone.
 	private Vector3 initialSpineRotation;                          // Initial spine rotation related to the hips bone.
@@ -83,7 +116,25 @@ public class ShootBehaviour : GenericBehaviour
 	private bool isShotAlive = false;                              // Boolean to determine if there is any active shot on scene.
 
 	// Start is always called after any Awake functions.
-	void Start()
+	// TbilisiFly glue (2026-11-02): Start() only runs once the component is
+	// ENABLED, and CoverShootHero suspends these behaviours (boarding/parkour)
+	// — so a weapon handed over before the first enable hit a null `weapons`
+	// list: NullReferenceException at WeaponInSlot, every F press, take
+	// aborted (player log). The stock Start body is InitOnce() below, guarded,
+	// and every public entry point calls EnsureInit() first.
+	bool _inited;
+	public bool Ready => _inited && weapons != null;
+	void Start() { EnsureInit(); }
+	void EnsureInit()
+	{
+		if (_inited) return;
+		if (behaviourManager == null) behaviourManager = GetComponent<BasicBehaviour>();
+		if (behaviourManager == null || behaviourManager.GetAnim == null) return;
+		if (aimBehaviour == null) aimBehaviour = GetComponent<AimBehaviour>();
+		_inited = true;
+		InitOnce();
+	}
+	void InitOnce()
 	{
 		// Set up the references.
 		shotMask = ~(LayerMask.GetMask("Ignore Raycast", "Cover", "Cover Invisible"));
@@ -99,9 +150,9 @@ public class ShootBehaviour : GenericBehaviour
 		bulletHoles = new List<GameObject>();
 
 		// Hide shot effects on scene.
-		muzzleFlash.SetActive(false);
-		shot.SetActive(false);
-		sparks.SetActive(false);
+		if (muzzleFlash != null) muzzleFlash.SetActive(false);
+		if (shot != null) shot.SetActive(false);
+		if (sparks != null) sparks.SetActive(false);
 
 		// Create weapon slots. Different weapon types can be added in the same slot - ex.: (LONG_SPECIAL, 2) for a rocket launcher.
 		slotMap = new Dictionary<InteractiveWeapon.WeaponType, int>
@@ -116,9 +167,11 @@ public class ShootBehaviour : GenericBehaviour
 		{
 			neck = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.Head).parent;
 		}
+		neckBone = neck;
 		hips = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.Hips);
 		spine = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.Spine);
 		chest = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.Chest);
+		if (chest == null) chest = spine; // a short spine chain: pitch the spine itself
 		rightHand = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.RightHand);
 		leftArm = behaviourManager.GetAnim.GetBoneTransform(HumanBodyBones.LeftUpperArm);
 		Transform root = hips.parent;
@@ -135,7 +188,7 @@ public class ShootBehaviour : GenericBehaviour
 		initialHipsRotation = hips.localEulerAngles;
 		initialSpineRotation = spine.localEulerAngles;
 		initialChestRotation = chest.localEulerAngles;
-		originalCrosshair = aimBehaviour.crosshair;
+		originalCrosshair = aimBehaviour != null ? aimBehaviour.crosshair : null;
 		shotDecay = originalShotDecay;
 		castRelativeOrigin = neck.position - this.transform.position;
 		distToHand = (rightHand.position - neck.position).magnitude * 1.5f;
@@ -147,8 +200,25 @@ public class ShootBehaviour : GenericBehaviour
 		// Handle shoot weapon action.
 		if (CoverShootInput.GetAxisRaw(shootButton) != 0 && !isShooting && activeWeapon > 0 && burstShotCount == 0)
 		{
-			isShooting = true;
-			ShootWeapon(activeWeapon);
+			if (!isAiming)
+			{
+				// TbilisiFly glue (2026-11-02, user: "i dont see aim and i cant
+				// shoot"): the stock pack SWALLOWS a click made with a drawn gun
+				// unless RMB is held — ShootWeapon's `!isAiming` gate returned
+				// silently and the player saw nothing. The JS fires on click and
+				// enters aim on click (foot.js:2480 _aimOnDraw "on click we are in
+				// aim mode"), so: switch the shared aim latch on (the same one Alt
+				// and RMB toggle — Character/CoverShootInput.cs) and remember the
+				// press; the shot goes the moment AimBehaviour reports aiming
+				// (ToggleAimOn's 0.05 s), below, instead of being lost.
+				if (!CoverShootInput.AimLatched) { CoverShootInput.SetAimLatch(true); LogShot("aim_on_click"); }
+				_pendingFireUntil = Time.time + 0.6f;
+			}
+			else
+			{
+				isShooting = true;
+				ShootWeapon(activeWeapon);
+			}
 		}
 		else if (isShooting && CoverShootInput.GetAxisRaw(shootButton) == 0)
 		{
@@ -203,6 +273,18 @@ public class ShootBehaviour : GenericBehaviour
 		// AimBehaviour's own C# state directly instead.
 		isAiming = aimBehaviour != null && aimBehaviour.IsAiming;
 
+		// TbilisiFly glue: the click-to-aim shot (see the shoot branch above).
+		if (_pendingFireUntil > 0f)
+		{
+			if (isAiming && activeWeapon > 0 && burstShotCount == 0 && !_reloading)
+			{
+				_pendingFireUntil = 0f;
+				isShooting = true; // the chain above releases it once the button is up
+				ShootWeapon(activeWeapon);
+			}
+			else if (Time.time > _pendingFireUntil || activeWeapon == 0) _pendingFireUntil = 0f;
+		}
+
 		// Auto-complete reload on a timer — EndReloadWeapon() is "called by
 		// animation" in the stock asset (an AnimationEvent on the reload
 		// clip), which never fires with no AnimatorController driving one.
@@ -224,19 +306,24 @@ public class ShootBehaviour : GenericBehaviour
 		bool blocked = !isAiming || isAimBlocked || _reloading;
 		bool weaponOk = !blocked && weapons[weapon].Shoot(firstShot);
 		if (blocked || !weaponOk)
+		{
+			// Player-side proof line: the next Player.log says WHY a click did nothing.
+			if (firstShot) LogShot(blocked ? (!isAiming ? "blocked_not_aiming" : isAimBlocked ? "blocked_aim_obstructed" : "blocked_reloading") : "empty_mag");
 			return;
+		}
 
 		// Update parameters: burst count, trigger for animation, crosshair change and recoil camera bounce.
 		burstShotCount++;
 		behaviourManager.GetAnim.SetTrigger(shootingTrigger);
 		aimBehaviour.crosshair = shootCrosshair;
 		behaviourManager.GetCamScript?.BounceVertical(weapons[weapon].recoilAngle);
+		TbilisiFly.Combat.CoverShootBridge.CameraKick?.Invoke(weapons[weapon].recoilAngle); // TbilisiFly glue: our camera takes the pack's recoil
 
 		// Cast the shot to find a target.
 		Vector3 imprecision = Random.Range(-shotErrorRate, shotErrorRate) * behaviourManager.playerCamera.right;
 		Ray ray = new Ray(behaviourManager.playerCamera.position, behaviourManager.playerCamera.forward + imprecision);
 		// Target was hit.
-		bool rayHit = Physics.Raycast(ray, out RaycastHit hit, 500f, shotMask);
+		bool rayHit = RaycastSkippingSelf(ray, out RaycastHit hit, 500f);
 		if (rayHit)
 		{
 			if (hit.collider.transform != transform)
@@ -277,6 +364,36 @@ public class ShootBehaviour : GenericBehaviour
 		// Reset shot lifetime.
 		shotDecay = originalShotDecay;
 		isShotAlive = true;
+		if (firstShot) LogShot(rayHit ? $"fired hit={hit.collider.name} dist={hit.distance:F1}" : "fired miss");
+	}
+
+	// TbilisiFly glue (2026-11-02): the project's chase camera sits behind and
+	// above the hero, so the camera-forward shot ray can start INSIDE the hero's
+	// own colliders (the pack's kinematic capsule on rig.Root, the body and the
+	// belt/back props) — the stock `hit.collider.transform != transform` only
+	// excluded the root object itself, so such a shot "hit" the player's own
+	// back. Same fix class as Character/ParkourMoves.IgnoreRoot: the nearest
+	// hit that is not under this transform.
+	static readonly RaycastHit[] _shotHits = new RaycastHit[24];
+	bool RaycastSkippingSelf(Ray ray, out RaycastHit best, float dist)
+	{
+		int n = Physics.RaycastNonAlloc(ray, _shotHits, dist, shotMask);
+		best = default; float bestD = float.MaxValue; bool found = false;
+		for (int i = 0; i < n; i++)
+		{
+			var h = _shotHits[i];
+			if (h.collider == null || h.collider.transform.IsChildOf(this.transform)) continue;
+			if (h.distance < bestD) { bestD = h.distance; best = h; found = true; }
+		}
+		return found;
+	}
+
+	// One SHOT line per trigger pull (not per auto round), no stack trace —
+	// the player-side evidence this port's logs are read for.
+	void LogShot(string what)
+	{
+		string label = (weapons != null && activeWeapon > 0 && activeWeapon < weapons.Count && weapons[activeWeapon] != null) ? weapons[activeWeapon].label : "<none>";
+		Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this, "SHOT weapon={0} aiming={1} latch={2} {3}", label, isAiming ? 1 : 0, CoverShootInput.AimLatched ? 1 : 0, what);
 	}
 
 	// Manage the shot visual effects.
@@ -338,12 +455,18 @@ public class ShootBehaviour : GenericBehaviour
 	// Change the active weapon.
 	private void ChangeWeapon(int oldWeapon, int newWeapon)
 	{
+		EnsureInit();
+		if (weapons == null) return;
 		// Previously armed? Disable weapon.
 		if (oldWeapon > 0)
 		{
-			weapons[oldWeapon].gameObject.SetActive(false);
+			// TbilisiFly glue: park on the belt/back when the hook takes it,
+			// else the stock hide.
+			var old = weapons[oldWeapon];
+			bool parked = old != null && StowHook != null && StowHook(old);
+			if (!parked && old != null) old.gameObject.SetActive(false);
 			gunMuzzle = null;
-			weapons[oldWeapon].Toggle(false);
+			if (old != null) old.Toggle(false);
 		}
 		// Cycle trough empty slots to find next existing weapon or the no weapon slot.
 		while (weapons[newWeapon] == null && newWeapon > 0)
@@ -353,12 +476,27 @@ public class ShootBehaviour : GenericBehaviour
 		// Next weapon exists? Activate it.
 		if (newWeapon > 0)
 		{
-			weapons[newWeapon].gameObject.SetActive(true);
-			gunMuzzle = weapons[newWeapon].transform.Find("muzzle");
-			weapons[newWeapon].Toggle(true);
+			// TbilisiFly glue: a parked weapon comes back from the belt/back
+			// to the hand — re-seat it exactly as AddWeapon() did.
+			var nw = weapons[newWeapon];
+			DrawHook?.Invoke(nw);
+			if (rightHand != null)
+			{
+				Vector3 wsBefore = nw.transform.lossyScale;
+				nw.transform.SetParent(rightHand);
+				nw.transform.localPosition = HandLocal(rightHand, nw.rightHandPosition);
+				nw.transform.localRotation = Quaternion.Euler(nw.relativeRotation);
+				KeepWorldScaleUnder(nw.transform, rightHand, wsBefore);
+			}
+			nw.gameObject.SetActive(true);
+			gunMuzzle = nw.transform.Find("muzzle");
+			nw.Toggle(true);
 		}
 
 		activeWeapon = newWeapon;
+		// TbilisiFly glue: a latched aim (Alt/RMB/click) must not outlive the gun
+		// — aim is a drawn-gun state in the JS (game.js:508 `foot.held` gate).
+		if (newWeapon == 0) CoverShootInput.ClearAimLatch();
 
 		// Call change weapon animation if new weapon type is different.
 		if (oldWeapon != newWeapon)
@@ -421,12 +559,46 @@ public class ShootBehaviour : GenericBehaviour
 	}
 
 	// Add a new weapon to inventory (called by weapon object).
+	// TbilisiFly glue (2026-11-02): the stock pack parents a weapon under the
+	// hand and sets ONLY localPosition/localRotation — correct on its own
+	// unit-scale avatar, wrong under this project's imported rigs whose bones
+	// carry a non-unit lossy scale. Keep the weapon's world size as spawned.
+	// TbilisiFly glue (2026-11-02): rightHandPosition is authored in the pack's
+	// unit-scale hand space. This project's rigs carry an ~88x lossy scale on
+	// the hand bone (the FBX imports at 0.01 and the body is normalised to
+	// 1.8 m), so the raw offset put the gun 11 m from the hand (GunHandRun:
+	// AK_HAND_distToHand=11.035). Express it in the bone's own units.
+	static Vector3 HandLocal(Transform hand, Vector3 offset)
+	{
+		if (hand == null) return offset;
+		Vector3 p = hand.lossyScale;
+		return new Vector3(
+			Mathf.Abs(p.x) > 1e-6f ? offset.x / p.x : offset.x,
+			Mathf.Abs(p.y) > 1e-6f ? offset.y / p.y : offset.y,
+			Mathf.Abs(p.z) > 1e-6f ? offset.z / p.z : offset.z);
+	}
+
+	static void KeepWorldScaleUnder(Transform weapon, Transform parent, Vector3 worldScaleBefore)
+	{
+		if (weapon == null || parent == null) return;
+		Vector3 p = parent.lossyScale;
+		weapon.localScale = new Vector3(
+			Mathf.Abs(p.x) > 1e-6f ? worldScaleBefore.x / p.x : 1f,
+			Mathf.Abs(p.y) > 1e-6f ? worldScaleBefore.y / p.y : 1f,
+			Mathf.Abs(p.z) > 1e-6f ? worldScaleBefore.z / p.z : 1f);
+	}
+
 	public void AddWeapon(InteractiveWeapon newWeapon)
 	{
+		EnsureInit();
+		if (weapons == null) { Debug.LogWarning("COVERSHOOT AddWeapon before the Animator exists — dropped"); return; }
 		// Position new weapon in player's hand.
+		Vector3 wsBefore = newWeapon.transform.lossyScale;
 		newWeapon.gameObject.transform.SetParent(rightHand);
-		newWeapon.transform.localPosition = newWeapon.rightHandPosition;
+		newWeapon.transform.localPosition = HandLocal(rightHand, newWeapon.rightHandPosition);
 		newWeapon.transform.localRotation = Quaternion.Euler(newWeapon.relativeRotation);
+		KeepWorldScaleUnder(newWeapon.transform, rightHand, wsBefore);
+		Debug.Log($"PACK_HAND weapon={newWeapon.label} hand={(rightHand != null ? rightHand.name : "<null>")} handLossy={(rightHand != null ? rightHand.lossyScale.ToString("F3") : "-")} worldScale={newWeapon.transform.lossyScale.ToString("F3")} worldPos={newWeapon.transform.position.ToString("F2")} enabled={enabled.ToString().ToLowerInvariant()} ready={Ready.ToString().ToLowerInvariant()}");
 
 		// Handle inventory slot conflict.
 		if (this.weapons[slotMap[newWeapon.type]])
@@ -454,6 +626,9 @@ public class ShootBehaviour : GenericBehaviour
 	// Handle reload weapon end (called by animation).
 	public void EndReloadWeapon()
 	{
+		// TbilisiFly glue: with a real controller the reload clip's own
+		// AnimationEvent fires this too, on top of the timer fallback.
+		if (!_reloading) return;
 		behaviourManager.GetAnim.SetBool(reloadBool, false);
 		_reloading = false;
 		weapons[activeWeapon].EndReload();
@@ -471,8 +646,13 @@ public class ShootBehaviour : GenericBehaviour
 		// TbilisiFly glue: was GetCamScript.transform.forward — playerCamera
 		// IS that same transform (no ThirdPersonOrbitCam needed to read it).
 		Vector3 camFwd = behaviourManager.playerCamera.forward;
-		isAimBlocked = Physics.SphereCast(this.transform.position + castRelativeOrigin, 0.1f, camFwd, out RaycastHit hit, distToHand - 0.1f);
-		isAimBlocked = isAimBlocked && hit.collider.transform != this.transform;
+		// TbilisiFly glue: castRelativeOrigin was captured ONCE in world space at
+		// init and never turned with the hero; cast from the live neck instead,
+		// and never let the hero's own colliders (capsule, slung guns, belt) count
+		// as an obstruction — same self-skip as RaycastSkippingSelf.
+		Vector3 castFrom = neckBone != null ? neckBone.position : this.transform.position + castRelativeOrigin;
+		isAimBlocked = Physics.SphereCast(castFrom, 0.1f, camFwd, out RaycastHit hit, distToHand - 0.1f, shotMask);
+		isAimBlocked = isAimBlocked && hit.collider.transform != this.transform && !hit.collider.transform.IsChildOf(this.transform);
 		behaviourManager.GetAnim.SetBool(blockedAimBool, isAimBlocked);
 		Debug.DrawRay(this.transform.position + castRelativeOrigin, camFwd * distToHand, isAimBlocked ? Color.red : Color.cyan);
 
@@ -489,25 +669,36 @@ public class ShootBehaviour : GenericBehaviour
 
 			// Orientate upper body where camera  is targeting.
 			Quaternion targetRot = Quaternion.Euler(0, transform.eulerAngles.y, 0);
-			targetRot *= Quaternion.Euler(initialRootRotation);
-			targetRot *= Quaternion.Euler(initialHipsRotation);
-			targetRot *= Quaternion.Euler(initialSpineRotation);
-			// Set upper body horizontal orientation.
-			behaviourManager.GetAnim.SetBoneLocalRotation(HumanBodyBones.Spine, Quaternion.Inverse(hips.rotation) * targetRot);
+			// TbilisiFly glue: the horizontal re-aim rebuilds the spine from the
+			// bind-pose chain under hips.parent — on this rig the art's 180 deg
+			// lives on Model, ABOVE that chain (CharacterRig.cs:148), so the
+			// rebuilt spine would face backwards. FootController already turns
+			// the whole body to the camera yaw while armed, so only the
+			// vertical half is needed here.
+			if (!facingNegativeZ)
+			{
+				targetRot *= Quaternion.Euler(initialRootRotation);
+				targetRot *= Quaternion.Euler(initialHipsRotation);
+				targetRot *= Quaternion.Euler(initialSpineRotation);
+				// Set upper body horizontal orientation.
+				behaviourManager.GetAnim.SetBoneLocalRotation(HumanBodyBones.Spine, Quaternion.Inverse(hips.rotation) * targetRot);
+			}
 
 			// Keep upper body orientation regardless strafe direction.
+			Vector3 bodyRight = facingNegativeZ ? -this.transform.right : this.transform.right;
 			float xCamRot = Quaternion.LookRotation(behaviourManager.playerCamera.forward).eulerAngles.x;
-			targetRot = Quaternion.AngleAxis(xCamRot + armsRotation, this.transform.right);
+			targetRot = Quaternion.AngleAxis(xCamRot + armsRotation, bodyRight);
 			if (weapons[activeWeapon] && weapons[activeWeapon].type == InteractiveWeapon.WeaponType.LONG)
 			{
 				// Correction for long weapons.
-				targetRot *= Quaternion.AngleAxis(9f, this.transform.right);
+				targetRot *= Quaternion.AngleAxis(9f, bodyRight);
 				targetRot *= Quaternion.AngleAxis(20f, this.transform.up);
 			}
-			targetRot *= spine.rotation;
-			targetRot *= Quaternion.Euler(initialChestRotation);
+			IkApplied++;
+			targetRot *= (chest == spine ? hips.rotation : spine.rotation);
+			targetRot *= Quaternion.Euler(chest == spine ? initialSpineRotation : initialChestRotation);
 			// Set upper body vertical orientation.
-			behaviourManager.GetAnim.SetBoneLocalRotation(HumanBodyBones.Chest, Quaternion.Inverse(spine.rotation) * targetRot);
+			behaviourManager.GetAnim.SetBoneLocalRotation(chest == spine ? HumanBodyBones.Spine : HumanBodyBones.Chest, Quaternion.Inverse(chest == spine ? hips.rotation : spine.rotation) * targetRot);
 		}
 	}
 

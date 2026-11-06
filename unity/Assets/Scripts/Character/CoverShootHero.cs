@@ -135,6 +135,27 @@ namespace TbilisiFly.Character
             BuildPhysics();
             BuildBehaviours();
             BuildCamera();
+            // THE PACK'S OWN ANIMATOR CONTROLLER (2026-11-02). Every SetBool/
+            // SetFloat/SetTrigger the pack makes (Aim, Shooting, Weapon,
+            // ChangeWeapon, Speed, H/V, Cover...) was a no-op because no
+            // controller was ever assigned to the hero's Animator — the class
+            // header above says so — so aim, shoot, reload and cover never
+            // MOVED the body, only changed C# state. The user: "use our asset
+            // for covering and shooting, i need same cool physics to take guns
+            // in hands ... aim is not movin good". The hero is Humanoid (the
+            // gate at the top of Attach), so the pack's humanoid clips retarget.
+            // Root motion stays off (FootController owns the root).
+            if (rig.Anim != null && rig.Anim.runtimeAnimatorController == null)
+            {
+                var ctrl = Resources.Load<RuntimeAnimatorController>("ThirdParty/CoverShoot/Animators/CharacterController");
+                if (ctrl != null)
+                {
+                    rig.Anim.runtimeAnimatorController = ctrl;
+                    rig.Anim.applyRootMotion = false;
+                    Debug.Log($"COVERSHOOT controller assigned id={rig.Id} clips={ctrl.animationClips.Length}");
+                }
+                else Debug.LogWarning("COVERSHOOT controller missing: Resources/ThirdParty/CoverShoot/Animators/CharacterController");
+            }
 
             if (!_everActive)
             {
@@ -148,9 +169,40 @@ namespace TbilisiFly.Character
             WireShootFields();
             WireCoverFields();
             WireAimFields();
-            BuildCoverMarkers();
+            // The IK pass (aim pitch / torso lean / blocked aim) lives on the
+            // Animator's own object — see Character/CoverShootIkRelay.cs.
+            if (rig.Anim != null)
+            {
+                var relay = rig.Anim.gameObject.GetComponent<CoverShootIkRelay>();
+                if (relay == null) relay = rig.Anim.gameObject.AddComponent<CoverShootIkRelay>();
+                relay.Target = _shoot;
+                IkRelay = relay;
+            }
+            _shoot.facingNegativeZ = true; // same convention as _cover.facingSourceNegativeZ below
+            // DYNAMIC now (2026-11-02, user: "i tried v to cover, and
+            // nothing happend" — the OLD one-shot spawn-time scan left
+            // `covermarkers built=0` on open tarmac and could never engage
+            // again regardless of where the player walked). See
+            // TickDynamicCover() below — it replaces BuildCoverMarkers()
+            // entirely and runs every frame from Update() instead of once
+            // here.
+            int coverLayer = LayerMask.NameToLayer("Cover");
+            int coverInvisLayer = LayerMask.NameToLayer("Cover Invisible");
+            // Exclude Cover/Cover Invisible from the hero's OWN probe mask
+            // — otherwise frame 2 onward, the dynamic marker THIS SAME
+            // class just placed (on Cover Invisible) would be the nearest
+            // thing FindCover sees, chasing its own shadow instead of the
+            // real wall behind it. Character/FootCover.cs's `CoverMask` is
+            // otherwise unused while UsePurchasedShooter is on (the JS V
+            // key that would also touch it is gated off — Core/GameLoop.cs
+            // ReadDiscreteKeys), so setting it once here is safe.
+            int excludeMask = 0;
+            if (coverLayer >= 0) excludeMask |= 1 << coverLayer;
+            if (coverInvisLayer >= 0) excludeMask |= 1 << coverInvisLayer;
+            if (_game.Foot != null) _game.Foot.Cover.CoverMask = ~excludeMask;
             CoverShootPickups.EnsureSpawned(game, rig);
             TbilisiFly.UI.Hud.CoverShootAmmoView.EnsureInstalled();
+            TbilisiFly.UI.Hud.CoverShootPromptView.EnsureInstalled();
 
             Debug.Log($"COVERSHOOT attach id={rig.Id} humanoid=1 bodyHeight={rig.BodyHeight:F2} movementOwner=FootController");
         }
@@ -247,6 +299,23 @@ namespace TbilisiFly.Character
             if (coverLayer >= 0) mask |= 1 << coverLayer;
             if (coverInvisLayer >= 0) mask |= 1 << coverInvisLayer;
             _cover.coverMask = mask;
+            // Root-at-feet fix (2026-11-02) — see CoverBehaviour.cs's own
+            // `eyeHeight` field comment for the full "V does nothing"
+            // chase: HasPossibleCover's wall-finding ray used to fire from
+            // transform.position (our Root, at the FEET) and just clipped
+            // the floor a few cm out. Chest height, not literal eye height,
+            // is what a human actually presses against a wall at.
+            _cover.eyeHeight = _rig.BodyHeight * 0.55f;
+
+            // The hero's REAL facing — see CoverBehaviour.cs's facingSource
+            // comment for the dead-FOV-gate story. FootController.cs:1428
+            // writes the heading to rig.Root as Euler(0, Yaw, 0), but its
+            // own heading vector is (-sin Yaw, 0, -cos Yaw), so the hero
+            // faces Root's LOCAL -Z: hence the explicit flip. Root, never
+            // Model — Model carries CharacterRig.cs:148's extra 180 deg
+            // that only corrects the FBX art.
+            _cover.facingSource = _rig.Root;
+            _cover.facingSourceNegativeZ = true;
 
             // The pack's Update() unconditionally calls UndrawSign(coverSign)
             // (no null-check — see CoverBehaviour.cs) every frame there is no
@@ -312,15 +381,35 @@ namespace TbilisiFly.Character
         }
 
         // =====================================================================
-        // COVER MARKERS — the README's own documented technique ("you can use
-        // a simpler mesh as a cover container ... put the primitive collider
-        // on a game object and set its Layer as Cover Invisible") rather than
-        // changing any REAL building/terrain collider's layer, which other
-        // systems (Combat raycasts, DamageReachProbe's mask assumptions) do
-        // not expect to move. One invisible box per nearby solid surface, so
-        // `CoverBehaviour.HasPossibleCover`'s close-range branch
-        // (`HandleNavPath`'s `else` arm, coverDist=0.4 m — no NavMesh
-        // required there) has somewhere real to engage.
+        // DYNAMIC COVER — rewritten 2026-11-02 (user: "i tried v to cover,
+        // and nothing happend"; coordinator: the one-shot spawn-time scan
+        // this used to be "is the design bug, not just a layer bug — make
+        // cover detection DYNAMIC, evaluated from the hero's current
+        // position every frame... reuse FootCover's wall-finding rather
+        // than duplicating it"). TickDynamicCover() below is called from
+        // Update() every frame: it asks Character/FootCover.cs's OWN
+        // `FindCover` (the exact query src/foot.js's V key already uses to
+        // locate a wall — raycast walls, nearest-first across a compass
+        // sweep, no NavMesh) for whatever is in front of the hero RIGHT
+        // NOW, then moves ONE reusable invisible marker onto it so
+        // `CoverBehaviour.HasPossibleCover`/`CanTakeCover`/`StartTakeCover`
+        // (the pack's own state machine, unchanged) have somewhere real to
+        // engage — wherever the player actually is, not wherever they
+        // happened to spawn. The README's documented technique ("you can
+        // use a simpler mesh as a cover container... set its Layer as
+        // Cover Invisible") is still how the marker itself is built; what
+        // changed is WHEN and WHERE it gets placed.
+        //
+        // Planes excluded by name (not by `FootCover.ExtraTargets`, which
+        // treats nearby parked-plane shells as valid cover for the JS path
+        // — deliberately NOT reused here): a plane's hull sits on landing
+        // gear, elevated above real ground, so earlier attempts at this
+        // (the one-shot scan's own history, see git blame) proved it is
+        // not safe to stand a player up against one. This system never
+        // relocates the player's own Y at all — they walked here — so that
+        // specific failure mode cannot recur, but the marker is still
+        // rejected if the wall it would sit on turns out to be a plane,
+        // for the same "not real cover" reason.
         // =====================================================================
         static bool IsPlaneShell(Transform t)
         {
@@ -329,80 +418,177 @@ namespace TbilisiFly.Character
             return false;
         }
 
-        void BuildCoverMarkers()
-        {
-            // Widened 2026-11-01: the original 4-direction/5 m scan found
-            // ZERO markers when spawn happens to be in open ground (the
-            // first real CoverShootRun run — airport tarmac, nothing within
-            // 5 m in any cardinal direction). 16-direction compass, 15 m —
-            // still a one-shot scan at spawn, not a moving search, but a
-            // much better chance of finding SOMETHING cover-shaped nearby.
-            int coverInvis = LayerMask.NameToLayer("Cover Invisible");
-            Debug.Log($"COVERSHOOT covermarkers_enter coverInvisLayer={coverInvis} pos={transform.position}");
-            if (coverInvis < 0) return;
-            // Final shape (2026-11-01) after several false starts, kept as
-            // a short history because each one taught something real:
-            //  - 15 m/30 m, no exclusions: the only thing nearby was a
-            //    parked plane's "plane_shell" hull. Teleporting the player
-            //    to stand against it free-fell (Y dropped 493->489 over
-            //    ~35 frames) — a plane's hull sits on landing gear, elevated
-            //    above real ground, and Physics.Raycast straight down from
-            //    it finds the plane's OWN belly/gear, not the floor, so no
-            //    amount of ground-distance tightening fixed it reliably.
-            //    Planes are excluded outright now (IsPlaneShell above).
-            //  - 80 m, planes excluded: found two real building walls
-            //    (chunk_22 at 60 m, chunk_11 at 74 m) — but the horizontal
-            //    probe ray fires at a FIXED height (spawn height + 1 m), so
-            //    against a wall that far away it can strike a point whose
-            //    true ground is 12-15 m below (confirmed via a 200 m-deep
-            //    probe) — i.e. a high-up part of a tall building, nothing
-            //    to do with spawn's own floor. Snapping the stand point's Y
-            //    down to THAT ground would put the "wall" floating far
-            //    above the player's head — not real cover either.
-            // Fix: require the wall to be roughly on the SAME floor as
-            // spawn (hit point within 3 m of spawn height) before even
-            // considering it, which rules out tall/distant faces by
-            // construction, and search far enough (100 m) that a same-floor
-            // wall has a real chance of existing somewhere in 16 compass
-            // directions even when spawn sits in a big open apron/hall.
-            int built = 0;
-            for (int i = 0; i < 16; i++)
-            {
-                float a = i * (360f / 16f) * Mathf.Deg2Rad;
-                Vector3 d = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
-                Vector3 origin = transform.position + Vector3.up * 1f;
-                if (Physics.Raycast(origin, d, out var hit, 100f) && hit.collider != null && hit.collider.gameObject != gameObject
-                    && !hit.collider.CompareTag("Player")
-                    && !IsPlaneShell(hit.collider.transform)
-                    && Mathf.Abs(hit.point.y - transform.position.y) < 3f)
-                {
-                    bool gok = Physics.Raycast(hit.point, Vector3.down, out var groundHit, 3.0f);
-                    if (!gok || groundHit.normal.y < 0.7f)
-                        continue;
+        GameObject _coverMarker;
+        BoxCollider _coverMarkerCol;
 
-                    var marker = new GameObject("CoverMarker_" + hit.collider.name);
-                    marker.layer = coverInvis;
-                    // Ground-snapped Y: the test (Tests/PlayMode/
-                    // CoverShootRun.cs) derives its own stand point purely
-                    // from THIS transform's position, so the marker itself
-                    // must carry the corrected height (CoverBehaviour.
-                    // HasPossibleCover's own live detection ray does the
-                    // same "get the cover point on the ground" adjustment
-                    // for the SAME reason).
-                    Vector3 markerPos = hit.point - d.normalized * 0.05f;
-                    markerPos.y = groundHit.point.y + 0.02f;
-                    marker.transform.position = markerPos;
-                    marker.transform.rotation = Quaternion.LookRotation(hit.normal);
-                    var box = marker.AddComponent<BoxCollider>();
-                    box.size = new Vector3(2.2f, 2.0f, 0.1f);
-                    box.isTrigger = false;
-                    built++;
-                    // Static per the README ("remember to set all cover objects
-                    // on the scene as Static") — StaticEditorFlags is editor-
-                    // only; a runtime-spawned collider has no batching to lose.
+        // ---- THE PROMPT'S OWN DEBOUNCE (user, 2026-11-06: "when i am running,
+        // i have blink v to cover message") -----------------------------------
+        // The MARKER must follow the sweep frame by frame — V has to take the
+        // wall the player is beside at the instant they press it. The PROMPT
+        // must not: FootCover.FindCover is an 11-heading, 3.5 m raycast sweep
+        // re-run every frame from a moving body, so running down a street past
+        // doorways, gaps, parked cars and kerb gaps flips its answer several
+        // times a second and the line strobed. Same predicate, asymmetric
+        // debounce: it has to be true for ShowAfter before the line appears and
+        // false for HideAfter (longer — it covers a doorway passing by) before
+        // it goes away. Nothing here touches whether V WORKS.
+        const float PromptShowAfter = 0.20f;
+        const float PromptHideAfter = 0.55f;
+        float _promptTrueT, _promptFalseT;
+        bool _promptShown;
+
+        /// <summary>Debounced prompt visibility — see the constants above.
+        /// `raw` is this frame's honest answer from the cover sweep.</summary>
+        void PromptCoverAvailable(bool raw, float dt)
+        {
+            if (raw) { _promptTrueT += dt; _promptFalseT = 0f; }
+            else { _promptFalseT += dt; _promptTrueT = 0f; }
+
+            bool want = _promptShown;
+            if (!_promptShown && raw && _promptTrueT >= PromptShowAfter) want = true;
+            else if (_promptShown && !raw && _promptFalseT >= PromptHideAfter) want = false;
+            if (want == _promptShown) return;
+            _promptShown = want;
+            TbilisiFly.UI.Hud.CoverShootPromptView.Instance?.SetCoverAvailable(want);
+        }
+
+        /// <summary>Hide the line at once and forget the debounce — taking
+        /// cover, boarding, a parkour move: the prompt is simply not the
+        /// question any more, so it must not linger for HideAfter.</summary>
+        void PromptCoverOff()
+        {
+            _promptTrueT = _promptFalseT = 0f;
+            if (!_promptShown) return;
+            _promptShown = false;
+            TbilisiFly.UI.Hud.CoverShootPromptView.Instance?.SetCoverAvailable(false);
+        }
+
+        void EnsureCoverMarker()
+        {
+            if (_coverMarker != null) return;
+            int coverInvis = LayerMask.NameToLayer("Cover Invisible");
+            _coverMarker = new GameObject("CoverMarker_dynamic");
+            if (coverInvis >= 0) _coverMarker.layer = coverInvis;
+            _coverMarkerCol = _coverMarker.AddComponent<BoxCollider>();
+            _coverMarkerCol.size = new Vector3(2.2f, 2.0f, 0.1f);
+            _coverMarkerCol.isTrigger = false;
+            _coverMarkerCol.enabled = false; // no wall found yet
+        }
+
+        /// <summary>Called every Update() while the pack owns the body
+        /// (not boarding/parkour-suspended) and the player is not already
+        /// covering (never touch the marker mid-session — CoverBehaviour
+        /// caches `currentCoverObj`/`coverWall` off it).</summary>
+        void TickDynamicCover(float dt)
+        {
+            EnsureCoverMarker();
+            if (_cover != null && _cover.IsCovering)
+            {
+                PromptCoverOff();
+                return;
+            }
+
+            Vector3 pos = _game.Foot.Pos;
+            float yaw = _game.Foot.Yaw;
+            var found = _game.Foot.Cover.FindCover(pos, yaw, true, _game.Foot.CamYaw, _game.Foot.Speed);
+            if (found.HasValue)
+            {
+                // Confirm the SAME surface by name, straight-line from the
+                // hero towards the found point (reconstructing FindCover's
+                // own probe direction as -N, its own convention — see
+                // FootCover.WallHitProbe) — FindCover's own FindResult does
+                // not carry the collider, only the point/normal.
+                Vector3 toWall = -found.Value.N; toWall.y = 0f;
+                if (toWall.sqrMagnitude > 1e-6f)
+                {
+                    Vector3 origin = pos + Vector3.up * 1.1f;
+                    if (Physics.Raycast(origin, toWall.normalized, out var confirm, found.Value.Dist + 0.5f)
+                        && IsPlaneShell(confirm.collider.transform))
+                        found = null;
                 }
             }
-            Debug.Log($"COVERSHOOT covermarkers built={built}");
+
+            if (found.HasValue)
+            {
+                // FITTED TO THE REAL WALL (2026-11-02, "take the physics from the
+                // bought asset"): the pack's corner peek fires where its cover
+                // collider ENDS (CoverBehaviour.CheckForCorners' 1 m ray past the
+                // shoulder) and its crouch/low-wall pop where the collider is
+                // lower than the standing height (UpdateCoverParameters' ray at
+                // col.height) — so a fixed 2.2 x 2.0 m marker gave a fake
+                // corner 1.1 m along every wall and never a low wall. Measure
+                // the facet instead: how far it runs each way at chest height
+                // (same normal, same standoff) and how high it is, and size the
+                // marker to that, so the pack's own rules see the real
+                // geometry.
+                Vector3 n = found.Value.N;
+                Vector3 t = new Vector3(-n.z, 0f, n.x);
+                Vector3 p = found.Value.Point; p.y = pos.y;
+                float eR = WallExtent(p, n, t, +1f), eL = WallExtent(p, n, t, -1f);
+                float top = WallTop(p, n);
+                float width = (eR + eL) > 0.01f ? eR + eL + 0.5f : 2.2f;      // the facet ran to the last good sample each way (+0.25 beyond)
+                float height = top > 0.01f ? Mathf.Clamp(top + 0.1f, 0.6f, 3.3f) : 2.0f;
+                Vector3 markerPos = p - n * 0.05f + t * ((eR - eL) * 0.5f);
+                // Y tracks the HERO's own current (already-grounded) height,
+                // never the wall-probe's — the one-shot scan's entire
+                // failure mode was trusting a remembered Y from a probe
+                // struck who-knows-how-far away; the player is standing
+                // right here, on real ground, by construction.
+                markerPos.y = pos.y + height * 0.5f;
+                _coverMarker.transform.position = markerPos;
+                _coverMarker.transform.rotation = Quaternion.LookRotation(n);
+                _coverMarkerCol.size = new Vector3(width, height, 0.1f);
+                _coverMarkerCol.enabled = true;
+                LastFit = (eL, eR, top);
+                PromptCoverAvailable(true, dt);
+            }
+            else
+            {
+                _coverMarkerCol.enabled = false;
+                PromptCoverAvailable(false, dt);
+            }
+        }
+
+        /// <summary>The last marker fit: facet run left/right of the found point and its top (m) — tests read it.</summary>
+        public (float Left, float Right, float Top) LastFit;
+
+        static readonly RaycastHit[] _fitHits = new RaycastHit[16];
+        /// <summary>Nearest non-hero hit along the probe; true only if it is the
+        /// same facet (normal within ~37 deg of n) at roughly the expected standoff.</summary>
+        bool SameFacet(Vector3 origin, Vector3 dir, float far, Vector3 n, float expectDist)
+        {
+            int mask = _game.Foot.Cover.CoverMask; // Cover / Cover Invisible already excluded (Setup)
+            int k = Physics.RaycastNonAlloc(origin, dir, _fitHits, far, mask, QueryTriggerInteraction.Ignore);
+            float best = float.MaxValue; Vector3 bestN = Vector3.zero;
+            for (int i = 0; i < k; i++)
+            {
+                var h = _fitHits[i];
+                if (h.collider == null || h.collider.transform.IsChildOf(transform) || IsPlaneShell(h.collider.transform)) continue;
+                if (h.distance < best) { best = h.distance; bestN = h.normal; }
+            }
+            return best < float.MaxValue && Vector3.Dot(bestN, n) > 0.8f && Mathf.Abs(best - expectDist) <= 0.35f;
+        }
+
+        float WallExtent(Vector3 p, Vector3 n, Vector3 t, float sgn)
+        {
+            float e = 0f;
+            for (float d = 0.25f; d <= 8f; d += 0.25f)
+            {
+                if (!SameFacet(p + n * 0.6f + t * (sgn * d) + Vector3.up * 1.0f, -n, 1.2f, n, 0.6f)) break;
+                e = d;
+            }
+            return e;
+        }
+
+        float WallTop(Vector3 p, Vector3 n)
+        {
+            float top = 0f;
+            for (float h = 0.4f; h <= 3.2f; h += 0.2f)
+            {
+                if (SameFacet(p + n * 0.6f + Vector3.up * h, -n, 1.2f, n, 0.6f)) top = h;
+                else if (h > 0.5f) break;
+            }
+            return top;
         }
 
         // =====================================================================
@@ -425,12 +611,38 @@ namespace TbilisiFly.Character
         void Update()
         {
             if (_rig == null) return;
+            // SEATED FOLLOWS THE REAL MODE (2026-11-02). SetSeated(true) fires when
+            // a board sequence STARTS and SetSeated(false) only on a COMPLETED
+            // climb-out, so any spawn/resume that puts the hero on foot without
+            // that sequence (the saved "ON FOOT" spot, a crash respawn) left
+            // _suspendedByBoarding stuck true: player log
+            // "COVERSHOOT suspend=on boarding=true parkour=false" with the hero
+            // walking around — the whole pack off, so no pickup, aim or shot.
+            if (_game != null)
+            {
+                bool seatedNow = _game.Mode != Core.GameMode.OnFoot || _game.Boarding;
+                if (seatedNow != _suspendedByBoarding) { _suspendedByBoarding = seatedNow; ApplySuspendState(); }
+            }
             bool parkour = _game != null && _game.Foot != null && (_game.Foot.Clips.IsPlaying || _game.Foot.Climb.Active);
             if (parkour != _suspendedByParkour)
             {
                 _suspendedByParkour = parkour;
                 ApplySuspendState();
             }
+
+            bool suspended = _suspendedByBoarding || _suspendedByParkour;
+            // SELF-HEAL (2026-11-02): the four behaviours must be enabled whenever
+            // not suspended. ApplySuspendState keys its early-return off
+            // _basic.enabled alone, so any path that left ONE of them off stayed
+            // off forever — and ShootBehaviour.Start never ran (player log:
+            // NullReferenceException at ShootBehaviour.WeaponInSlot on every F).
+            if (!suspended && _shoot != null && (!_shoot.enabled || !_aim.enabled || !_cover.enabled || !_basic.enabled))
+            {
+                SetBehavioursEnabled(true);
+                Debug.Log($"COVERSHOOT self-heal: behaviours re-enabled (shoot={_shoot.enabled.ToString().ToLowerInvariant()})");
+            }
+            if (!suspended && _game != null && _game.Foot != null) TickDynamicCover(Time.deltaTime);
+            else if (suspended) PromptCoverOff();
         }
 
         void ApplySuspendState()
@@ -443,6 +655,8 @@ namespace TbilisiFly.Character
 
         void SetBehavioursEnabled(bool on)
         {
+            Debug.Log($"COVERSHOOT suspend={(on ? "off" : "on")} boarding={_suspendedByBoarding.ToString().ToLowerInvariant()} parkour={_suspendedByParkour.ToString().ToLowerInvariant()}");
+            if (!on) CoverShootInput.ClearAimLatch(); // a latched aim must not survive the seat/climb that suspended the pack
             if (_basic != null) _basic.enabled = on;
             if (_aim != null) _aim.enabled = on;
             if (_shoot != null) _shoot.enabled = on;
@@ -450,6 +664,9 @@ namespace TbilisiFly.Character
         }
 
         public AimBehaviour Aim => _aim;
+        public CoverShootIkRelay IkRelay { get; private set; }
+        /// <summary>The live dynamic cover marker's box (world), for the cover camera plane and tests.</summary>
+        public BoxCollider CoverMarker => _coverMarkerCol != null && _coverMarkerCol.enabled ? _coverMarkerCol : null;
         public ShootBehaviour Shoot => _shoot;
         public CoverBehaviour Cover => _cover;
     }

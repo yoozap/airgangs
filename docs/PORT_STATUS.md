@@ -1,10 +1,10 @@
 # TbilisiFly → Unity: what moved, what is left
 
-_Generated 2026-11-01 22:49 by tools/port_status_md.py. Numbers come from the port manifest, the unit claims and docs/open_items.json; do not edit by hand._
+_Generated 2026-11-01 23:24 by tools/port_status_md.py. Numbers come from the port manifest, the unit claims and docs/open_items.json; do not edit by hand._
 
 ## 1. The one-line answer
 
-**46,888 of 48,889 budgeted JS lines are ported (95.9%), 45,101 of them probe-verified; 2,001 lines remain, which the audit (docs/BUDGET_AUDIT.md) found to be mostly budget artefact, not behaviour.** The C# side is 111,446 lines in 399 files. Every box of the quality bar (section 3) is checked with a live proof. Tracker: 150 fixed · 8 open · 7 decisions · 2 deferred.
+**46,888 of 48,889 budgeted JS lines are ported (95.9%), 45,101 of them probe-verified; 2,001 lines remain, which the audit (docs/BUDGET_AUDIT.md) found to be mostly budget artefact, not behaviour.** The C# side is 111,446 lines in 399 files. Every box of the quality bar (section 3) is checked with a live proof. Tracker: 152 fixed · 8 open · 7 decisions · 2 deferred.
 
 Lines are not the whole story: the port's worst bug class is FINISHED code that never runs (no caller, not in Game.unity, dead delegate) and formulas that are right in a right-handed frame and wrong in Unity's left-handed one. Sections 4–6 are about those.
 
@@ -56,7 +56,7 @@ Every checked row names the probe line that proved it REACHED in Assets/Scenes/G
 | memory-budget-3gb | Perf | agent: memory (open) | USER TARGET: the game must stay at 2-3 GB. First pass (memory agent 2026-10-31): native allocated 2.16 -> 0.86 GB, native RESERVED (the peak the OS footprint is made of; Unity never returns reserved pages) 3.11 -> 2.11 G |
 | river-bank-blue-wedge | City | unassigned (open) | Residual 8,044 px (0.56%) of the top-down river frame still reads pale blue: a wedge of carved bed between the water and the quay face where the carve mask ends (bottom-right of rb_grazing.png; visible at one bank in rb_ |
 | sign-colormap-missing | Assets | user (decision) | Road signs render untextured: Props/signs/Textures/colormap.png is missing from the repo and from git history (StreetFurnitureRenderer.cs:71 documents it); the live JS build 404s the same file - an asset question, not a  |
-| hands-inside-body-clips | Character | agent: hand-clearance (fable fork) (open) | USER 2026-11-01 22:50 (22:46 build, apple): 'u need check position of hands, sometimes they are inside body and i dont see them when i am moving… check in all'. The Humanoid clips were authored for a slim human; the frui |
+| airframe-height-world-bounds | Flight | agent: user-flows (sonnet) (open) | The 🛬 airport chip never parked the plane in the warehouse (FLOW_AIRPORT parked=false dist=19617, the stale Delisi placeholder): CombatWorldAdapter.AirframeHeight combined each Renderer's WORLD-space bounds and read size |
 
 ## 5. What was found and fixed on 2026-11-01 (the Sonnet wave)
 
@@ -81,6 +81,8 @@ Every checked row names the probe line that proved it REACHED in Assets/Scenes/G
 - **landing-step-window-skip** — FootController landings 899 / midair 1610
 - **range-registry-stale-pivots** — Combat/RangeBootstrap.cs registry reset; chain19 gates on the <test-run> element's own result
 - **cover-shoot-purchased-path** — Assets/ThirdParty/CoverShoot + Resources/ThirdParty/CoverShoot; Character/CoverShootHero.cs, CoverShootInput.cs (pack reads our Input System), CoverShootPickups.cs; Combat/CoverShootBridge.cs; UI/Hud/CoverShootAmmoView.cs; GameLoop.StageOnFootPurchased + UsePu
+- **hands-inside-body-clips** — Measured first (HandClearanceProbe: 15 bodies × 77 clips × 20 frames = 23,100 poses; 19,095 had a hand/elbow/segment midpoint inside the fruit, worst 0.71 m, the sprint loop inside on 20/20 frames of every body). Fixed in the RIG, not the clips: Character/Body
+- **hands-inside-fruit-hull** — Character/BodyClearance.cs: BodyHull fits the fruit once at spawn (dominant-bone vertices of the baked bind pose → radial map on spine_02, 32x16 bins), BodyClearanceLayer (DefaultExecutionOrder 5000, on rig.Root, on foot and outside a climb) swings each arm RI
 
 ## 6. Rules every agent must apply (learned the hard way)
 

@@ -598,6 +598,398 @@ namespace TbilisiFly.PlayModeTests
             AssertFails();
         }
 
+        // =====================================================================
+        /// <summary>
+        /// THE PURCHASED PACK'S OWN PHYSICS IS ACTUALLY DRIVING THE BODY
+        /// (2026-11-06, user: "we are using our parkour asset, u need check
+        /// demo, and make same for all our personages, i mean physic").
+        ///
+        /// Threepeat's demos move the character by root motion; this port used
+        /// to lerp it From→To over hand-tuned durations with the clip playing on
+        /// top as decoration. FootClimb.UseTrack now warps the clip's baked root
+        /// curve onto the measured ledge instead — so this test asserts the
+        /// three things that can each silently not happen:
+        ///
+        ///   1. the gate is OPEN on the real shipped asset — a CLIMB_TRACK line
+        ///      and Phase == "clip" (the project's "a probe proves a
+        ///      calculation, not that it is REACHED" rule);
+        ///   2. the move takes the CLIP's length, not a hand-tuned duration;
+        ///   3. the body followed the CLIP'S curve — the discriminating test:
+        ///      the measured height profile is compared against BOTH the clip's
+        ///      own normalised rise and the old hand-written ease
+        ///      (1-(1-u)²), and the clip must fit better. A warp that silently
+        ///      fell back to the lerp passes 1 and 2 and fails this.
+        /// </summary>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator D_ClipMotionPhysics()
+        {
+            LogAssert.ignoreFailingMessages = true;
+            yield return EnsureBooted();
+            if (_game == null || !_game.Started) { Check("booted", false, "game never started"); AssertFails(); yield break; }
+            yield return EnsureOnFoot();
+            var foot = _game.Foot;
+
+            // ---- the bake reached the RUNTIME (Resources, not just the editor)
+            var set = ParkourRootTracks.Instance;
+            Check("tracksAssetLoaded", set != null && set.Tracks != null && set.Tracks.Length > 20,
+                  set == null ? "Resources.Load returned null" : $"tracks={set.Tracks?.Length}");
+            Fact("TRACKS_COUNT", set?.Tracks?.Length ?? 0);
+
+            // ---- the loop speeds are the MEASURED ones, not the old guesses
+            FactF("SPRINT_NOMINAL", ParkourMoves.SprintNominal);
+            FactF("JOG_NOMINAL", ParkourMoves.JogNominal);
+            FactF("WALK_NOMINAL", ParkourMoves.WalkNominal);
+            Check("sprintNominalMeasured", Mathf.Abs(ParkourMoves.SprintNominal - 6.06f) < 0.3f,
+                  $"got {ParkourMoves.SprintNominal:0.##} (8.4 was the old guess, 6.06 is the clip's own)");
+            Check("jogNominalMeasured", Mathf.Abs(ParkourMoves.JogNominal - 3.70f) < 0.3f,
+                  $"got {ParkourMoves.JogNominal:0.##} (2.3 was the old guess)");
+
+            // ---- a 1.5 m block, mantled, watched frame by frame -------------
+            var (origin, dir) = FindFlatCourse();
+            float gy = origin.y;
+            const float BlockH = 1.5f;
+            ClearProps();
+            Box("clip_block", origin + dir * 5f + Vector3.up * (BlockH * 0.5f), new Vector3(6f, BlockH, 3f))
+                .transform.rotation = Quaternion.LookRotation(dir);
+            yield return Teleport(origin, dir);
+
+            yield return HoldUntilMove("mantle", 8f, "clipMantle", null, Key.W, Key.LeftShift);
+
+            // watch the whole climb
+            // GAME time, not realtime: this harness drives frames by hand and a
+            // frame's dt is not its wall-clock cost, so the first run of this
+            // test read a 0.44 s move as 0.105 s and "proved" a bug that was
+            // in the clock.
+            var ys = new List<float>(); var ts = new List<float>();
+            string phaseSeen = null; float dur = 0f; float y0 = foot.Pos.y;
+            ParkourRootTrack track = null; float kyUsed = 1f, spanY = 0f, trkDur = 0f;
+            float t0 = Time.time, t0r = Time.realtimeSinceStartup;
+            while (foot.Climb.Active && Time.realtimeSinceStartup - t0r < 8f)
+            {
+                var st = foot.Climb.State;
+                if (st != null)
+                {
+                    if (st.Phase == "clip") phaseSeen = "clip";
+                    else if (phaseSeen == null) phaseSeen = st.Phase;
+                    if (st.Track != null) { track = st.Track; kyUsed = st.TrkKy; spanY = st.Track.SpanNet.y; trkDur = st.TrkDur; }
+                }
+                // THE CLIMB'S OWN CLOCK: this harness drives GameLoop with a
+                // fixed dt (GameLoop.SetFixedDt), so simulated time runs ahead
+                // of Time.time — reading the move off a wall clock said 0.12 s
+                // for a 0.45 s move. In the real game both are Time.deltaTime.
+                ys.Add(foot.Pos.y); ts.Add(st != null ? st.T : 0f);
+                dur = st != null ? st.T : dur;
+                yield return null;
+            }
+            Release(); yield return Idle(10);
+
+            Fact("CLIP_PHASE", phaseSeen ?? "none");
+            Fact("CLIP_TRACK", track != null ? track.Stem : "none");
+            FactF("CLIP_DUR", dur);
+            FactF("CLIP_LEN", track != null ? track.Len : 0f);
+            FactF("CLIP_SPANDUR", trkDur);
+            FactF("CLIP_FRAMES", ys.Count);
+            FactF("CLIP_KY", kyUsed);
+            FactF("CLIP_SPANY", spanY);
+
+            Check("clipPhaseReached", phaseSeen == "clip",
+                  $"the climb ran phase '{phaseSeen}' — UseTrack never engaged on the real asset");
+            Check("clipTrackUsed", track != null, "no baked track on the chosen move");
+            // the move's duration must come from the CLIP, not a hand-tuned
+            // constant: FootClimb warps the clip's engagement window by at most
+            // ±50%, so anything outside that band is not the clip's timing
+            if (track != null && trkDur > 0f)
+            {
+                Check("durationFromTheClip", trkDur > track.SpanLen * 0.6f && trkDur < track.SpanLen * 1.7f,
+                      $"window {trkDur:0.##} s vs the clip's own {track.SpanLen:0.##} s (clip {track.Len:0.##} s, span [{track.U0:0.##},{track.U1:0.##}])");
+                Check("clipRanToTheEnd", dur > trkDur * 0.9f,
+                      $"the move stopped at {(dur / trkDur):0.##} of its window — something cut it short");
+            }
+
+            Check("clipEndedOnTop", foot.Pos.y > gy + BlockH - 0.2f,
+                  $"ended {foot.Pos.y - gy:0.##} m above the course (block is {BlockH} m)");
+
+            // ---- THE DISCRIMINATOR: whose curve did the body follow? --------
+            if (track != null && ys.Count > 6)
+            {
+                float yEnd = ys[ys.Count - 1];
+                float rise = yEnd - y0;
+                if (Mathf.Abs(rise) > 0.3f && Mathf.Abs(spanY) > 0.05f && trkDur > 0.05f)
+                {
+                    float errClip = 0f, errLerp = 0f; int n = 0;
+                    for (int i = 0; i < ys.Count; i++)
+                    {
+                        float u = Mathf.Clamp01(ts[i] / trkDur);
+                        if (u <= 0.02f || u >= 0.98f) continue;   // the ends agree by construction
+                        float measured = (ys[i] - y0) / rise;                       // 0..1 of the rise
+                        float clipFrac = track.SampleSpan(u).y / spanY;             // the pack's own shape
+                        float lerpFrac = 1f - (1f - u) * (1f - u);                  // FootClimb's old `ey`
+                        errClip += Mathf.Abs(measured - clipFrac);
+                        errLerp += Mathf.Abs(measured - lerpFrac);
+                        n++;
+                    }
+                    if (n > 0)
+                    {
+                        errClip /= n; errLerp /= n;
+                        FactF("CURVE_ERR_CLIP", errClip);
+                        FactF("CURVE_ERR_OLDLERP", errLerp);
+                        Check("followedTheClipCurve", errClip < errLerp,
+                              $"fit to the clip {errClip:0.###} vs to the old ease {errLerp:0.###} — the body is still on the hand-written curve");
+                        Check("clipCurveTight", errClip < 0.15f, $"mean rise error {errClip:0.###} of the climb");
+                    }
+                }
+                else Fact("CURVE_SKIPPED", $"rise={rise:0.##} spanY={spanY:0.##} dur={trkDur:0.##}");
+            }
+            yield return Shot("parkour_clipmotion");
+
+            ClearProps();
+            Fact("FAIL_COUNT", _fails.Count);
+            AssertFails();
+        }
+
+        // =====================================================================
+        /// <summary>
+        /// STOP AND START RUNNING AGAIN — user, 2026-11-06: "when i stop and
+        /// start running i see jumping millisecond blink".
+        ///
+        /// A blink like that is in the BONES, not the root: Pos stays on the
+        /// ground while the body pops. So this walks the exact sequence
+        /// (sprint → release → sprint) and records the hips height above the
+        /// hero's own ground position every frame, together with whichever
+        /// clip is driving the body, then reports the biggest single-frame pop
+        /// and what was playing when it happened.
+        /// </summary>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator E_StopStartRun()
+        {
+            LogAssert.ignoreFailingMessages = true;
+            yield return EnsureBooted();
+            if (_game == null || !_game.Started) { Check("booted", false, "game never started"); AssertFails(); yield break; }
+            yield return EnsureOnFoot();
+            var foot = _game.Foot;
+            ClearProps();
+            var (origin, dir) = FindFlatCourse();
+            yield return Teleport(origin, dir, 0.6f);
+
+            var hipsT = _game.Rig?.Anim?.GetBoneTransform(HumanBodyBones.Hips);
+            if (hipsT == null) { Check("hipsBone", false, "no Hips bone on the hero"); AssertFails(); yield break; }
+
+            float worstPop = 0f; string worstWhen = "none"; float worstAt = 0f;
+            float prevH = float.NaN; int airClipFrames = 0; string airClipName = null;
+            int silentFrames = 0; float minHips = float.PositiveInfinity; string minHipsWhen = "none";
+            var ring = new Queue<string>();
+            var samples = new List<string>();
+
+            // SAMPLE WHAT IS RENDERED. A coroutine's `yield return null` resumes
+            // at the end of Update — BEFORE the Animator evaluates and before
+            // GameLoop's LateUpdate writes the procedural pose, so it sees a
+            // half-built body that no frame ever shows. Application.onBeforeRender
+            // fires after LateUpdate, immediately before the frame is drawn:
+            // that pose IS the picture. (WaitForEndOfFrame never resumes in a
+            // headless run — see this project's play-mode harness notes.)
+            var spyGo = new GameObject("LatePoseSpy");
+            var spy = spyGo.AddComponent<LatePoseSpy>();
+            spy.Bone = hipsT; spy.GroundY = () => _game.Foot.Pos.y;
+
+            IEnumerator Phase(string tag, int frames, bool hold)
+            {
+                for (int i = 0; i < frames; i++)
+                {
+                    if (hold) Press(Key.W, Key.LeftShift); else Release();
+                    yield return null;
+                    float h = float.IsNaN(spy.Last) ? hipsT.position.y - foot.Pos.y : spy.Last;
+                    string mv = foot.Clips.CurrentClip, loco = foot.Clips.LocoClip;
+                    bool airish = mv != null && (mv.Contains("midair") || mv.Contains("jump") || mv.Contains("fall"));
+                    if (airish && foot.Grounded) { airClipFrames++; airClipName = mv; }
+                    ring.Enqueue($"f{i} bone={spy.LastBoneY:0.000} root={_game.Rig.Root.position.y:0.000} w={foot.Clips.BaseWeights} locoT={foot.Clips.LocoTime:0.000} loco={foot.Clips.LocoClip ?? "none"} move={foot.Clips.CurrentClip ?? "none"}");
+                    while (ring.Count > 5) ring.Dequeue();
+                    string state = $"graph={foot.Clips.GraphPlaying.ToString().ToLowerInvariant()} locoOwns={foot.LocoOwns.ToString().ToLowerInvariant()} clipOwns={foot.ClipOwnsBody.ToString().ToLowerInvariant()} landLock={foot.LandLock:0.##}";
+                    if (!foot.Clips.GraphPlaying) silentFrames++;
+                    if (h < minHips) { minHips = h; minHipsWhen = $"{tag} f{i} {state}"; }
+                    if (!float.IsNaN(prevH))
+                    {
+                        // PER SECOND, not per frame: a slow frame legitimately
+                        // advances the clip further, so a raw per-frame delta
+                        // flags a loaded machine as a bug (15 cm on a 50 ms
+                        // frame is an ordinary stride; 73 cm on a 16 ms frame
+                        // was the bind-pose doubling).
+                        float pop = Mathf.Abs(h - prevH) * Mathf.Min(1f, (1f / 60f) / Mathf.Max(1e-4f, Time.deltaTime));
+                        if (pop > worstPop)
+                        {
+                            worstPop = pop; worstAt = h;
+                            worstWhen = $"{tag} f{i} move={mv ?? "none"} loco={loco ?? "none"} grounded={foot.Grounded.ToString().ToLowerInvariant()} speed={foot.Speed:0.##} {state}";
+                        }
+                        // around a BIG pop, dump the neighbouring frames: a
+                        // one-frame doubling of the hips offset is a pose layer
+                        // rebasing off its own output, and only the frames
+                        // either side say which
+                        if (pop > 0.3f)
+                        {
+                            Debug.Log("PLAYMODE PARKOUR_POPRING " + string.Join(" | ", ring));
+                            Debug.Log($"PLAYMODE PARKOUR_POPNOW bone={spy.LastBoneY:0.000} root={_game.Rig.Root.position.y:0.000} w={foot.Clips.BaseWeights} locoT={foot.Clips.LocoTime:0.000} loco={loco ?? "none"} move={mv ?? "none"}");
+                        }
+                        // every frame the hips step more than 4 cm, with its state
+                        if (pop > 0.04f)
+                            Debug.Log($"PLAYMODE PARKOUR_STOPSTART_POP tag={tag} f={i} pop={pop:0.000} hips={h:0.000} boneY={spy.LastBoneY:0.000} groundY={spy.LastGroundY:0.000} posY={foot.Pos.y:0.000} vy={foot.Vy:0.00} act={_game.Rig.ActGroup.localPosition.y:0.000} rootY={_game.Rig.Root.position.y:0.000} accV={foot.AccelEstimateDiag:0.0} crouch={foot.CrouchBlendDiag:0.00} move={mv ?? "none"} loco={loco ?? "none"} {state}");
+                    }
+                    prevH = h;
+                    if (i % 6 == 0) samples.Add($"{tag}:{h:0.000}/{(mv ?? loco ?? "-")}");
+                }
+            }
+
+            // ---- 40 consecutive frames of steady running, both sample points
+            {
+                var anim = _game.Rig.Anim;
+                Debug.Log($"PLAYMODE PARKOUR_ANIMSTATE updateMode={anim.updateMode} culling={anim.cullingMode} enabled={anim.enabled.ToString().ToLowerInvariant()} speed={anim.speed:0.##} human={anim.isHuman.ToString().ToLowerInvariant()} graph={foot.Clips.GraphPlaying.ToString().ToLowerInvariant()}");
+                for (int i = 0; i < 24; i++) { Press(Key.W, Key.LeftShift); yield return null; }
+                for (int i = 0; i < 40; i++)
+                {
+                    Press(Key.W, Key.LeftShift);
+                    yield return null;
+                    float inUpdate = hipsT.position.y - foot.Pos.y;
+                    Debug.Log($"PLAYMODE PARKOUR_FRAMETRACE f={Time.frameCount} dt={Time.deltaTime:0.0000} update={inUpdate:0.000} late={spy.Last:0.000} speed={foot.Speed:0.##} loco={foot.Clips.LocoClip ?? "none"} move={foot.Clips.CurrentClip ?? "none"}");
+                }
+                Release(); yield return Idle(10);
+            }
+
+            yield return Phase("run1", 70, true);     // get up to full speed
+            yield return Phase("stop", 70, false);    // let go — the stop clip fires here
+            yield return Phase("run2", 70, true);     // and away again
+            Release(); yield return Idle(5);
+            Fact("STOPSTART_SAMPLED_AT", spy.Samples > 0 ? $"lateUpdate({spy.Samples})" : "update(spy never ran)");
+            UnityEngine.Object.Destroy(spyGo);
+
+            FactF("STOPSTART_WORST_POP", worstPop);
+            Fact("STOPSTART_WORST_WHEN", worstWhen);
+            FactF("STOPSTART_HIPS_AT_POP", worstAt);
+            Fact("STOPSTART_AIRCLIP_FRAMES", airClipFrames);
+            Fact("STOPSTART_AIRCLIP", airClipName ?? "none");
+            Debug.Log("PLAYMODE PARKOUR_STOPSTART_TRACE " + string.Join(" ", samples));
+
+            Fact("STOPSTART_SILENT_FRAMES", silentFrames);
+            FactF("STOPSTART_MIN_HIPS", minHips);
+            Fact("STOPSTART_MIN_HIPS_WHEN", minHipsWhen);
+
+            // an air/jump clip has no business playing while the feet are on
+            // the ground and the hero is only starting or stopping a run
+            Check("noAirClipWhileGrounded", airClipFrames == 0,
+                  $"{airClipFrames} grounded frames played {airClipName}");
+
+            // THE BLINK ITSELF: a frame where the Animator writes nothing falls
+            // back to the avatar's bind pose, which on these rigs puts the hips
+            // at the model origin — the body collapses into the ground and snaps
+            // back. Both halves are asserted: no silent frame, and the hips
+            // never anywhere near the floor.
+            Check("graphNeverSilent", silentFrames == 0,
+                  $"{silentFrames} frames with the Animator writing nothing — the body falls to its bind pose on every one");
+            Check("hipsNeverCollapse", minHips > 0.35f,
+                  $"hips got to {minHips:0.###} m above the feet ({minHipsWhen}) — bind-pose collapse");
+            // a run's natural bob moves the hips a couple of cm per frame
+            Check("noHipsPop", worstPop < 0.18f, $"hips moved {worstPop * 100f:0.#} cm per 60 Hz frame — {worstWhen}");
+
+            ClearProps();
+            Fact("FAIL_COUNT", _fails.Count);
+            AssertFails();
+        }
+
+        // =====================================================================
+        /// <summary>
+        /// RUNNING WITH A GUN IS THE PACK'S JOB (user, 2026-11-06: "now my
+        /// shooting asset not works ... i need very realistic runn with gun,
+        /// cover and etc").
+        ///
+        /// While a weapon is out, the purchased Cover+Shoot pack owns the body
+        /// through its own AnimatorController — aim, cover, reload and the
+        /// gun-locomotion blend all live in that state machine. The only way it
+        /// reaches the bones is for our PlayableGraph to stand down, because a
+        /// playing AnimationPlayableOutput overrides a controller completely.
+        ///
+        /// Three things can each silently break that, and all three are checked
+        /// here on the real shipped hero: the controller must be assigned, our
+        /// graph must release, and the body must actually MOVE (a controller
+        /// that is assigned but parked in its default state animates nothing —
+        /// which is what "not works" looks like).
+        /// </summary>
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator F_ArmedGunRun()
+        {
+            LogAssert.ignoreFailingMessages = true;
+            yield return EnsureBooted();
+            if (_game == null || !_game.Started) { Check("booted", false, "game never started"); AssertFails(); yield break; }
+            yield return EnsureOnFoot();
+            var foot = _game.Foot;
+            var anim = _game.Rig?.Anim;
+            if (anim == null) { Check("animator", false, "hero has no Animator"); AssertFails(); yield break; }
+
+            Fact("ARMED_CONTROLLER", anim.runtimeAnimatorController != null ? anim.runtimeAnimatorController.name : "none");
+            Check("controllerAssigned", anim.runtimeAnimatorController != null,
+                  "the hero's Animator has no controller — the pack's aim/cover/reload state machine cannot run");
+
+            // ---- pick the pistol up the way a player does -------------------
+            var pistol = GameObject.Find("pistol");
+            Fact("ARMED_PISTOL_FOUND", pistol != null);
+            if (pistol == null) { Fact("ARMED_SKIPPED", "no pistol pickup in the scene"); Fact("FAIL_COUNT", _fails.Count); AssertFails(); yield break; }
+
+            Vector3 beside = pistol.transform.position; beside.y = foot.Pos.y;
+            yield return Teleport(beside - Vector3.forward * 1.2f, Vector3.forward, 0.5f);
+            for (int i = 0; i < 90 && !foot.Armed; i++) { yield return Hold(2, Key.F); Release(); yield return Idle(1); }
+            Fact("ARMED", foot.Armed);
+            Check("armedAfterPickup", foot.Armed, "pressing F beside the pistol never armed the hero");
+            if (!foot.Armed) { Fact("FAIL_COUNT", _fails.Count); AssertFails(); yield break; }
+
+            // ---- run with it ------------------------------------------------
+            var (h0, f0) = HandFoot();
+            float moved = 0f, maxSpeedParam = 0f; int graphPlayingFrames = 0; string state = "?";
+            Vector3 p0 = foot.Pos;
+            for (int i = 0; i < 70; i++)
+            {
+                Press(Key.W);
+                yield return null;
+                var (h, f) = HandFoot();
+                moved = Mathf.Max(moved, Vector3.Distance(h, h0), Vector3.Distance(f, f0));
+                // the first frames are the parkour loop's own 0.15 s fade out
+                // of the body — only a graph still playing AFTER the hand-over
+                // is suppressing the pack
+                if (i >= 15 && foot.Clips.GraphPlaying) graphPlayingFrames++;
+                if (HasParam(anim, "Speed")) maxSpeedParam = Mathf.Max(maxSpeedParam, anim.GetFloat("Speed"));
+            }
+            Release(); yield return Idle(5);
+            if (anim.layerCount > 0)
+            {
+                var si = anim.GetCurrentAnimatorStateInfo(0);
+                state = si.shortNameHash.ToString();
+                var clips = anim.GetCurrentAnimatorClipInfo(0);
+                if (clips != null && clips.Length > 0 && clips[0].clip != null) state = clips[0].clip.name;
+            }
+
+            float travelled = Vector3.Distance(p0, foot.Pos);
+            Fact("ARMED_STATE_CLIP", state);
+            FactF("ARMED_BONE_MOVE", moved);
+            FactF("ARMED_TRAVELLED", travelled);
+            FactF("ARMED_SPEED_PARAM", maxSpeedParam);
+            Fact("ARMED_GRAPH_FRAMES", graphPlayingFrames);
+
+            Check("armedGraphReleased", graphPlayingFrames == 0,
+                  $"our clip graph kept playing on {graphPlayingFrames}/55 armed frames after the hand-over — it overrides the pack's controller, so none of its animation reaches the bones");
+            Check("armedBodyAnimates", moved > 0.12f,
+                  $"hand/foot moved only {moved:0.###} m while running with the gun — the controller is assigned but nothing is animating");
+            Check("armedSpeedParamInPackRange", maxSpeedParam > 0.2f && maxSpeedParam <= 2.01f,
+                  $"Speed reached {maxSpeedParam:0.##}; the pack's blend is built for walk 0.15 / run 1.0 / sprint 2.0");
+            Check("armedActuallyMoved", travelled > 2f, $"hero travelled {travelled:0.##} m holding W with a gun");
+
+            Fact("FAIL_COUNT", _fails.Count);
+            AssertFails();
+        }
+
+        static bool HasParam(Animator a, string name)
+        {
+            foreach (var p in a.parameters) if (p.name == name) return true;
+            return false;
+        }
+
         static void AssertFails()
         {
             Debug.Log(_fails.Count == 0 ? "PLAYMODE RESULT=PASS" : "PLAYMODE RESULT=FAIL");

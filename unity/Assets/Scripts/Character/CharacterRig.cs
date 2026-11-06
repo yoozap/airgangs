@@ -291,9 +291,24 @@ namespace TbilisiFly.Character
         /// a separate "Speed" parameter (set by whatever drives the Idle/Walk/Run
         /// layer transitions); this only sets the 2D direction.
         // =====================================================================
+        // MoveX/MoveZ exist only on this project's own walk controller. With the
+        // purchased pack's CharacterController assigned instead (CoverShootHero),
+        // Animator.SetFloat on an absent parameter logs "Parameter 'MoveX' does
+        // not exist" WITH a stack trace, twice per frame — 28k lines in the
+        // first 40 MB of one play-mode log (2026-11-02). Check once per
+        // controller and skip.
+        RuntimeAnimatorController _walkParamsFor; bool _hasWalkParams;
         public void SetWalkDirection(Animator anim, float travelAngleRad, float paceFrac)
         {
             if (anim == null) return;
+            if (_walkParamsFor != anim.runtimeAnimatorController)
+            {
+                _walkParamsFor = anim.runtimeAnimatorController;
+                _hasWalkParams = false;
+                if (_walkParamsFor != null)
+                    foreach (var prm in anim.parameters) if (prm.name == "MoveX") { _hasWalkParams = true; break; }
+            }
+            if (!_hasWalkParams) return;
             float lateral = Mathf.Sin(travelAngleRad) * Mathf.Clamp01(paceFrac);
             float forward = Mathf.Cos(travelAngleRad) * Mathf.Clamp01(paceFrac);
             anim.SetFloat("MoveX", lateral); // +left, see CharacterRoster.WalkClip

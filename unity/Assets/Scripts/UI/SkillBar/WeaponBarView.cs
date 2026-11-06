@@ -133,6 +133,16 @@ namespace TbilisiFly.UI.SkillBar
             return true;
         }
 
+        /// <summary>Reflect a selection made OUTSIDE the bar (a pickup draws its
+        /// weapon — pickups.js:201 `w.select(slot)` — and Core/HeldWeapon.cs owns
+        /// that) without raising Drawn/Holstered back at the owner. -1 = bare
+        /// hands.</summary>
+        public void SyncIndex(int i)
+        {
+            Index = (i >= 0 && i < WeaponCategory.All.Length) ? i : -1;
+            for (int k = 0; k < _slotEls.Length; k++) _slotEls[k].EnableInClassList("sel", k == Index);
+        }
+
         /// <summary>skillbar.js:321-325 selectByCode — digits 1-8 only (8 categories).</summary>
         public bool SelectByDigit(int digit)
         {

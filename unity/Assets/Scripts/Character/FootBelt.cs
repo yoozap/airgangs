@@ -920,7 +920,7 @@ namespace TbilisiFly.Character
                 var torso = TorsoTest(smr, mode);
 
                 var baked = new Mesh();
-                smr.BakeMesh(baked, true);
+                smr.BakeMesh(baked, true) /* MEASURED 2026-11-02 (GunHandRun BODY_bake on the x88 rig): useScale=true + localToWorldMatrix = 1.12x1.62x1.09 m, the real posed body; useScale=false here is NOT "local" — it came out 99 m. Keep true. */;
                 var verts = baked.vertices;
                 var worldM = smr.transform.localToWorldMatrix;
 
@@ -1151,7 +1151,7 @@ namespace TbilisiFly.Character
                 if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
                 {
                     owned = new Mesh();
-                    smr.BakeMesh(owned, true);
+                    smr.BakeMesh(owned, true) /* MEASURED 2026-11-02 (GunHandRun BODY_bake on the x88 rig): useScale=true + localToWorldMatrix = 1.12x1.62x1.09 m, the real posed body; useScale=false here is NOT "local" — it came out 99 m. Keep true. */;
                     verts = owned.vertices;
                     indices = AllTriangles(owned);
                     var m = smr.transform.localToWorldMatrix;
@@ -1230,7 +1230,7 @@ namespace TbilisiFly.Character
                 if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
                 {
                     owned = new Mesh();
-                    smr.BakeMesh(owned, true);
+                    smr.BakeMesh(owned, true) /* MEASURED 2026-11-02 (GunHandRun BODY_bake on the x88 rig): useScale=true + localToWorldMatrix = 1.12x1.62x1.09 m, the real posed body; useScale=false here is NOT "local" — it came out 99 m. Keep true. */;
                     verts = owned.vertices;
                 }
                 else if (r.TryGetComponent<MeshFilter>(out var mf) && mf.sharedMesh != null)
@@ -1302,7 +1302,7 @@ namespace TbilisiFly.Character
                     if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
                     {
                         owned = new Mesh();
-                        smr.BakeMesh(owned, true); // foot.js:2069 `applyBoneTransform` == current posed local position
+                        smr.BakeMesh(owned, true) /* MEASURED 2026-11-02 (GunHandRun BODY_bake on the x88 rig): useScale=true + localToWorldMatrix = 1.12x1.62x1.09 m, the real posed body; useScale=false here is NOT "local" — it came out 99 m. Keep true. */; // foot.js:2069 `applyBoneTransform` == current posed local position
                         verts = owned.vertices;
                         bw = smr.sharedMesh.boneWeights;
                         var bones = smr.bones;

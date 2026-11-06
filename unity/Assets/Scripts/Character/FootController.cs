@@ -52,6 +52,20 @@ namespace TbilisiFly.Character
         const float JumpV = 6.0f;
         const float JumpRun = 0.25f;
         const float AirIn = 0.09f;
+        // A GROUND BLIP IS NOT A JUMP (user, 2026-11-06: "when i click w, i have
+        // blink jump sometimes"). ProbeGround calls the hero airborne the moment
+        // the ground under him drops more than the 0.25 m step window — which a
+        // granite kerb, a stair nose, a chunk seam or a kerb-to-road step all do
+        // while simply running forward. He is back inside the window within
+        // ~0.07 s, but the purchased midair clip pops in over a 0.12 s blend and
+        // the procedural air pose ramps in over AIR_IN (0.09 s), so the run
+        // flashed a jump. The JS never showed this because it had no air CLIP at
+        // all — the pop is the parkour pack's, not foot.js's.
+        // So: an UNCOMMANDED air pose waits out this grace. A commanded one —
+        // Space, a wall leap, a drop off a real edge — sets _air/_airClipOwns at
+        // the launch and is never delayed by a frame.
+        const float AirClipGrace = 0.22f;   // s off the ground before an uncommanded air pose
+        const float AirClipDrop = 0.5f;     // m already fallen that proves it anyway
         const float AirOut = 0.22f;
         const float AirLean = 0.3f;
         const float LandDip = 0.55f;
@@ -135,6 +149,7 @@ namespace TbilisiFly.Character
         float _coverW;   // src/foot.js `this._coverW` — eased 0..1 of how far behind the wall the body is
         float _aimTwist; // src/foot.js `this._aimTwist` — eased chest blade toward a held weapon's aim
         float _coyote, _jumpBuf; bool _jumpWas;
+        float _airT;      // seconds continuously off the ground (0 while grounded)
         bool _strafing; float _moveYaw;
         float? _fallFrom;
         float? _gY;
@@ -254,6 +269,18 @@ namespace TbilisiFly.Character
         // are this file's own bookkeeping for WHICH move currently has it.
         // =====================================================================
         public readonly ParkourClipPlayer Clips = new ParkourClipPlayer();
+        /// <summary>Diagnostics for Tests/PlayMode/ParkourRun.E_StopStartRun —
+        /// which pose system owned the body this frame.</summary>
+        public bool LocoOwns, ClipOwnsBody;
+        /// <summary>Diagnostics: the momentum estimators and crouch blend that
+        /// drive the body's lean/dip — Tests/PlayMode/ParkourRun reads them to
+        /// attribute a vertical pop to its writer.</summary>
+        public float AccelEstimateDiag => _accV;
+        public float TurnEstimateDiag => _turnV;
+        public float CrouchBlendDiag => _crouchT;
+        /// <summary>Seconds the body is still "planted" after a landing or the
+        /// pack's stop clip (0 = free).</summary>
+        public float LandLock => _landLock;
         bool _rollClipOwns;
         string _climbClipPhase; // null | "hang" | "pull" | "mantle" — mirrors Climb.Phase while a clip is live
         bool _letGoPending;     // C pressed while hanging — consumed by the next Climb.Tick call
@@ -301,24 +328,61 @@ namespace TbilisiFly.Character
         sealed class LyingState { public float T; public bool Kipup; }
         LyingState _lying;
 
-        void PlayMove(CharacterRig rig, ParkourMoves.Move mv, bool? loop = null, float? blend = null)
+        void PlayMove(CharacterRig rig, ParkourMoves.Move mv, bool? loop = null, float? blend = null, float startTime = 0f)
         {
             if (mv == null || rig?.Anim == null) return;
             var clip = ParkourClipLibrary.Get(mv.Clip);
             if (clip == null) { Debug.LogWarning($"PARKOUR missing clip {mv.Clip}"); return; }
-            Clips.Play(rig.Anim, clip, loop ?? mv.Loop, blend ?? mv.Blend);
+            Clips.Play(rig.Anim, clip, loop ?? mv.Loop, blend ?? mv.Blend, startTime);
             LastMove = mv.Name; LastMoveClip = clip.name;
             OnParkourMove?.Invoke(mv.Name, clip.name);
             Debug.Log($"PARKOUR_MOVE move={mv.Name} clip={clip.name} cat={mv.Cat}");
+        }
+
+        /// <summary>Hand the chosen vault/mantle clip's baked root motion to
+        /// FootClimb, so the body travels the arc the animator authored instead
+        /// of our hand-tuned lerp (2026-11-06 — FootClimb.UseTrack has the why).
+        /// A held hang refuses it there; so does a move with no baked track,
+        /// and both simply keep the old path.</summary>
+        void UseClipMotion()
+        {
+            if (_pendingClimbClip == null) return;
+            Climb.UseTrack(ParkourRootTracks.Get(_pendingClimbClip.Clip));
         }
 
         /// <summary>A launch: the air integration below flies it (gravity,
         /// landing, the midair clip), exactly like a jump.</summary>
         void Launch(ParkourMoves.Move mv)
         {
+            // THE PACK'S OWN REACH, not ours (2026-11-06, user: "we are using
+            // our parkour asset... make same for all our personages, i mean
+            // physic"). `Move.Arc` was hand-written; the clip the move plays
+            // knows exactly how high and how far the animator threw the body,
+            // and ParkourRootTracks has it baked off the root-motion twin.
+            //
+            // The launch must REPRODUCE THE CLIP'S REACH under our gravity, not
+            // copy its instantaneous velocity: the animator lifts the root along
+            // an authored curve (wall-plant-front-to-up-jump rises 1.237 m at a
+            // near-constant 3.7 m/s), so handing 3.7 m/s to a ballistic
+            // integrator would reach 0.37 m. Match the APEX instead
+            // (v = sqrt(2·g·rise)) and the clip's own average ground speed.
+            //
+            // The yaw stays `Arc.z`: it is not the clip's own turn but the frame
+            // mapping between our wall-plant yaw (set facing INTO the wall by
+            // StartWallPlant) and the clip's start frame (the character's run-up
+            // direction along the wall), which differs per plant variant.
+            float fwd = mv.Arc.x, up = mv.Arc.y;
+            var tr = ParkourRootTracks.Get(mv.Clip);
+            if (tr != null && tr.Len > 1e-3f)
+            {
+                float rise = Mathf.Max(tr.Peak, tr.Net.y);
+                if (rise > 0.02f) up = Mathf.Sqrt(2f * Gravity * rise);
+                if (tr.Path > 0.02f) fwd = (mv.Arc.x < 0f ? -1f : 1f) * (tr.Path / tr.Len);
+                Debug.Log($"PARKOUR_LAUNCH move={mv.Name} fwd={fwd:F2} up={up:F2} wasFwd={mv.Arc.x:F2} wasUp={mv.Arc.y:F2} rise={rise:F2} src=track");
+            }
             if (Mathf.Abs(mv.Arc.z) > 1e-4f) { Yaw = Wrap(Yaw + mv.Arc.z); CamYaw = Yaw + LookYaw; _yawWas = Yaw; }
-            Speed = mv.Arc.x;
-            Vy = mv.Arc.y; _jumpV = Mathf.Max(1f, mv.Arc.y);
+            Speed = fwd;
+            Vy = up; _jumpV = Mathf.Max(1f, up);
             Grounded = false; _coyote = 0f; _jumpBuf = 0f; _air = null; _fallFrom = Pos.y;
             _airClipOwns = true;
         }
@@ -502,7 +566,7 @@ namespace TbilisiFly.Character
             // counterpart here — FootController has no landing-dip timer field
             // (the dip is read from AirState's own W in Update), so there is
             // nothing to reset and inventing one would be fiction.
-            _fallFrom = null; _coyote = 0f; _jumpBuf = 0f;
+            _fallFrom = null; _coyote = 0f; _jumpBuf = 0f; _airT = 0f;
             Grounded = true; Speed = 0f; Vy = 0f;
             AimOverride = null;
             Cover.Leave("silent");
@@ -1156,6 +1220,7 @@ namespace TbilisiFly.Character
                     _pendingClimbClip = (!Climb.Hold && thin)
                         ? ParkourMoves.PickVault(ahead, Mathf.Abs(Speed), m.Sprint)
                         : ParkourMoves.PickMantle(h, Mathf.Abs(Speed), m.Sprint, m.Z < 0f);
+                    UseClipMotion();
                 }
                 else if (_jumpBuf > 0f && _roll == null && _slide == null
                     && FootClimb.CanStart(true, Crouched, Cover.Active, _flip != null)
@@ -1167,6 +1232,7 @@ namespace TbilisiFly.Character
                     _pendingClimbClip = (!Climb.Hold && thin2)
                         ? ParkourMoves.PickVault(o2, Mathf.Abs(Speed), m.Sprint)
                         : ParkourMoves.PickMantle(o2.Hit ? o2.Height : Climb.High * 2.6f, Mathf.Abs(Speed), m.Sprint, m.Z < 0f);
+                    UseClipMotion();
                 }
                 else if (freeRun && climbable && probed && ahead.Hit && ahead.Wall && ahead.Dist < (Grounded ? 1.05f : 0.8f)
                          && (Grounded ? Mathf.Abs(Speed) > 3.5f : Vy < 3f))
@@ -1198,7 +1264,19 @@ namespace TbilisiFly.Character
                 // and ParkourClipPlayer's header for why HandsOnLedge/
                 // PlantFoot/BodyPivot all keep working unchanged either way.
                 string phase = Climb.Phase;
-                if (phase == "reach")
+                if (phase == "clip")
+                {
+                    // the track-driven vault/mantle: ONE clip spans the move,
+                    // entered where the body meets the obstacle (the pack's
+                    // clips open with a run-up we are already past) and left to
+                    // run the window's own length
+                    if (_climbClipPhase != "clip")
+                    {
+                        if (_pendingClimbClip != null) PlayMove(rig, _pendingClimbClip, startTime: Climb.TrackStartTime);
+                        _climbClipPhase = "clip";
+                    }
+                }
+                else if (phase == "reach")
                 {
                     if (_climbClipPhase != "reach")
                     {
@@ -1239,7 +1317,11 @@ namespace TbilisiFly.Character
                 }
                 Climb.ReachClipActive = Clips.IsPlaying && _climbClipPhase == "reach";
                 Climb.HangClipActive = Clips.IsPlaying && (_climbClipPhase == "hang" || _climbClipPhase == "switch");
-                Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle");
+                // "clip" is the track-driven whole-move phase (FootClimb.UseTrack):
+                // the purchased clip owns the body for all of it, so the
+                // procedural pull/mantle pose writers must stand down exactly as
+                // they do for the two hand-driven phases.
+                Climb.MantleClipActive = Clips.IsPlaying && (_climbClipPhase == "pull" || _climbClipPhase == "mantle" || _climbClipPhase == "clip");
 
                 // src/foot.js:5282 — C lets go of a hang; see ToggleCrouch's
                 // own note on why this is latched rather than read directly.
@@ -1248,15 +1330,22 @@ namespace TbilisiFly.Character
                 if (exit != null)
                 {
                     bool wasVault = !Climb.Hold;
+                    // read BEFORE EndClimb — it clears the climb state. Zero
+                    // unless the move ran on the pack's own motion.
+                    float trackExit = Climb.TrackExitSpeed;
                     var (grounded, pushOff) = Climb.EndClimb(rig, exit, ref Pos);
-                    if (exit == "done") { Speed = 0f; Vy = 0f; Grounded = true; }
+                    // THE RUN-OUT IS THE ANIMATOR'S TOO (2026-11-06): the pack's
+                    // mantles are `...-run-to-run` / `...-sprint-to-sprint` — the
+                    // character leaves the obstacle still moving, at a speed the
+                    // clip itself carries. Stopping dead on `done` was ours.
+                    if (exit == "done") { Speed = trackExit > 0.2f ? trackExit : 0f; Vy = 0f; Grounded = true; }
                     else if (exit == "letgo") { Grounded = false; Vy = 0f; _fallFrom = Pos.y; }
                     if (exit == "done" && wasVault && _pendingClimbClip != null && _pendingClimbClip.Cat == "vault")
                     {
                         // a VAULT goes OVER the obstacle: the climb put the body on
                         // its top, so carry the run off the far side (the clip is
                         // still playing — it is the vault's own second half)
-                        Speed = Mathf.Max(4.5f, _speedWas); Vy = 1.6f; Grounded = false; _coyote = 0f; _fallFrom = Pos.y; _air = null;
+                        Speed = Mathf.Max(trackExit > 0.2f ? trackExit : 4.5f, _speedWas); Vy = 1.6f; Grounded = false; _coyote = 0f; _fallFrom = Pos.y; _air = null;
                     }
                     // THE LEAN-SPRING / AK BUG FIX — src/foot.js:5062-5066. Must
                     // run the SAME frame EndClimb does, before anything below
@@ -1523,8 +1612,23 @@ namespace TbilisiFly.Character
             // it uses different parameter names.
             if (rig.Anim != null)
             {
-                if (HasParam(rig.Anim, "Speed")) rig.Anim.SetFloat("Speed", pace);
+                // THE PACK'S OWN SPEED SCALE (2026-11-06, user: "now my
+                // shooting asset not works ... i need very realistic run with
+                // gun"). The only AnimatorController on the hero is the
+                // purchased Cover+Shoot one, and its locomotion blend is built
+                // on the pack's units — MoveBehaviour feeds it
+                // `|input| * speedSeeker` where walk = 0.15, run = 1.0 and a
+                // sprint = 2.0. We were handing it metres per second (up to
+                // 10.4), which pins the blend at its top node: an armed hero
+                // sprint-animated no matter how slowly he was actually moving.
+                // RunSpeed maps to the pack's 1.0 so a walk, a run and a sprint
+                // each land on the node the animator built for them.
+                float packSpeed = Mathf.Clamp(Mathf.Abs(pace) / Mathf.Max(0.01f, RunSpeed), 0f, 2f);
+                if (HasParam(rig.Anim, "Speed")) rig.Anim.SetFloat("Speed", packSpeed);
                 if (HasParam(rig.Anim, "Grounded")) rig.Anim.SetBool("Grounded", Grounded);
+                // While a gun is out the pack drives the body; our graph must
+                // stand down when it has nothing of its own to play.
+                Clips.ReleaseWhenIdle = Armed;
             }
 
             // ---- strafe leg-twist for a non-walk gait (src/foot.js:6032-6057) ----
@@ -1592,6 +1696,7 @@ namespace TbilisiFly.Character
                 if (!locoOwns && Clips.LocoClip != null) { Clips.StopLoco(); _lastLocoName = null; }
             }
             bool clipOwnsBody = locoOwns || (!Armed && Clips.IsPlaying);
+            LocoOwns = locoOwns; ClipOwnsBody = clipOwnsBody;
 
             rig.Locomote(dt, (_roll != null || _slide != null || (_air != null && !Grounded) || walkEligible || clipOwnsBody) ? 0f : (turningInPlace ? 1.1f : Speed), RunSpeed);
 
@@ -1604,7 +1709,10 @@ namespace TbilisiFly.Character
 
             // ---- the air: the purchased clips own it (jump start, then the
             // parkour midair loops by fall speed); AirPose stands down ----
-            if (!Grounded && !Armed && _flip == null && _roll == null && _slide == null && _dive == null && !Climb.Active)
+            _airT = Grounded ? 0f : _airT + dt;
+            bool airReal = _airClipOwns || _air != null || _airT >= AirClipGrace
+                           || (_fallFrom.HasValue && _fallFrom.Value - Pos.y > AirClipDrop);
+            if (!Grounded && airReal && !Armed && _flip == null && _roll == null && _slide == null && _dive == null && !Climb.Active)
             {
                 if (!Clips.IsPlaying || (_airClipOwns && Vy < -2.5f && Clips.CurrentClip != null && Clips.CurrentClip.StartsWith("IP-midair") == false && !Clips.CurrentClip.Contains("drop") && !Clips.CurrentClip.Contains("leap") && !Clips.CurrentClip.Contains("backflip") && !Clips.CurrentClip.Contains("jump")))
                 {
@@ -1627,6 +1735,7 @@ namespace TbilisiFly.Character
             else if (_slide != null) SlidePose(rig, _slide.Blend, _slide.Side, 0f);
             else if (_dive != null) DivePose(rig);
             else if (_airClipOwns && !Grounded) { rig.ActGroup.localRotation = Quaternion.identity; }
+            else if (!Grounded && !airReal) { /* a ground blip: the run keeps running */ }
             else AirPose(rig, dt);
 
             // ---- momentum estimators + body lean/arm swing (src/foot.js:6110-6217) ----
@@ -1669,7 +1778,7 @@ namespace TbilisiFly.Character
             {
                 Speed = Speed, RunSpeed = RunSpeed, Turn = _turnV, Accel = _accV, Stroll = _strollT,
                 Crouch = _crouchT,
-                Blend = (_roll != null || _slide != null || _dive != null || Climb.Active || !Grounded || _coverW > 0.5f || clipOwnsBody) ? 0f : 1f,
+                Blend = (_roll != null || _slide != null || _dive != null || Climb.Active || (!Grounded && airReal) || _coverW > 0.5f || clipOwnsBody) ? 0f : 1f,
                 Lean = leanP, Bank = leanR,
                 ChestPitch = chestPitch, HeadYaw = headYaw, ChestYaw = chestYaw,
                 GunTwist = gunTwist, GunDip = gunDip, GunPitch = gunPitch,
@@ -1788,6 +1897,17 @@ namespace TbilisiFly.Character
         /// weapon's own aim-down-sights is active. Null-safe (false default),
         /// same hook-wiring pattern as <see cref="AimDirProvider"/>.</summary>
         public Func<bool> AimingProvider;
+        /// <summary>A cover wall owned by something other than <see cref="Cover"/>
+        /// (the purchased pack's CoverBehaviour, via Core/GameLoop.StageOnFootPurchased):
+        /// the chase camera keeps <see cref="FootCover.CoverCamWall"/> off its face
+        /// exactly as it does for the JS cover state (src/foot.js:5120-5127).</summary>
+        public (Vector3 Base, Vector3 N, float Off)? ExternalCoverPlane;
+        /// <summary>Widest horizontal extent of the body in metres (CharacterRig.Aspect ×
+        /// BodyHeight), set by GameLoop.SpawnBody. The chase camera's over-the-shoulder
+        /// offsets (foot.js) were tuned for a ~0.4 m-wide human; a 0.9 m fruit at the
+        /// same offsets fills the frame and hides the crosshair side (GunHandRun shot
+        /// 02_ak_aim, 2026-11-02). 0 = unknown, use the stock numbers.</summary>
+        public float BodyWidth;
         /// <summary>src/foot.js:5107 `g.settings?.state?.side === 'left' ? -1 : 1`
         /// — which shoulder the camera favours. Null-safe (right/+1 default),
         /// same convention as FootCover's own <c>GunSideProvider</c>.</summary>
@@ -1820,10 +1940,14 @@ namespace TbilisiFly.Character
         /// held out wider while merely armed, or a slow breathing arc while
         /// bare-handed. Pure; `internal` for FootFinalProbe.cs, same
         /// precedent as <see cref="DirYawFromCamRef"/>.</summary>
-        internal static Vector3 ChaseCameraLocalOffset(bool aiming, bool armed, int sideSign, float pitch)
+        internal static Vector3 ChaseCameraLocalOffset(bool aiming, bool armed, int sideSign, float pitch, float bodyWidth = 0f)
         {
-            if (aiming) return new Vector3(0.58f * sideSign, 1.60f, 2.0f);
-            if (armed) return new Vector3(0.8f * sideSign, 2.0f, 5.6f);
+            // Wide bodies: the shoulder offset must clear the body's own half-width
+            // by the same margin the stock numbers give a 0.4 m human (0.58 - 0.2).
+            float half = Mathf.Max(0.2f, bodyWidth * 0.5f);
+            float extra = Mathf.Max(0f, half - 0.2f);
+            if (aiming) return new Vector3((0.58f + extra) * sideSign, 1.60f + 0.3f * extra, 2.0f + 0.8f * extra);
+            if (armed) return new Vector3((0.8f + extra) * sideSign, 2.0f, 5.6f);
             return new Vector3(0f, 2.6f + 3.5f * Mathf.Sin(Mathf.Max(0f, pitch)), 6.2f);
         }
 
@@ -1865,18 +1989,19 @@ namespace TbilisiFly.Character
             int sideSign = peeking ? -cs.Side : (HandSideProvider?.Invoke() ?? 1);
             Quaternion rot = Quaternion.AngleAxis(baseYaw * Mathf.Rad2Deg, Vector3.up);
             bool armed = Armed;
-            Vector3 localOff = ChaseCameraLocalOffset(aiming, armed, sideSign, pitch);
+            Vector3 localOff = ChaseCameraLocalOffset(aiming, armed, sideSign, pitch, BodyWidth);
             Vector3 off = rot * localOff;
             float low = Mathf.Max(_crouchT, _slide?.Blend ?? 0f);
             off.y += ChaseCameraDrop(_crouchT, _slide?.Blend ?? 0f);
             Vector3 camTarget = Pos + off;
-            if (cs != null)
+            (Vector3 Base, Vector3 N, float Off)? plane = cs != null ? (cs.Base, cs.N, cs.Off) : ExternalCoverPlane;
+            if (plane.HasValue)
             {
-                float d = Vector3.Dot(camTarget - cs.Base, cs.N) + cs.Off;
+                float d = Vector3.Dot(camTarget - plane.Value.Base, plane.Value.N) + plane.Value.Off;
                 if (d < FootCover.CoverCamWall)
                 {
                     float push = FootCover.CoverCamWall - d;
-                    camTarget += cs.N * push;
+                    camTarget += plane.Value.N * push;
                     float k = Mathf.Clamp(push / Mathf.Max(1e-5f, off.magnitude), 0f, 0.7f);
                     camTarget.y += 0.3f * k;
                 }

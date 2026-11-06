@@ -67,7 +67,7 @@ namespace TbilisiFly.Core
     // Not fixed here: reconciling FootWeapons.cs's model with Pickups.IHost's
     // is a Character/-owning decision, out of this file's reach.
     // =========================================================================
-    public sealed class HeldWeapon : Pickups.IHost, ITickable
+    public sealed class HeldWeapon : Pickups.IHost, ITickable, FootBelt.IHolsterHost
     {
         readonly GameLoop _game;
         readonly Transform _sceneRoot;
@@ -91,7 +91,172 @@ namespace TbilisiFly.Core
         public TbilisiFly.UI.Combat.ReticleView ReticleUi;
         readonly Dictionary<int, (WeaponDef def, Transform obj)> _carried = new Dictionary<int, (WeaponDef, Transform)>();
         Transform _beltObj;
-        GearDef _wornGearDef; // SetWornGear used to drop `def` on the floor — needed for Core/GameLoop.cs's snapshot()/_loadout() port (game.js:1015-1025)
+        GearDef _wornGearDef;
+
+        // ---- the JS stow/draw model, wired 2026-11-02 ----------------------
+        // Character/FootWeapons.cs (src/foot.js:2125-3051: belt holster, back
+        // sling, draw/holster) and Character/FootBelt.cs (the strap fitted and
+        // skinned onto the body) were both finished, probe-verified and NEVER
+        // INSTANTIATED — the skill file's "inert verified code" class. This
+        // file owns the ARMS (the pistol/aim poses in Tick below); FootWeapons
+        // runs with Active=false so it only ever REPARENTS the gun objects
+        // (instant draw/stow, no animated reach), which is what keeps the two
+        // orchestrators the skill warns about from driving the same bones.
+        FootBelt _footBelt;
+        FootBeltBridge _beltBridge;
+        FootWeapons _fw;
+        CharacterRig _fwRig;                   // the rig the above were built for; a body swap rebuilds them
+        GameObject _beltInstance;
+        readonly Dictionary<Transform, CarriedWeapon> _cwCache = new Dictionary<Transform, CarriedWeapon>();
+
+        // ---- the purchased pack as the shooter (2026-11-02) ----------------
+        // Under UsePurchasedShooter the pack's ShootBehaviour owns the hand:
+        // a taken gun becomes one of ITS InteractiveWeapons (CoverShootPickups.
+        // SpawnBridge), and the belt/back stow below only ever REPARENTS the
+        // pack's object when ShootBehaviour.ChangeWeapon asks via StowHook/
+        // DrawHook. _packDefs maps each pack weapon back to our WeaponDef
+        // (rifle-or-pistol decides belt vs back; Slot decides the bar column).
+        readonly Dictionary<InteractiveWeapon, WeaponDef> _packDefs = new Dictionary<InteractiveWeapon, WeaponDef>();
+        static string PackSpecFor(WeaponDef def) => WeaponDefs.IsRifle(def) ? "ak" : "pistol";
+        static int PackSlotFor(WeaponDef def) => WeaponDefs.IsRifle(def) ? 2 : 1;   // ShootBehaviour.slotMap: SHORT=1, LONG=2
+
+        /// <summary>ShootBehaviour.StowHook — park the weapon leaving the hand on
+        /// the belt (pistol) or the back (rifle). false = "no socket here", and
+        /// the pack hides it the stock way.</summary>
+        public bool StowPack(InteractiveWeapon iw)
+        {
+            if (_fw == null || _game.Rig == null || iw == null || !_packDefs.TryGetValue(iw, out var def)) return false;
+            var cw = CW(def, iw.transform);
+            if (_fw.Held == cw) _fw.Held = null;
+            bool ok = WeaponDefs.IsRifle(def) ? _fw.ToBack(_game.Rig, cw) : _fw.ToHolster(_game.Rig);
+            if (!ok) return false;
+            // The pack's weapon models are authored 1:1 in world metres. The
+            // JS stow scales by `Def.Scale / socket.lossyScale`, which is right
+            // for OUR loot models and wrong for these — GunHandRun measured the
+            // stowed AK at lossyScale 0.011 (1 cm, "no gun on my body"). Pin
+            // the world scale explicitly, whatever the socket's scale chain is.
+            EnforceWorldScale(iw.transform, Vector3.one);
+            foreach (var r in iw.GetComponentsInChildren<Renderer>(true)) r.enabled = true;
+            Debug.Log($"PACK_STOW weapon={iw.label} parent={(iw.transform.parent != null ? iw.transform.parent.name : "<none>")} worldScale={iw.transform.lossyScale.ToString("F3")} distRoot={Vector3.Distance(iw.transform.position, _game.Rig.Root.position):F2}");
+            PushOutsideBody(iw);
+            FallbackStow();
+            if (CoverShootHero.Instance?.Shoot?.ActiveWeapon == null) _game.WeaponBar?.SyncIndex(-1);
+            return true;
+        }
+
+        /// <summary>A stowed pack weapon must sit OUTSIDE the body. The JS sockets put
+        /// a slung rifle 2 cm INTO a slim back and a pistol in a pocket against the
+        /// hip — on a 1.1 m-wide fruit that leaves the gun half-buried
+        /// (GunHandRun 04/06: rifle at the back's surface, invisible). Measure the
+        /// body's section at the gun's height (FootBelt.BodySection, body verts) and
+        /// slide the gun radially until its own bounds clear that radius.</summary>
+        void PushOutsideBody(InteractiveWeapon iw)
+        {
+            if (iw == null || _beltBridge == null || _game.Rig == null) return;
+            var rs = iw.GetComponentsInChildren<Renderer>(true);
+            if (rs.Length == 0) return;
+            Bounds b = rs[0].bounds; for (int i = 1; i < rs.Length; i++) b.Encapsulate(rs[i].bounds);
+            // a section at the gun's height; a pistol on the hip sits below the fruit's
+            // waist, so walk upward until the body has one
+            TbilisiFly.Character.BodySection? sec = null; float y = b.center.y;
+            for (int k = 0; k < 6 && !sec.HasValue; k++) sec = _beltBridge.BodySectionAt(_game.Rig, y + 0.08f * k);
+            if (!sec.HasValue) { Debug.Log($"PACK_STOW_FIT weapon={iw.label} bodySection=<none>"); return; }
+            // A rifle on the back goes straight BACK (its lateral offset is the
+            // sling's business); a pistol on the hip goes radially out.
+            bool rifle = _packDefs.TryGetValue(iw, out var pdef) && WeaponDefs.IsRifle(pdef);
+            Vector3 d = b.center - sec.Value.C; d.y = 0f;
+            // the hero faces root-local -Z, so its BACK is +Root.forward (FootWeapons.BackSocket's note)
+            Vector3 dir = rifle ? _game.Rig.Root.forward : (d.sqrMagnitude > 1e-6f ? d.normalized : _game.Rig.Root.forward);
+            dir.y = 0f; dir.Normalize();
+            float dist = Vector3.Dot(d, dir);                       // how far out along the push axis it already is
+            // Clearance is a CONSTANT, not a measured extent: GunHandRun round 7 read the
+            // slung rifle's LENGTH as its "thickness" (0.36 m), pushed it 0.9 m and parked
+            // it inside the hangar wall behind the bench — in frustum, renderers on, and
+            // exactly 0 pixels drawn. A rifle slung across the back has its centre about
+            // 0.12 m behind the skin; a pistol in a hip pocket about 0.08 m out.
+            float half = rifle ? 0.12f : 0.08f;
+            float need = sec.Value.R + half;
+            float push = need - dist;
+            if (push > 0f) iw.transform.position += dir * push;
+            Debug.Log($"PACK_STOW_FIT weapon={iw.label} rifle={rifle.ToString().ToLowerInvariant()} bodyR={sec.Value.R:F3} alongBefore={dist:F3} half={half:F3} push={Mathf.Max(0f, push):F3} alongAfter={(dist + Mathf.Max(0f, push)):F3}");
+        }
+
+        static void EnforceWorldScale(Transform t, Vector3 world)
+        {
+            if (t == null) return;
+            Vector3 p = t.parent != null ? t.parent.lossyScale : Vector3.one;
+            t.localScale = new Vector3(
+                Mathf.Abs(p.x) > 1e-6f ? world.x / p.x : 1f,
+                Mathf.Abs(p.y) > 1e-6f ? world.y / p.y : 1f,
+                Mathf.Abs(p.z) > 1e-6f ? world.z / p.z : 1f);
+        }
+
+        /// <summary>ShootBehaviour.DrawHook — the weapon is going back to the
+        /// hand: let the stow release it and mark it held.</summary>
+        public void DrawPack(InteractiveWeapon iw)
+        {
+            if (iw == null || !_packDefs.TryGetValue(iw, out var def)) return;
+            if (_fw != null)
+            {
+                var cw = CW(def, iw.transform);
+                _fw.FromBack(cw); _fw.FromHolster(cw);
+                _fw.Held = cw;
+            }
+            foreach (var r in iw.GetComponentsInChildren<Renderer>(true)) r.enabled = true;
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "PACK_DRAW weapon={0} slot={1} parent={2}", iw.label, def.Slot, iw.transform.parent != null ? iw.transform.parent.name : "<none>");
+            _game.WeaponBar?.SyncIndex(def.Slot);
+        }
+
+        /// <summary>One stable FootWeapons.CarriedWeapon per weapon object —
+        /// its _holstered/_onBack lists compare by reference.</summary>
+        CarriedWeapon CW(WeaponDef def, Transform obj)
+        {
+            if (obj == null) return null;
+            if (!_cwCache.TryGetValue(obj, out var cw))
+            {
+                cw = new CarriedWeapon { Def = def, Obj = obj, Anim = WeaponAnimLoader.GunPartsFor(obj, def) };
+                _cwCache[obj] = cw;
+            }
+            cw.Def = def;
+            return cw;
+        }
+
+        IEnumerable<CarriedWeapon> AllCarried()
+        {
+            foreach (var kv in _carried)
+                if (kv.Value.def != null && kv.Value.obj != null) yield return CW(kv.Value.def, kv.Value.obj);
+        }
+
+        /// <summary>Anything owned-but-not-held that neither the belt nor the back
+        /// could take (no socket on this body) must not be left standing in the
+        /// world where the stow dropped it: park it on the root, hidden. The JS
+        /// had the same hole ("put a pistol away into thin air") and solved it by
+        /// making the belt standard issue; this is the backstop for a body whose
+        /// Animator has no Chest/Spine for the back socket.</summary>
+        void FallbackStow()
+        {
+            if (_game.Rig == null) return;
+            foreach (var cw in AllCarried())
+            {
+                if (_fw != null && cw == _fw.Held) continue;
+                if (cw.Obj.parent != null) continue;
+                cw.Obj.SetParent(_game.Rig.Root, false);
+                cw.Obj.localPosition = Vector3.zero;
+                foreach (var r in cw.Obj.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+                Debug.LogWarning($"PICKUP_STOW_FALLBACK {cw.Id}: no belt/back socket on {_game.Rig.Id} — parked hidden on the root");
+            }
+        }
+
+        // ---- FootBelt.IHolsterHost --------------------------------------------
+        public IEnumerable<Transform> HolsteredIn(WornGear gear)
+        {
+            if (gear?.Sockets == null) yield break;
+            foreach (var cw in AllCarried())
+                if (cw.Obj.parent != null && gear.Sockets.Contains(cw.Obj.parent)) yield return cw.Obj;
+        }
+        public void TakeOffGear(Transform heldObject) { if (heldObject != null) heldObject.SetParent(null, true); }
+        public bool HasHeldWeapon() => _fw?.Held != null;
+        public void ToHolster() { if (_fw != null && _game.Rig != null) { _fw.ToHolster(_game.Rig); FallbackStow(); } } // SetWornGear used to drop `def` on the floor — needed for Core/GameLoop.cs's snapshot()/_loadout() port (game.js:1015-1025)
 
         // ---- GunAnim arms clips — one per kind, shared for the process's
         // lifetime, exactly as src/game.js:201 `this.gunAnims = {pistol:...,
@@ -192,15 +357,111 @@ namespace TbilisiFly.Core
         public void SetCarried(int slot, WeaponDef def, Transform obj)
         {
             _carried[slot] = (def, obj);
+
+            // THE PACK TAKES THE GUN (2026-11-02). The warehouse loot is a
+            // PickupTag FBX; the pack can only aim/shoot/reload one of its own
+            // InteractiveWeapons, in its own hand offsets. So: spawn the pack
+            // weapon of the same class, retire the loot model, and hand it to
+            // ShootBehaviour.AddWeapon (which draws it — the JS draws on
+            // pickup too, pickups.js:201). Two pistols share the pack's one
+            // SHORT slot: the second one just refills the first.
+            var shoot = GameLoop.UsePurchasedShooter ? CoverShootHero.Instance?.Shoot : null;
+            if (shoot != null && def != null && obj != null)
+            {
+              try
+              {
+                Debug.Log($"PICKUP_PACK_TRY def={def.Id} shootEnabled={shoot.enabled.ToString().ToLowerInvariant()} active={shoot.isActiveAndEnabled.ToString().ToLowerInvariant()} ready={shoot.Ready.ToString().ToLowerInvariant()}");
+                int packSlot = PackSlotFor(def);
+                var existing = shoot.WeaponInSlot(packSlot);
+                if (existing != null && _packDefs.ContainsKey(existing))
+                {
+                    existing.ResetBullets();
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                    _carried[slot] = (_packDefs[existing], existing.transform);
+                    shoot.SelectSlot(packSlot);
+                    Debug.Log($"PICKUP_PACK def={def.Id} refilled existing slot={packSlot}");
+                    return;
+                }
+                var iw = CoverShootPickups.SpawnBridge(PackSpecFor(def), def.Id + "_pack", obj.position);
+                if (iw != null)
+                {
+                    _packDefs[iw] = def;
+                    iw.PrepareForInventory();
+                    _cwCache.Remove(obj);
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                    _carried[slot] = (def, iw.transform);
+                    shoot.AddWeapon(iw);                       // → ChangeWeapon → DrawHook → bar index
+                    _game.WeaponBar?.SetCarried(def.Slot, new TbilisiFly.UI.SkillBar.CarriedWeapon { Name = def.Name });
+                    Debug.Log($"PICKUP_PACK def={def.Id} spec={PackSpecFor(def)} slot={packSlot} active={(shoot.ActiveWeapon == iw).ToString().ToLowerInvariant()}");
+                    return;
+                }
+                Debug.LogWarning($"PICKUP_PACK def={def.Id}: pack model missing — falling back to the JS hand attach");
+              }
+              catch (System.Exception e)
+              {
+                // The take must never die inside the pack: fall through to the
+                // JS attach so the gun is at least owned and in the hand.
+                Debug.LogError($"PICKUP_PACK def={def.Id} FAILED in the pack bridge — falling back to the JS hand attach: {e.GetType().Name}: {e.Message}\n{e.StackTrace}");
+              }
+            }
+            Transform handDiag = null;
             if (def != null && obj != null && _game.Rig != null)
             {
                 var hand = Weapons.FindHandBone(_game.Rig.Root);
+                handDiag = hand;
                 if (hand != null) Weapons.AttachToHand(hand, obj.gameObject, def, _game.Rig.Root);
+            }
+            // One line that names which link of the pickup chain failed, instead
+            // of inferring it from "the gun is not there".
+            Debug.Log($"PICKUP_TAKE slot={slot} def={def?.Id ?? "<null>"} rig={(_game.Rig != null).ToString().ToLowerInvariant()} "
+                + $"hand={(handDiag != null ? handDiag.name : "<NOT FOUND>")} obj={(obj != null ? obj.name : "<null>")} "
+                + $"bar={(_game.WeaponBar != null).ToString().ToLowerInvariant()} "
+                + $"objActive={(obj != null && obj.gameObject.activeInHierarchy).ToString().ToLowerInvariant()} "
+                + $"objWorld={(obj != null ? obj.position.ToString("F2") : "-")} "
+                + $"objScale={(obj != null ? obj.lossyScale.ToString("F3") : "-")}");
+
+            // PUSH IT TO THE ON-FOOT ACTION BAR (2026-11-02).
+            // WeaponBarView.SetCarried — the ONLY thing that fills a slot —
+            // had zero callers anywhere in the project, so the bar was built,
+            // added to the UI tree and (once its visibility was wired) shown
+            // completely EMPTY. The user reported it twice as "my skills not
+            // show" / "i dont see skills bar like in fucken js project".
+            // WeaponDef.Slot IS the index into WeaponCategory.All: the two
+            // pistols carry Slot = 1 (All[1] = "pistol") and the AKM carries
+            // Slot = 4 (All[4] = "rifle"), which is also why
+            // WeaponBarView.SelectByDigit does `i = digit - 1` — the toast's
+            // "(სლოტი 2)" is the DIGIT, one above the index.
+            // skillbar.js:330-346 setCarried is this same call.
+            _game.WeaponBar?.SetCarried(def != null ? def.Slot : slot,
+                def == null ? (TbilisiFly.UI.SkillBar.CarriedWeapon?)null
+                            : new TbilisiFly.UI.SkillBar.CarriedWeapon { Name = def.Name });
+
+            // A weapon put in a slot that is NOT the drawn one goes straight to
+            // the belt/back (pickups.js restore: "the belt finds the pistol
+            // already in its slot and the holster is filled on the way in").
+            // Pickups.Take() follows SetCarried with Select(slot), which draws
+            // it; anything else — a restored loadout, a second gun — stows.
+            if (def != null && obj != null && _fw != null && _game.Rig != null && slot != CurrentSlot)
+            {
+                var cw = CW(def, obj);
+                if (WeaponDefs.IsRifle(def)) _fw.ToBack(_game.Rig, cw); else _fw.ToHolster(_game.Rig);
+                FallbackStow();
             }
         }
 
         public void Select(int slot)
         {
+            if (GameLoop.UsePurchasedShooter)
+            {
+                // skillbar.js:309/312 by way of the pack: the bar's toggle is
+                // already resolved by WeaponBarView.Select (slot 0 = holster).
+                var d = CarriedInSlot(slot);
+                CurrentSlot = d != null ? slot : 0;
+                Gun.SetHeldCartridge(d?.CartridgeId);
+                CoverShootHero.Instance?.Shoot?.SelectSlot(d != null ? PackSlotFor(d) : 0);
+                _game.WeaponBar?.SyncIndex(d != null ? slot : -1);
+                return;
+            }
             var prevSlot = CurrentSlot;
             var prevDef = CarriedInSlot(prevSlot);
             var prevObj = CarriedObjInSlot(prevSlot);
@@ -221,6 +482,20 @@ namespace TbilisiFly.Core
             var def = CarriedInSlot(slot);
             if (def != null && !WeaponDefs.IsRifle(def))
                 ArmsFor(def)?.Play("draw", force: true, fade: 0.05f);
+
+            // src/skillbar.js:309/312 — the slot is a draw/holster TOGGLE on the
+            // weapon objects themselves: out of the holster or off the back and
+            // into the hand (foot.js:2434 drawWeapon), or back onto the belt /
+            // the back sling (foot.js:2491 holster). FootWeapons does exactly
+            // that; Active=false makes it the instant branch (see the field doc).
+            if (_fw != null && _game.Rig != null && !GameLoop.UsePurchasedShooter)
+            {
+                var obj = CarriedObjInSlot(slot);
+                if (def != null && obj != null) _fw.DrawWeapon(_game.Rig, CW(def, obj));
+                else _fw.Holster(_game.Rig);
+                FallbackStow();
+            }
+            _game.WeaponBar?.SyncIndex(def != null ? slot : -1);
         }
 
         public void SetWornGear(GearDef def, Transform obj) { _beltObj = obj; _wornGearDef = def; }
@@ -247,6 +522,7 @@ namespace TbilisiFly.Core
         public bool WearGear(GearDef def, Transform obj)
         {
             if (_game.Rig == null || def == null) return false;
+            if (def.Id == "belt") return WearBelt(def, obj);
             string want = def.Bone == "hips" ? "pelvis" : def.Bone; // 22-bone UE rig has no literal "hips"
             Transform bone = null;
             foreach (var t in _game.Rig.Root.GetComponentsInChildren<Transform>(true))
@@ -256,6 +532,63 @@ namespace TbilisiFly.Core
             bone ??= _game.Rig.Root; // honest degraded fallback — belt rides the root, not buried
             if (obj != null) { obj.SetParent(bone, false); obj.localPosition = Vector3.zero; }
             return true;
+        }
+
+        /// <summary>The belt is where a holstered pistol lives (game.js:159-161),
+        /// and FootBelt.WearGear needs the strap's OWN object to find its
+        /// `holster`/`holster2` sockets — it returns false on a null obj, which is
+        /// exactly what CombatWorldAdapter's "standard issue" wear passed, so no
+        /// hero ever had a socket. Load Art/Props/belt.fbx here (the same asset
+        /// src/weapons.js:87-118 describes), fit it with FootBelt, and stand up
+        /// the FootWeapons stow/draw model against it. Rebuilt on a body swap.</summary>
+        bool WearBelt(GearDef def, Transform obj)
+        {
+            var rig = _game.Rig;
+            if (_fwRig == rig && _fw != null) return true;
+            if (_beltInstance != null) UnityEngine.Object.Destroy(_beltInstance);
+            _cwCache.Clear();
+
+            Transform beltObj = obj;
+            if (beltObj == null)
+            {
+                var prefab = ArtAssets.Load<GameObject>("Assets/Resources/Art/Props/belt.fbx");
+                if (prefab == null)
+                {
+                    Debug.LogWarning("BELT: Assets/Resources/Art/Props/belt.fbx missing — a holstered pistol has nowhere to live");
+                    return false;
+                }
+                _beltInstance = UnityEngine.Object.Instantiate(prefab);
+                _beltInstance.name = "belt";
+                beltObj = _beltInstance.transform;
+            }
+            _beltObj = beltObj;
+
+            _footBelt = new FootBelt(rig, this);
+            _beltBridge = new FootBeltBridge(_footBelt, rig, def.HolsterScale > 0f ? def.HolsterScale : 0.54f);
+            _fw = new FootWeapons(_beltBridge, _sceneRoot)
+            {
+                Active = false,                      // instant draw/stow — this file keeps the arms
+                ModelId = rig.Id,
+                Cam = _game.MainCamera,
+                Cover = _game.Foot.Cover,
+                CarriedWeapons = AllCarried,
+                GunAnimSource = () => ArmsFor(CarriedInSlot(CurrentSlot)),
+                AimDirSource = () => _game.MainCamera != null ? (Vector3?)_game.MainCamera.transform.forward : null,
+                PistolAiming = () => Gun.Aiming,
+                SetPistolAiming = on => Gun.SetAiming(on),   // foot.js:2480 _aimOnDraw — "on click we are in aim mode"
+                SetReticleVisible = _ => { },                // Tick() already drives ReticleUi off `held`
+            };
+            _fwRig = rig;
+            _game.Foot.Weapons = _fw;                        // FootController reads IsRifleHeld/Held/IsStowing off this
+
+            bool ok = _footBelt.WearGear(def.Id, beltObj, def.Sockets, def.Fit, def.Width, def.Back);
+            var worn = _footBelt.HolsterSocket;
+            Debug.Log($"BELT worn={ok.ToString().ToLowerInvariant()} sockets={(worn?.Sockets?.Count ?? 0)} "
+                + $"socket={(worn?.Socket != null ? worn.Socket.name : "<none>")} rig={rig.Id} humanoid={rig.IsHumanoid.ToString().ToLowerInvariant()}");
+            // whatever is already owned finds its place now (WearGear only calls
+            // ToHolster when nothing is held; a drawn gun stays drawn)
+            if (ok && _fw.Held == null) ToHolster();
+            return ok;
         }
 
         public void SetHint(string text) => _game.OnHint?.Invoke(text);
@@ -356,9 +689,23 @@ namespace TbilisiFly.Core
             // early-return to stay disabled: the arms/holster draw, the
             // on-foot ReticleView toggle and the LMB fire/reload logic all
             // live below this line.
-            if (GameLoop.UsePurchasedShooter) return;
+            // GROUND LOOT MUST RUN IN BOTH MODES (2026-11-02). The
+            // UsePurchasedShooter early-return used to be the FIRST line of
+            // this method, which also disabled Pickups.Update() — the ONLY
+            // writer of Pickups.Near — so TakeNearest()'s own
+            // `if (Pickups.Near == null) return;` made F a silent no-op under
+            // the purchased shooter no matter what read the key. The user hit
+            // this as "i cant take gun with f button", and ungating F in
+            // GameLoop.ReadDiscreteKeys alone did NOT fix it: necessary, not
+            // sufficient. It matters because the two loot systems are
+            // disjoint — the akm/beretta/makarov at the warehouse carry
+            // Combat/Pickups' PickupTag (WarehouseInteriorFill.cs:407) and
+            // have no other taker, while the pack's own InteractiveWeapon
+            // loot sits ~320 m away behind a 1 m trigger.
+            // So the pickup SCAN, the cards and Take() run in BOTH modes;
+            // everything BELOW the flag check (arms/holster draw, the on-foot
+            // reticle, LMB fire and reload) stays owned by the purchased asset.
             EnsurePickupUi();
-            EnsureReticleUi();
             if (_game.Rig == null)
             {
                 // src/pickups.js:270 — setVisible(false) empties the stack, and
@@ -368,11 +715,41 @@ namespace TbilisiFly.Core
                 // body (a body swap re-spawns the rig).
                 Pickups.SetVisible(false);
                 PickupUi?.Render(Pickups.VisibleCards);
+            }
+            else
+            {
+                Pickups.Update(dt, _sceneRoot, _game.Foot.Pos);
+                PickupUi?.Render(Pickups.VisibleCards); // src/pickups.js:93-103 `_render(list)`
+            }
+
+            _footBelt?.RideSockets();   // foot.js: the holster sockets ride the skinned strap every frame — in BOTH modes
+            _fw?.TickSettle(dt);
+            if (GameLoop.UsePurchasedShooter)
+            {
+                // skillbar.js:353-366 setAmmo off the pack's own magazine
+                var sh = CoverShootHero.Instance?.Shoot;
+                var aw = sh?.ActiveWeapon;
+                if (aw != null) _game.WeaponBar?.SetAmmo(aw.Mag, aw.FullMag, sh.IsReloadingNow);
+                // THE ON-FOOT RETICLE WAS NEVER SHOWN UNDER THE PACK (2026-11-02,
+                // user: "i dont see aim"): this early return skipped the
+                // ReticleView toggle below, and the pack's own crosshair
+                // (AimBehaviour.OnGUI) was never given a texture — so a drawn gun
+                // had no sight at all. Same view, same rule as the JS
+                // (shooting.js:118 visible while a gun is drawn on foot, :135 red
+                // while aiming, :520-525 the 0.6x aim cone), read off the pack's
+                // own state instead of Gun's.
+                EnsureReticleUi();
+                bool packDrawn = aw != null && _game.Rig != null && _game.Mode == GameMode.OnFoot;
+                bool packAiming = packDrawn && (CoverShootHero.Instance?.Aim?.IsAiming ?? false);
+                ReticleUi?.Tick(packDrawn, packAiming, packAiming ? 0.6f : 1f);
+                return;
+            }
+            EnsureReticleUi();
+            if (_game.Rig == null)
+            {
                 ReticleUi?.Tick(false, false, 1f);
                 return;
             }
-            Pickups.Update(dt, _sceneRoot, _game.Foot.Pos);
-            PickupUi?.Render(Pickups.VisibleCards); // src/pickups.js:93-103 `_render(list)`
             EnsureArmsAnims();
 
             var def = CarriedInSlot(CurrentSlot);
@@ -464,6 +841,9 @@ namespace TbilisiFly.Core
             // cone scale. The JS shows the reticle exactly while a weapon is
             // drawn on foot; CrosshairScale already folds the 0.6x aim factor in.
             ReticleUi?.Tick(held && _game.Mode == GameMode.OnFoot, Gun.Aiming, Gun.CrosshairScale);
+            // skillbar.js:353-366 setAmmo — rounds left on the drawn slot's icon.
+            if (held && Gun.Ammo.HasValue)
+                _game.WeaponBar?.SetAmmo(Mathf.RoundToInt(Gun.Ammo.Value), Pistol.MagSize(def.CartridgeId), Gun.Reloading);
 
             if (held && _game.Mode == GameMode.OnFoot && _game.MainCamera != null && def.Measured)
             {

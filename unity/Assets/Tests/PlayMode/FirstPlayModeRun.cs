@@ -1216,8 +1216,11 @@ namespace TbilisiFly.PlayModeTests
                             Check("key_R", reloadingNow && mag > 0 && ammoSpent < mag && pistolWeapon.Mag == mag,
                                 $"ammo {ammoSpent} -> {pistolWeapon.Mag} of {mag}, reloading={reloadingNow} (purchased path)");
 
-                            // leave the rig as found
+                            // leave the rig as found — and the aim latch clean:
+                            // RMB now TOGGLES it (Core/GameLoop.cs, 2026-11-02), so
+                            // the RMB hold above left aim ON after release.
                             PressMouseLR(false, false);
+                            TbilisiFly.Character.CoverShootInput.ClearAimLatch();
                             yield return Idle(3);
                         }
                     }

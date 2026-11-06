@@ -549,15 +549,22 @@ namespace TbilisiFly.Character
             // +Z, since forward is -Z there and +Z here) — so the JS's "find
             // the MAX v.z" becomes "find the MIN v.z" here, and every additive
             // "push further into the back" below is negated to match.
-            float bestZ = float.PositiveInfinity;
+            // THE BACK IS +Z ON THIS RIG (measured 2026-11-02, GunHandRun): the hero
+            // FACES root-local -Z (FootController's heading is (-sin, 0, -cos);
+            // CoverShootHero.facingSourceNegativeZ = true; the chase camera sits at
+            // +Z and photographs the back). The comment above assumed the body faces
+            // +Z and flipped the JS's "MAX v.z" to MIN — which put the sling on the
+            // hero's FRONT: a slung rifle at fwd=-0.905 drawing 0 pixels from behind.
+            // The JS convention (max z = the back) is the right one here, unflipped.
+            float bestZ = float.NegativeInfinity;
             float backY = cp.y;
             foreach (var vWorld in _belt?.BodyVertsWorld(rig) ?? Array.Empty<Vector3>())
             {
                 Vector3 v = inv.MultiplyPoint3x4(vWorld);
                 if (Mathf.Abs(v.y - cp.y) >= 0.2f || Mathf.Abs(v.x) >= 0.12f) continue;
-                if (v.z < bestZ) { bestZ = v.z; backY = v.y; }
+                if (v.z > bestZ) { bestZ = v.z; backY = v.y; }
             }
-            if (float.IsPositiveInfinity(bestZ)) { bestZ = -0.15f; backY = cp.y; } // JS fallback backZ=+0.15 (its +Z back) -> Unity -0.15
+            if (float.IsNegativeInfinity(bestZ)) { bestZ = 0.15f; backY = cp.y; } // JS fallback backZ=+0.15 — same sign here (back is +Z)
 
             // which way is the body's right, in the rig frame — UNFLIPPED, same
             // reasoning FootPoses.AimOffFacing/RifleShoulder already use: a
@@ -583,11 +590,11 @@ namespace TbilisiFly.Character
             // to the left), +Z the rifle's right side (against the back), +Y
             // what is left (asset/gun-local convention, unflipped per class header)
             Vector3 X = new Vector3(-rs * 0.45f, -0.89f, 0f).normalized;
-            Vector3 fwdSeed = new Vector3(0f, 0f, 1f); // HANDEDNESS: rig-local forward is Unity's +Z (JS's -Z)
+            Vector3 fwdSeed = new Vector3(0f, 0f, -1f); // the hero FACES root-local -Z (see the back-search note above)
             Vector3 Y = Vector3.Cross(X, fwdSeed).normalized;  // HANDEDNESS: JS cross(Z,X) -> swapped
             Vector3 Z = Vector3.Cross(Y, X).normalized;        // HANDEDNESS: JS cross(X,Y) -> swapped
             float posY = backY + 0.02f;
-            float posZ = bestZ - 0.02f; // JS: backZ + 0.02 (push further into its +Z back) -> Unity push further into its -Z back = subtract
+            float posZ = bestZ + 0.02f; // JS: backZ + 0.02, into the +Z back — same here
             Vector3 pos = new Vector3(rs * 0.05f, posY, posZ);
             Matrix4x4 m = Matrix4x4.TRS(pos, Weapons.QuaternionFromBasis(X, Y, Z), Vector3.one);
 

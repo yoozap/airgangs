@@ -66,7 +66,7 @@ public class BasicBehaviour : MonoBehaviour
 		anim = GetComponentInChildren<Animator>(true);
 		hFloat = Animator.StringToHash("H");
 		vFloat = Animator.StringToHash("V");
-		camScript = playerCamera.GetComponent<ThirdPersonOrbitCam> ();
+		camScript = playerCamera != null ? playerCamera.GetComponent<ThirdPersonOrbitCam> () : null; // TbilisiFly glue: BuildCamera may run after Awake
 		rBody = GetComponent<Rigidbody> ();
 
 		// Grounded verification variables.

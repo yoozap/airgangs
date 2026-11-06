@@ -47,6 +47,14 @@ namespace TbilisiFly.Character
         static bool _aimLatch;
         public static void ToggleAimLatch() => _aimLatch = !_aimLatch;
         public static void ClearAimLatch() => _aimLatch = false;
+        // 2026-11-02 (user: "i dont see aim and i cant shoot"): the latch is also
+        // what RMB toggles (Core/GameLoop.cs, game.js:614-623 — the JS TOGGLES aim
+        // on right-click, the pack alone only aims while RMB is HELD) and what a
+        // bare left-click switches on (ShootBehaviour.Update — foot.js:2480
+        // _aimOnDraw "on click we are in aim mode"), so the shot is not swallowed
+        // by the pack's own `!isAiming` gate.
+        public static bool AimLatched => _aimLatch;
+        public static void SetAimLatch(bool on) => _aimLatch = on;
 
         public static float GetAxis(string name) => GetAxisRaw(name);
 

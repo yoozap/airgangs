@@ -25,5 +25,10 @@ namespace TbilisiFly.Combat
     public static class CoverShootBridge
     {
         public static IDamageWorld DamageWorld;
+        /// <summary>The pack's recoil camera bounce (ThirdPersonOrbitCam.BounceVertical,
+        /// degrees per shot from InteractiveWeapon.recoilAngle) handed to the
+        /// project's own on-foot camera — Core/GameLoop.cs consumes it with the
+        /// orbit cam's own 10/s rise and 5 deg/s settle.</summary>
+        public static System.Action<float> CameraKick;
     }
 }

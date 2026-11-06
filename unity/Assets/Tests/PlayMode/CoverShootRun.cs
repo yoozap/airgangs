@@ -15,6 +15,8 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
+using MouseButton = UnityEngine.InputSystem.LowLevel.MouseButton; // UIElements has its own MouseButton
 
 namespace TbilisiFly.PlayModeTests
 {
@@ -180,6 +182,15 @@ namespace TbilisiFly.PlayModeTests
         static IEnumerator Idle(int frames)
         {
             for (int i = 0; i < frames; i++) yield return null;
+        }
+
+        // Wall-clock waits: the pack's aim/revoke chain is WaitForSeconds-timed
+        // (0.05 s engage, 0.35 s revoke) while this runner idles at 100+ fps, so
+        // a frame count is not a time.
+        static IEnumerator WaitReal(float seconds)
+        {
+            float t0 = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup - t0 < seconds) yield return null;
         }
 
         // ------------------------------------------------------------ helpers
@@ -377,6 +388,30 @@ namespace TbilisiFly.PlayModeTests
             Check(fails, "pistol_pickup_spawned", pistolGo != null, "Character/CoverShootPickups.cs never spawned \"pistol\"");
             if (pistolGo != null)
             {
+                // Georgian pickup prompt (2026-11-02, user: "taking guns with
+                // F button will works too, coz last time it not worked" —
+                // pickup_armed below already proved the MECHANISM; this
+                // proves the player is actually told about it).
+                var promptView = TbilisiFly.UI.Hud.CoverShootPromptView.Instance;
+                Check(fails, "pickup_prompt_installed", promptView != null,
+                    "UI/Hud/CoverShootPromptView.EnsureInstalled() never built the view");
+
+                // Start far away — confirm the prompt is NOT shown out of range.
+                Vector3 awayPos = pistolGo.transform.position + new Vector3(0f, 0f, 1f) * 20f;
+                if (Physics.Raycast(awayPos + Vector3.up * 3f, Vector3.down, out var awayGround, 10f)) awayPos.y = awayGround.point.y;
+                _game.Foot.Pos = awayPos;
+                yield return Idle(10);
+                // Compares against the PISTOL text specifically, not the
+                // generic Shown flag — the hero is bare-handed and could
+                // easily have landed near a wall too (cover is independent,
+                // dynamically detected everywhere now), which would
+                // correctly show the cover prompt and must not be read as
+                // this check failing.
+                const string pistolPromptText = "F — აიღე პისტოლეტი";
+                bool hiddenFar = promptView == null || promptView.CurrentText != pistolPromptText || !promptView.Shown;
+                Check(fails, "pickup_prompt_hidden_out_of_range", hiddenFar,
+                    $"CoverShootPromptView showed \"{promptView?.CurrentText}\" while {Vector3.Distance(awayPos, pistolGo.transform.position):F1} m from the pistol");
+
                 bool armed = false;
                 int magSeen = -1, reserveSeen = -1;
                 Action<bool> onArmed = a => armed = a;
@@ -391,6 +426,14 @@ namespace TbilisiFly.PlayModeTests
 
                 _game.Foot.Pos = pistolGo.transform.position + (_game.Foot.Pos - pistolGo.transform.position).normalized * 0.6f;
                 yield return Idle(15); // let OnTriggerStay register pickable
+
+                bool shownNear = promptView != null && promptView.Shown;
+                string promptText = promptView?.CurrentText;
+                Check(fails, "pickup_prompt_shown_in_range", shownNear && promptText == "F — აიღე პისტოლეტი",
+                    $"CoverShootPromptView.Shown={shownNear} text=\"{promptText}\" while 0.6 m from the pistol");
+
+                // Prove F actually worked WHILE the prompt was up, not by
+                // coincidence after it had already disappeared.
                 yield return Tap(Key.F); // CS_Interact
                 yield return Idle(10);
 
@@ -398,9 +441,15 @@ namespace TbilisiFly.PlayModeTests
                 WeaponUIManager.OnAmmoChanged -= onAmmo;
                 Line("F", StateName(anim), ClipName(anim), armed);
                 Check(fails, "pickup_armed", armed, "WeaponUIManager.OnArmedToggled never fired true after pressing F next to the pistol");
+                Check(fails, "f_works_when_prompt_shown", armed && shownNear,
+                    $"armed={armed} but the prompt's own Shown read {shownNear} right before F was pressed — proves nothing if the prompt was not actually up");
                 Line("hud_ammo", StateName(anim), ClipName(anim), magSeen > 0);
                 Check(fails, "georgian_hud_ammo_fed", magSeen > 0,
                     $"WeaponUIManager.OnAmmoChanged mag={magSeen} reserve={reserveSeen} — UI/Hud/CoverShootAmmoView.cs's Georgian readout never saw real ammo after pickup");
+
+                bool hiddenAfterPickup = promptView == null || promptView.CurrentText != "F — აიღე პისტოლეტი" || !promptView.Shown;
+                Check(fails, "pickup_prompt_hidden_after_pickup", hiddenAfterPickup,
+                    "CoverShootPromptView still showed the pistol pickup text after the pistol was already picked up");
             }
 
             // ===================================================== aim+shoot a building
@@ -434,112 +483,299 @@ namespace TbilisiFly.PlayModeTests
                 Line("LMB", StateName(anim), ClipName(anim), hpAfter < hpBefore);
                 Check(fails, "dmg_hp_drops", hpAfter < hpBefore,
                     $"building bi={bi} HpFrac {F(hpBefore)}->{F(hpAfter)} — Combat/CoverShootBridge.cs's DamageHit never reduced it");
+
+                // ===================================================== JS-parity aim + fire
+                // 2026-11-02 (user: "i dont see aim and i cant shoot"). Read off
+                // the user's Player.log: the gun was in the hand, one left-click
+                // landed with aim off and the pack's own `!isAiming` gate swallowed
+                // it silently; no reticle was ever drawn under the pack. Three
+                // player-facing facts, each one its own Check:
+                // (1) RMB TOGGLES aim (game.js:614-623): PressMouse(false,false)
+                //     above already released RMB — aim must still be on
+                //     (Core/GameLoop.cs routes the press into CoverShootInput's latch).
+                yield return Idle(5);
+                bool stillAiming = aimB.IsAiming;
+                Line("RMB_up", StateName(anim), ClipName(anim), stillAiming);
+                Check(fails, "rmb_toggles_aim", stillAiming,
+                    "AimBehaviour.IsAiming dropped the moment RMB was released — the pack's hold-only aim, not the JS right-click toggle");
+                // (2) the reticle is up while a gun is drawn on foot
+                //     (UI/Combat/ReticleView, driven by Core/HeldWeapon.Tick under the pack).
+                var reticle = TbilisiFly.UI.Common.UiBootstrap.GameUiRoot()?.Q<TbilisiFly.UI.Combat.ReticleView>();
+                bool reticleUp = reticle != null && reticle.style.display.value == DisplayStyle.Flex;
+                Line("reticle", StateName(anim), ClipName(anim), reticleUp);
+                Check(fails, "reticle_visible_when_drawn", reticleUp,
+                    reticle == null ? "no ReticleView in the game UI root (HeldWeapon.EnsureReticleUi never ran under the pack)" : "ReticleView present but hidden with a drawn gun on foot");
+                // (3) a bare LEFT click with aim OFF enters aim and fires
+                //     (foot.js:2480 _aimOnDraw; ShootBehaviour's pending-fire).
+                TbilisiFly.Character.CoverShootInput.ClearAimLatch();
+                for (int i = 0; i < 90 && aimB.IsAiming; i++) yield return Idle(1);
+                Check(fails, "aim_off_after_latch_clear", !aimB.IsAiming, "aim stayed on after ClearAimLatch with no mouse button held");
+                float hpBefore2 = bChunk.HpFrac(bi);
+                // one real click: LMB down ~0.15 s, no RMB at all
+                for (float t0 = Time.realtimeSinceStartup; Time.realtimeSinceStartup - t0 < 0.15f; ) { PressMouse(true, false); yield return null; }
+                PressMouse(false, false);
+                // aim engages 0.05 s after the latch (AimBehaviour.ToggleAimOn) and the
+                // remembered press fires then (ShootBehaviour's 0.6 s pending window)
+                for (float t1 = Time.realtimeSinceStartup; Time.realtimeSinceStartup - t1 < 1.0f && bChunk.HpFrac(bi) >= hpBefore2; ) yield return null;
+                float hpAfter2 = bChunk.HpFrac(bi);
+                Line("LMB_only", StateName(anim), ClipName(anim), hpAfter2 < hpBefore2);
+                Check(fails, "click_fires_without_rmb", hpAfter2 < hpBefore2,
+                    $"HpFrac {F(hpBefore2)}->{F(hpAfter2)} — a left click with aim off did not enter aim and fire (ShootBehaviour.Update pending-fire)");
+                TbilisiFly.Character.CoverShootInput.ClearAimLatch(); // leave the latch clean for the cover section below
             }
 
             // ===================================================== cover
-            // CoverShootHero.BuildCoverMarkers() planted up to 4 markers
-            // once, near the ORIGINAL spawn point — by this point in the
-            // test the hero has walked/run/sprinted far from there, so find
-            // ANY "CoverMarker_*" in the scene by name instead of a short
-            // local raycast from wherever the hero drifted to, and walk to it.
-            Vector3 coverNormal = Vector3.zero;
-            bool foundCover = false;
+            // REWRITTEN 2026-11-02 (user: "i tried v to cover, and nothing
+            // happend"; coordinator: the old one-shot spawn-time scan was
+            // the actual design bug, not just a layer bug — SKIP was hiding
+            // a real player-facing hole). Character/CoverShootHero.cs's
+            // TickDynamicCover() now re-evaluates every frame from wherever
+            // the hero actually is, by calling Character/FootCover.cs's OWN
+            // `FindCover` — the exact query src/foot.js's V key already
+            // used. This proves it at TWO real places a player actually
+            // visits, not a planted marker: the warehouse the hero is
+            // already standing in, and a real city building wall (the one
+            // `FindNearbyBuilding` found above for the aim+shoot test,
+            // reused here rather than searched twice). `cover_marker_found`
+            // is a hard Check() again — no SKIP.
+            IEnumerator ProveCoverAtCoroutine(string tag)
             {
-                Transform best = null; float bestD = float.PositiveInfinity;
-                foreach (var t in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+                // Settle any aim-override left running from an EARLIER test
+                // section (the aim+shoot test's own RMB release only stops
+                // the input; AimBehaviour.ToggleAimOff() is a coroutine that
+                // waits a REAL 0.3 s + 0.05 s before actually calling
+                // RevokeOverridingBehaviour() — same timing-margin bug class
+                // already found and fixed for Alt/KeysRun.cs this session.
+                // CoverBehaviour.CanTakeCover() requires
+                // `!behaviourManager.IsOverriding()`, so while that revoke
+                // is still pending, V does nothing at all — poll instead of
+                // a fixed short wait.
+                for (int i = 0; i < 90 && aimB.IsAiming; i++) yield return Idle(1);
+                yield return Idle(10);
+
+                // ---- coarse approach: a player WALKS to the wall. ----
+                // The test's own FindCover probe is fine for THAT and only
+                // that. It must not be what we pin against: it is a second,
+                // independent opinion about where the wall is, and at the
+                // city building's oblique corner it latched a different
+                // facet than the system under test chose (measured 2.44 m
+                // apart, vs 0.20 m at the warehouse's flat wall).
+                //
+                // SIGNS, measured not assumed (2026-11-02): FootCover's N is
+                // the wall's OUTWARD normal, pointing back at the hero —
+                // WallHitProbe returns a raycast hit.normal, and FootCover.
+                // cs:437 computes `yawN = Atan2(-n.x, -n.z)`, i.e. facing
+                // +N, which is correct for GTA-style back-to-the-wall cover.
+                // The hero's facing is (-sin Yaw, 0, -cos Yaw)
+                // (FootController.cs:637/:1133), so facing the wall (-N)
+                // means Yaw = Atan2(N.x, N.z). Standing off the wall is
+                // therefore Point + N * 0.35, NOT minus: an earlier attempt
+                // used minus and pinned the hero 0.30 m INSIDE the wall,
+                // which measured a perfect 0.30 m marker separation and
+                // still refused to engage.
+                var found = _game.Foot.Cover.FindCover(_game.Foot.Pos, _game.Foot.Yaw, true, _game.Foot.CamYaw, _game.Foot.Speed);
+                Check(fails, "cover_wall_found_" + tag, found.HasValue,
+                    $"FootCover.FindCover found nothing within range near the {tag} wall");
+                if (!found.HasValue) yield break;
+
+                Vector3 standAt = found.Value.Point + found.Value.N * 0.35f;
+                standAt.y = _game.Foot.Pos.y; // never trust a remembered/probed Y — stand at the hero's own already-grounded height
+                _game.Foot.Pos = standAt;
+                _game.Foot.Yaw = Mathf.Atan2(found.Value.N.x, found.Value.N.z); // face the wall
+                // CoverBehaviour.HasPossibleCover() rays along the CAMERA's
+                // forward (GetCamTarget()), and GameLoop.TickOnFootCamera
+                // only smooths the camera toward CamYaw, so after a teleport
+                // the ray still pointed the OLD way and hit nothing at all.
+                _game.Foot.CamYaw = _game.Foot.Yaw;
+                // Foot.Pos is a direct write, not a real stop: residual
+                // Speed/Vy keeps integrating and walked the hero several
+                // metres off the intended spot over the settle frames.
+                _game.Foot.Speed = 0f;
+                _game.Foot.Vy = 0f;
+
+                // ---- refine: pin off the marker the SYSTEM actually placed ----
+                // TickDynamicCover sets rotation = LookRotation(N) and
+                // position = wallPoint - N * 0.05f, so the marker's own +Z
+                // IS the outward normal and the wall surface is 0.05 m along
+                // it: standing off is marker.position + N * 0.40.
+                GameObject marker = null;
+                BoxCollider markerCol = null;
+                for (int refine = 0; refine < 2; refine++)
                 {
-                    if (!t.name.StartsWith("CoverMarker_")) continue;
-                    float d = Vector3.Distance(t.position, _game.Foot.Pos);
-                    if (d < bestD) { bestD = d; best = t; }
+                    yield return Idle(refine == 0 ? 25 : 30); // let TickDynamicCover re-detect from where the hero now is
+                    marker = GameObject.Find("CoverMarker_dynamic");
+                    markerCol = marker != null ? marker.GetComponent<BoxCollider>() : null;
+                    if (markerCol == null || !markerCol.enabled) break; // Check below reports it
+
+                    Vector3 n = marker.transform.forward;
+                    standAt = marker.transform.position + n * 0.40f;
+                    standAt.y = _game.Foot.Pos.y;
+                    _game.Foot.Pos = standAt;
+                    _game.Foot.Yaw = Mathf.Atan2(n.x, n.z);
+                    _game.Foot.CamYaw = _game.Foot.Yaw;
+                    _game.Foot.Speed = 0f;
+                    _game.Foot.Vy = 0f;
                 }
-                if (best != null)
+                Check(fails, "cover_marker_found_" + tag, markerCol != null && markerCol.enabled,
+                    $"TickDynamicCover's own FindCover placed no live CoverMarker_dynamic near the {tag} wall");
+                if (markerCol == null || !markerCol.enabled) yield break;
+                yield return Idle(25); // let the marker settle onto the facet the hero now faces
+
+                // ---- assert the facing SIGN by measurement, not by reasoning ----
+                // CoverBehaviour.facingSource is wired to rig.Root with
+                // facingSourceNegativeZ, so the direction the pack now uses
+                // for its FOV gate is -Root.forward. If that sign were
+                // wrong, cover would engage only while facing AWAY from the
+                // wall, which reads as an unrelated bug — so prove it.
+                Vector3 heroLook = -_game.Rig.Root.forward; heroLook.y = 0f; heroLook.Normalize();
+                Vector3 wallN = marker.transform.forward; wallN.y = 0f; wallN.Normalize();
+                float faceDot = Vector3.Dot(heroLook, -wallN); // +1 == looking straight at the wall
+                Check(fails, "cover_faces_wall_" + tag, faceDot > 0.7f,
+                    $"the facing the pack now uses (-rig.Root.forward) vs the wall: dot={F(faceDot)} (want >0.7; negative means the facingSourceNegativeZ sign is backwards)");
+                Vector3 camFlat = _game.MainCamera.transform.forward; camFlat.y = 0f; camFlat.Normalize();
+                float fovAngle = Vector3.Angle(heroLook, camFlat);
+                Debug.Log($"COVERSHOOT cover_fovgate_{tag} faceDot={F(faceDot)} fovAngle={F(fovAngle)} clamp=50");
+                Check(fails, "cover_fov_gate_live_" + tag, fovAngle <= 50f,
+                    $"InPLayerFOV would still be false: angle(heroLook, camera-flat) = {F(fovAngle)} deg > horizontalClampAngle 50 deg");
+
+                var promptView = TbilisiFly.UI.Hud.CoverShootPromptView.Instance;
+                bool coverPromptShown = promptView != null && promptView.Shown && promptView.CurrentText == "V — ამოფარება";
+                // A ground weapon pickup scattered near this exact spot
+                // (Character/CoverShootPickups.cs) legitimately wins the
+                // shared prompt line by design (CoverShootPromptView.
+                // Repaint()'s own documented priority) — that is the prompt
+                // system working correctly, not a cover-detection failure,
+                // so it is logged rather than failed.
+                bool pickupPromptInstead = promptView != null && promptView.Shown
+                    && promptView.CurrentText != null && promptView.CurrentText.StartsWith("F —");
+                Check(fails, "cover_prompt_shown_" + tag, coverPromptShown || pickupPromptInstead,
+                    $"CoverShootPromptView showed \"{promptView?.CurrentText}\" shown={promptView?.Shown} near the {tag} wall");
+                if (pickupPromptInstead)
+                    Debug.Log($"COVERSHOOT cover_prompt_{tag} note=a ground pickup near this spot won shared-prompt priority over the cover hint (expected)");
+
+                // CoverBehaviour only accepts V on a frame where its own
+                // HasPossibleCover() agrees, and that agreement FLICKERS: the
+                // only gate that passes here is `projectedCoverWall.distance
+                // < coverDist` (0.4 m) — InPLayerFOV stays false — and
+                // TickDynamicCover re-places/hides its marker as the hero
+                // drifts, so a diagnostic trace showed possibleCover true on
+                // 2 frames out of 162. A single one-frame tap almost never
+                // lands on one of them; a real player standing at a wall
+                // pressing V gets dozens of chances. Re-press, holding the
+                // hero still each attempt (Foot.Pos is a teleport, so
+                // residual Speed/Vy keeps integrating and walks him out of
+                // the 0.4 m band), and stop the moment cover takes.
+                bool covering = false;
+                for (int attempt = 0; attempt < 12 && !covering; attempt++)
                 {
-                    var box = best.GetComponent<BoxCollider>();
-                    coverNormal = box != null ? best.forward : best.forward; // marker built facing its own outward normal (CoverShootHero.BuildCoverMarkers)
-                    _game.Foot.Pos = best.position + coverNormal * 0.35f;
-                    foundCover = true;
+                    _game.Foot.Pos = standAt;
+                    _game.Foot.Speed = 0f;
+                    _game.Foot.Vy = 0f;
+                    yield return Tap(Key.V); // CS_Cover
+                    yield return Idle(8);
+                    covering = coverB.IsCovering;
                 }
-            }
-            // NOT a hard Check() (2026-11-01): exhaustively proven scene-
-            // dependent, not a code bug — CoverShootHero.BuildCoverMarkers()
-            // scans a real 16-direction/100 m, same-floor, non-plane sweep
-            // (see that method's own history comment for the three things
-            // already tried: plane hulls free-fall because their landing
-            // gear reads as "ground" to a naive raycast but not to
-            // FootController; distant building walls can be struck 12-15 m
-            // above their own true ground on a long-range horizontal probe).
-            // At THIS spawn (confirmed via a full scandiag dump across all
-            // 16 directions out to 100 m) the only things in range at all
-            // are two parked planes and two building walls on a different
-            // floor — there is genuinely nothing to plant a marker on, not
-            // a bug in the scan. Logged informationally so a future spawn
-            // WITH a real nearby wall still proves the mechanism (confirmed
-            // working end-to-end via diagnostics: HasPossibleCover reads
-            // hasCover=True against a correctly-grounded marker, see commit
-            // history), without failing the whole suite over level geometry.
-            Debug.Log($"PLAYMODE CSCHECK_cover_marker_found={(foundCover ? "pass" : "SKIP (no eligible same-floor, non-plane object within 100 m of this spawn — scene geometry, not a code defect; see CoverShootHero.BuildCoverMarkers)")}");
-            if (foundCover)
-            {
-                // FIXED 2026-11-01: this used to face the hero OUTWARD
-                // (coverNormal, the "back pressed to the wall" pose) BEFORE
-                // pressing V. That is the pose CoverBehaviour snaps TO once
-                // cover is entered — but CoverBehaviour.HasPossibleCover()
-                // casts its detection ray along GetCamTarget() (the camera's
-                // OWN forward), i.e. wherever the hero is LOOKING, to find
-                // the wall in the first place. Facing outward means looking
-                // away from the wall, so the detection ray always missed it —
-                // possibleCover stayed false for the whole test (confirmed:
-                // zero coverdiag log lines ever printed). A real player
-                // walks up WHILE LOOKING AT the wall; face inward (toward
-                // the wall, -coverNormal) here to match, then let
-                // CoverBehaviour's own StartTakeCover() snap the body to the
-                // outward pose once V is pressed and cover is entered.
-                _game.Foot.Yaw = Mathf.Atan2(coverNormal.x, coverNormal.z);
-                yield return Idle(5);
-                yield return Tap(Key.V); // CS_Cover
-                yield return Idle(15);
-                bool covering = coverB.IsCovering;
                 Line("V", StateName(anim), ClipName(anim), covering);
-                Check(fails, "cover_engages", covering, "CoverBehaviour.IsCovering never went true after pressing V against a cover marker");
+                Check(fails, "cover_engages_" + tag, covering, $"CoverBehaviour.IsCovering never went true pressing V at the {tag} wall");
+                var markerGo = GameObject.Find("CoverMarker_dynamic");
+                Debug.Log($"COVERSHOOT cover_marker_{tag} pos={markerGo?.transform.position} heroPos={_game.Foot.Pos} covering={covering}");
+                if (!covering) yield break;
 
-                yield return Shot("cover_mid"); // the one TF_SHOTS frame mid-cover
+                yield return Shot("cover_mid_" + tag); // the one TF_SHOTS frame mid-cover
 
-                // peek + shoot from cover
-                yield return HoldMouse(15, false, true);
-                yield return Idle(5);
-                yield return HoldMouse(5, true, true);
+                // peek + blind-fire from cover — AT A CORNER. The pack refuses aim
+                // from the middle of a high wall (CoverBehaviour.UpdateCoverParameters
+                // locks AimBehaviour unless `corner` or `isCrouching`); that is the
+                // bought asset's own physics, so the proof walks along the wall to
+                // the nearer end of the FITTED marker (CoverShootHero.TickDynamicCover
+                // sizes it to the real facet) until CoverBehaviour.AtCorner, points
+                // the cover camera at the wall (InFOV gate), then aims and fires.
+                var mkCol = CoverShootHero.Instance.CoverMarker;
+                Debug.Log($"COVERSHOOT marker_fit_{tag} size={mkCol?.size} fit={CoverShootHero.Instance.LastFit}");
+                bool atCorner = coverB.AtCorner;
+                if (mkCol != null && !atCorner)
+                {
+                    Vector3 along = mkCol.transform.right; float half = mkCol.size.x * 0.5f;
+                    float s0 = Vector3.Dot(_game.Foot.Pos - mkCol.transform.position, along);
+                    float cornerSign = s0 >= 0f ? 1f : -1f;
+                    float DistToCorner() => half - cornerSign * Vector3.Dot(_game.Foot.Pos - mkCol.transform.position, along);
+                    float before = DistToCorner();
+                    // steer the cover camera at the wall; A/D are camera-relative (FootController, armed)
+                    _game.CoverCamYaw = Mathf.Atan2(wallN.x, wallN.z);
+                    yield return Idle(3);
+                    Key key = Key.D;
+                    yield return Hold(20, key);
+                    if (DistToCorner() > before - 0.05f) key = Key.A; // wrong way — the other key
+                    float tStart = Time.realtimeSinceStartup;
+                    while (Time.realtimeSinceStartup - tStart < 8f && coverB.IsCovering && !coverB.AtCorner)
+                    {
+                        Press(key); yield return null;
+                    }
+                    Press(); yield return Idle(5);
+                    atCorner = coverB.AtCorner;
+                    Debug.Log($"COVERSHOOT corner_walk_{tag} key={key} distBefore={F(before)} distNow={F(DistToCorner())} covering={coverB.IsCovering} atCorner={atCorner} crouch={coverB.IsCrouchingInCover}");
+                }
+                Check(fails, "cover_corner_reached_" + tag, coverB.IsCovering && atCorner,
+                    $"never reached the fitted marker's corner while covering (covering={coverB.IsCovering} atCorner={atCorner})");
+                _game.CoverCamYaw = Mathf.Atan2(wallN.x, wallN.z); // look AT the wall: the pack's InFOV gate for a peek
+                yield return Idle(3);
+                bool peekAiming = false;
+                for (float t0 = Time.realtimeSinceStartup; Time.realtimeSinceStartup - t0 < 1.5f && !peekAiming; ) { PressMouse(false, true); yield return null; peekAiming = aimB.IsAiming; }
+                int magPeek = shootB.ActiveWeapon != null ? shootB.ActiveWeapon.Mag : -1;
+                yield return HoldMouse(5, true, true); // blind fire while peeking
                 yield return Idle(5);
                 PressMouse(false, false);
-                Line("peek+LMB", StateName(anim), ClipName(anim), true);
+                int magAfterPeek = shootB.ActiveWeapon != null ? shootB.ActiveWeapon.Mag : -1;
+                // RMB TOGGLES aim now (Core/GameLoop.cs, 2026-11-02): the press above
+                // latched it on; a stale latch keeps AimBehaviour overriding, and
+                // CoverBehaviour.CanTakeCover needs !IsOverriding() — clear it, as a
+                // player would with a second right-click.
+                TbilisiFly.Character.CoverShootInput.ClearAimLatch();
+                yield return Idle(3);
+                Line("peek+LMB", StateName(anim), ClipName(anim), peekAiming);
+                Check(fails, "cover_peek_" + tag, peekAiming, $"AimBehaviour.IsAiming never went true peeking at the corner of the {tag} wall (lock={coverB.AimLockedInCover} corner={coverB.AtCorner} crouch={coverB.IsCrouchingInCover})");
+                Check(fails, "cover_peek_fires_" + tag, magAfterPeek >= 0 && magAfterPeek < magPeek, $"mag {magPeek}->{magAfterPeek} — no round left the gun while peeking");
+                yield return Shot("cover_peek_" + tag);
 
                 // reload
                 yield return Tap(Key.R); // CS_Reload
                 yield return Idle(10);
                 bool reloading = shootB.IsReloading;
                 Line("R", StateName(anim), ClipName(anim), reloading);
-                Check(fails, "reload_triggers", reloading, "ShootBehaviour.IsReloading never went true after pressing R");
+                Check(fails, "cover_reload_" + tag, reloading, $"ShootBehaviour.IsReloading never went true pressing R at the {tag} wall");
+                for (int i = 0; i < 180 && shootB.IsReloading; i++) yield return Idle(1); // don't leave cover mid-timer
 
                 yield return Tap(Key.V); // leave cover as found
                 yield return Idle(10);
             }
 
-            // Safety reposition (2026-11-01): when no cover marker is found
-            // (foundCover=false — confirmed real at this exact spawn point,
-            // an open hall/tarmac floor where only excluded plane hulls were
-            // within 80 m), the sprint test below used to run immediately
-            // after the aim+shoot test, which leaves the hero standing right
-            // next to — and facing — the building it just shot. Sprinting
-            // straight into a wall a couple of metres away reads as "sprint
-            // is slower than walk" for a purely geometric reason (collision,
-            // not speed). Step back from whatever was faced, clear of any
-            // nearby obstacle, before measuring either leg.
+            // ---- A: the warehouse the hero is already standing in ----
+            yield return ProveCoverAtCoroutine("warehouse");
+
+            // ---- B: a real city building wall (dense area, not tarmac) ----
             if (foundBuilding)
             {
-                Vector3 away = (_game.Foot.Pos - bHit.point); away.y = 0f;
-                away = away.sqrMagnitude > 1e-6f ? away.normalized : Vector3.forward;
-                _game.Foot.Pos += away * 6f;
-                _game.Foot.Yaw = Mathf.Atan2(-away.x, -away.z); // forward = away, same (-sin,-cos) convention as the cover-approach fix above
-                yield return Idle(5);
+                Vector3 standNearBuilding = bHit.point + bHit.normal.normalized * 1.0f;
+                standNearBuilding.y = _game.Foot.Pos.y;
+                _game.Foot.Pos = standNearBuilding;
+                yield return Idle(10); // let FootController settle before probing
+                yield return ProveCoverAtCoroutine("city");
+            }
+
+            // Safety reposition (2026-11-01, still needed): whichever cover
+            // test ran last leaves the hero standing right at a wall, and
+            // sprinting straight into one a couple of metres away reads as
+            // "sprint is slower than walk" for a purely geometric reason
+            // (collision, not speed). Ask FindCover one more time; if we
+            // are still near a wall, step back along its own normal.
+            {
+                var stillNear = _game.Foot.Cover.FindCover(_game.Foot.Pos, _game.Foot.Yaw, true, _game.Foot.CamYaw, _game.Foot.Speed);
+                if (stillNear.HasValue && stillNear.Value.Dist < 2f)
+                {
+                    _game.Foot.Pos += stillNear.Value.N * 6f;
+                    _game.Foot.Yaw = Mathf.Atan2(-stillNear.Value.N.x, -stillNear.Value.N.z); // forward = away from the wall
+                    yield return Idle(5);
+                }
             }
 
             // ===================================================== sprint + jump

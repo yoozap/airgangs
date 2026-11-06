@@ -1,26 +1,36 @@
 // Keeps the hero's hands and elbows OUTSIDE the fruit.
 //
 // The purchased clips (Threepeat parkour, Cover+Shoot locomotion) were authored
-// for a slim human. Our bodies are wide fruit — an apple is ~1.2 m across at
-// the chest — with the shoulder pivots at the fruit's widest point
-// (tools/build_veggies.py arm_root), so a swinging forearm or hand crosses
-// INSIDE the hull and vanishes (user, 2026-11-01 22:50: "sometimes they are
-// inside body and i dont see them when i am moving").
+// for a slim human; our bodies are wide fruit, so an authored arm pose puts the
+// hand inside the body and it vanishes (user, 2026-11-01 22:50: "sometimes they
+// are inside body and i dont see them when i am moving"). MEASURED on the apple
+// 2026-11-02: the resting hand reads 0.26 m inside the hull, the sprint loop's
+// worst frame 0.59 m. No shoulder rotation can undo that fully, so this layer
+// is a compromise and is deliberately bounded.
 //
 // BodyHull fits the fruit once at spawn: the skinned mesh is baked in its bind
-// pose, the vertices that belong to the fruit (the one bone that carries most
-// of the mesh — spine_02 in the builder's rig) are taken into that bone's local
-// space and reduced to a radial map (max radius per azimuth/elevation bin
-// around the fruit's centre). The map rides the chest bone, so a twisting
-// spine moves the hull with the fruit.
+// pose, the vertices whose dominant bone is the fruit's own (spine_02 in the
+// builder's rig) go into that bone's local space, and a 32x16 radial map keeps
+// the max radius per azimuth/elevation bin. Radius() reads it BILINEARLY — it
+// used to take the max over a 3x3 bin neighbourhood, +-11 deg in both angles,
+// which rounded off every concavity and inflated the fruit toward its widest
+// nearby radius, so an arm lying along the skin read as buried.
 //
-// BodyClearance runs AFTER every other arm writer (the clip, the arm springs,
-// the pose layers) and, when a hand or elbow reads inside the hull, solves the
-// two-bone chain to a target pushed out along the hull's radial direction by
-// the hull radius plus a margin, with the elbow pole pushed out the same way.
-// The correction weight is smoothed so an arm never pops; when the chain is
-// clear the clip pose passes through untouched. Fixed in the rig, not in the
-// clips — the clips stay the pack's own.
+// BodyClearance runs after every other arm writer and swings the arm RIGIDLY
+// about its shoulder — the clip's own elbow and wrist angles are untouched, so
+// the authored articulation survives and only the arm's direction moves. The
+// smallest swing that clears the hand, the elbow and the forearm's midpoint
+// wins; nothing is required of the upper arm's own midpoint, which a shoulder
+// rotation cannot move. Bounds that matter, all learned from measurement:
+//   * MaxSwingDeg 45, not 120. At 120 the solver had enough authority to look
+//     wrong, and when nothing cleared it SLAMMED to the maximum: measured
+//     meanClearDeg=120 in every phase including standing still, which is what
+//     the user saw as "my hands are not same physic like in parkour assets".
+//   * When nothing clears, keep the angle that leaves the LEAST depth.
+//   * DeadZoneM: a hand a few centimetres in is left exactly as authored.
+// The rig helps too — tools/build_veggies.py now puts the shoulder pivot
+// SHOULDER_OUT past the skin with a ball covering the join, which cut the
+// poses that start buried from 19,095 to 15,357 of 23,100 sampled.
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -115,19 +125,25 @@ namespace TbilisiFly.Character
             el = Mathf.Clamp((int)((e + Mathf.PI * 0.5f) / Mathf.PI * El), 0, El - 1);
         }
 
-        /// <summary>Hull radius toward a bone-local unit direction (max over the
-        /// bin and its neighbours, so a point between bins is never judged by a
-        /// smaller side bin).</summary>
+        /// <summary>Hull radius toward a bone-local unit direction, bilinear
+        /// between the four surrounding bins. It used to be the MAX over a 3x3
+        /// bin neighbourhood — +-11 deg in both angles — which rounds every
+        /// concavity off and inflates the fruit toward its widest nearby
+        /// radius, so an arm lying along the skin read as buried and the solver
+        /// swung it out. Interpolating follows the real silhouette.</summary>
         public float Radius(Vector3 dirLocal)
         {
-            Bin(dirLocal, out int az, out int el);
-            float m = 0f;
-            for (int de = -1; de <= 1; de++) for (int da = -1; da <= 1; da++)
-            {
-                int e2 = Mathf.Clamp(el + de, 0, El - 1), a2 = (az + da + Az) % Az;
-                m = Mathf.Max(m, R[e2 * Az + a2]);
-            }
-            return m;
+            float a = Mathf.Atan2(dirLocal.z, dirLocal.x); if (a < 0f) a += 2f * Mathf.PI;
+            float fa = a / (2f * Mathf.PI) * Az - 0.5f;
+            float e = Mathf.Asin(Mathf.Clamp(dirLocal.y, -1f, 1f));
+            float fe = (e + Mathf.PI * 0.5f) / Mathf.PI * El - 0.5f;
+            int a0 = Mathf.FloorToInt(fa), e0 = Mathf.FloorToInt(fe);
+            float ta = fa - a0, te = Mathf.Clamp01(fe - e0);
+            int a1 = ((a0 + 1) % Az + Az) % Az; a0 = ((a0 % Az) + Az) % Az;
+            int e1 = Mathf.Clamp(e0 + 1, 0, El - 1); e0 = Mathf.Clamp(e0, 0, El - 1);
+            float r00 = R[e0 * Az + a0], r10 = R[e0 * Az + a1];
+            float r01 = R[e1 * Az + a0], r11 = R[e1 * Az + a1];
+            return Mathf.Lerp(Mathf.Lerp(r00, r10, ta), Mathf.Lerp(r01, r11, ta), te);
         }
 
         /// <summary>Penetration of a WORLD point into the hull: &gt; 0 = inside by
@@ -160,20 +176,42 @@ namespace TbilisiFly.Character
 
     public static class BodyClearance
     {
-        public const float MarginM = 0.04f;        // metres outside the hull
+        public const float MarginM = 0.02f;        // metres outside the hull
+        /// <summary>Below this the pose is left exactly as the clip authored it.
+        /// The hull is a 32x16 radial map of a lumpy fruit, so a hand sliding
+        /// along the skin reads a centimetre or two inside; correcting that is
+        /// all cost and no benefit — nobody can see two centimetres, and the
+        /// correction is what the user notices.</summary>
+        public const float DeadZoneM = 0.045f;
         public const float SwingInDegPerS = 540f, SwingOutDegPerS = 240f;
-        public const float MaxSwingDeg = 120f, StepDeg = 2.5f;
+        /// <summary>The swing is capped well below a right angle on purpose: past
+        /// that the arm no longer reads as the authored motion, and a pose that
+        /// still cannot clear (a cross-body reach on a 1 m-wide fruit) is better
+        /// left slightly buried than thrown out sideways. The search keeps the
+        /// angle that leaves the LEAST depth when none clears.</summary>
+        public const float MaxSwingDeg = 45f, StepDeg = 2.5f;
 
         public struct Report { public float HandDepthBefore, ElbowDepthBefore, HandDepthAfter, ElbowDepthAfter, ThetaDeg; public bool Wrote; }
 
+        /// <summary>How deep inside the hull the arm reads, in metres. Only the
+        /// points a SHOULDER ROTATION can actually move are required to clear:
+        /// the hand, the elbow and the forearm's midpoint. The upper arm's own
+        /// midpoint is deliberately NOT a requirement — it sits ~0.14 m from the
+        /// pivot, so swinging the arm barely moves it, and on a wide fruit it
+        /// grazes the skin at rest. Requiring it was unsolvable, and the search
+        /// below answered an unsolvable case by slamming to its maximum swing:
+        /// measured 2026-11-02, the layer sat at the full 120 deg in EVERY phase
+        /// including standing still (PARKOUR_ARMWRITE meanClearDeg=120 at idle),
+        /// which is the user's "my hands are not same physic like in parkour
+        /// assets" — the arms were pinned 120 deg off the authored pose all the
+        /// time.</summary>
         static float ChainDepth(BodyHull hull, float marginU, Vector3 S, Vector3 E, Vector3 H, out float dh, out float de)
         {
             float mpu = hull.MetresPerUnit;
             dh = hull.Depth(H, marginU, out _, out _) * mpu;
             de = hull.Depth(E, marginU, out _, out _) * mpu;
-            float dm1 = hull.Depth((S + E) * 0.5f, marginU, out _, out _) * mpu;   // mid upper arm
             float dm2 = hull.Depth((E + H) * 0.5f, marginU, out _, out _) * mpu;   // mid forearm
-            return Mathf.Max(Mathf.Max(dh, de), Mathf.Max(dm1, dm2));
+            return Mathf.Max(Mathf.Max(dh, de), dm2);
         }
 
         /// <summary>One arm. The clip's arm pose (shoulder→elbow→hand) is kept
@@ -193,6 +231,7 @@ namespace TbilisiFly.Character
             float before = ChainDepth(hull, marginU, S, E, H, out float dh, out float de);
             rep.HandDepthBefore = dh; rep.ElbowDepthBefore = de;
             st.LastHandDepth = dh; st.LastElbowDepth = de;
+            if (before < DeadZoneM) before = 0f;    // leave the authored pose alone
 
             // outward direction at the shoulder, and the axis that swings the arm toward it
             hull.Depth(S, marginU, out Vector3 n, out _);
@@ -213,8 +252,14 @@ namespace TbilisiFly.Character
             float needDeg = 0f, needPhi = 0f;
             if (before > 0f)
             {
-                float bestCost = float.MaxValue; needDeg = MaxSwingDeg; needPhi = 0f;
-                float[] phis = { 0f, 30f, -30f, 60f, -60f, 90f, -90f };
+                // Stage 1 is phi = 0, the plain outward swing, which covers
+                // locomotion; the pre-roll walks the arm around the shoulder
+                // only when that alone cannot clear. The smallest correction
+                // that CLEARS wins; if none does, the one that leaves the least
+                // depth wins (never the maximum — see MaxSwingDeg).
+                float bestCost = float.MaxValue;
+                float fallbackDepth = before, fallbackDeg = 0f, fallbackPhi = 0f;
+                float[] phis = { 0f, 25f, -25f, 50f, -50f };
                 foreach (float ph in phis)
                 {
                     var qp = Quaternion.AngleAxis(ph, n);
@@ -226,9 +271,12 @@ namespace TbilisiFly.Character
                         float cost = Mathf.Abs(ph) + th; if (cost >= bestCost) break;
                         var q = Quaternion.AngleAxis(s1 * th, k1);
                         Vector3 E2 = S + q * a1; Vector3 H2 = E2 + q * b1;
-                        if (ChainDepth(hull, marginU, S, E2, H2, out _, out _) <= 0f) { bestCost = cost; needDeg = th; needPhi = ph; break; }
+                        float d2 = ChainDepth(hull, marginU, S, E2, H2, out _, out _);
+                        if (d2 <= 0f) { bestCost = cost; needDeg = th; needPhi = ph; break; }
+                        if (d2 < fallbackDepth - 1e-4f) { fallbackDepth = d2; fallbackDeg = th; fallbackPhi = ph; }
                     }
                 }
+                if (bestCost == float.MaxValue) { needDeg = fallbackDeg; needPhi = fallbackPhi; }
             }
             float rate = needDeg > st.Theta ? SwingInDegPerS : SwingOutDegPerS;
             st.Theta = Mathf.MoveTowards(st.Theta, needDeg, rate * Mathf.Max(dt, 1e-4f));

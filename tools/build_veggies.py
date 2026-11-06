@@ -60,6 +60,16 @@ ARM_SCAN = (0.30, 0.56)     # the band each arm scans for its own root on its si
 ARM_FRAC_BY = {"cucumber": 0.56}                 # banana: default 42% like the old JS banana (its eyes sit at 56%)
 ARM_SCAN_BY = {"cucumber": (0.48, 0.66)}
 UPPER, LOWER, HAND = 0.29, 0.23, 0.14
+# The shoulder PIVOT sits this far OUTSIDE the fruit's skin, with a ball that
+# size+ to cover the gap. Measured 2026-11-02 on the apple: the purchased
+# clips are authored for a slim human, so their resting hand lands 0.26 m
+# INSIDE a fruit this wide and the runtime clearance layer had to swing the
+# whole arm ~40 deg outward every frame to keep it visible — which is what the
+# user saw as "my hands are not same physic like in parkour assets". Every
+# centimetre the pivot moves out is a centimetre the authored pose no longer
+# has to be bent to recover.
+SHOULDER_OUT = 0.08
+SHOULDER_BALL = SHOULDER_OUT + 0.028
 ARM_R, LEG_R = 0.036, 0.044
 PALM = (0.050, 0.042, 0.028)     # x (along the arm), y, z radii
 FINGER_R, FINGER_L = 0.014, 0.075
@@ -496,7 +506,7 @@ def arm_root(body, z_nom, sgn, scan=ARM_SCAN):
         if score > best[0] - 0.15 * abs(best[2] - z_nom):
             best = (ext, ey, z)
         z += 0.03
-    return max(best[0] - 0.03, 0.08), best[1], best[2]
+    return max(best[0] + SHOULDER_OUT, 0.08), best[1], best[2]
 
 
 def build_limbs(body, skin, glove, shoe_mat, pid=None):
@@ -518,6 +528,12 @@ def build_limbs(body, skin, glove, shoe_mat, pid=None):
         tip = Vector((sgn * (rx + UPPER + LOWER + HAND), ry, z_arm))
         ua = tube(f"upperarm_{side}", (x0, ry, z_arm), elbow, ARM_R, skin)
         weight_tube(ua, f"upperarm_{side}", f"lowerarm_{side}")
+        # the shoulder: a ball at the pivot wide enough to bridge SHOULDER_OUT
+        # back into the fruit, carried by the upper arm so the swing never
+        # opens the joint (the pivot is the ball's own centre)
+        sh_ball = ball(f"shoulder_{side}", (x0, ry, z_arm), (SHOULDER_BALL,) * 3, skin)
+        weight_all(sh_ball, f"upperarm_{side}")
+        pieces.append(sh_ball)
         la = tube(f"lowerarm_{side}", elbow, wrist, ARM_R * 0.92, skin)
         weight_tube(la, f"lowerarm_{side}", f"hand_{side}", 0.80)
         eb = ball(f"elbow_{side}", elbow, (ARM_R * 1.15,) * 3, skin)

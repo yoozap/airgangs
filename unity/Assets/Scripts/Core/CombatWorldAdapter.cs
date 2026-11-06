@@ -774,6 +774,9 @@ namespace TbilisiFly.Core
                 game.OnSetAiming = held.Gun.SetAiming;
                 game.IsAimingProvider = () => held.Gun.Aiming;
                 game.OnTakePickup = held.TakeNearest;
+                game.OnSelectWeaponSlot = held.Select; // the action bar's draw/holster — see GameLoop's field doc
+                ShootBehaviour.StowHook = held.StowPack;   // pack weapon leaving the hand → belt/back (HeldWeapon's own doc)
+                ShootBehaviour.DrawHook = held.DrawPack;
                 // src/game.js:521-524 — the R key's `this.pistol.reload()`.
                 // Same shape as OnTakePickup; see HeldWeapon.Reload's own doc
                 // for why hand reloading never worked before this line.
@@ -1048,23 +1051,37 @@ namespace TbilisiFly.Core
         /// is excluded for free.
         ///
         /// FOUND BY Assets/Tests/PlayMode/UserFlowsRun.cs's FLOW_AIRPORT
-        /// scenario (2026-11-01): this used to Encapsulate each Renderer's
-        /// `.bounds`, which is a WORLD-SPACE axis-aligned box — fine for a
-        /// level aeroplane, wrong for one that is banked or climbing, which is
-        /// exactly the attitude Scenario1 leaves the plane in right before
-        /// pressing 🛬 (climb, roll, roll back toward level — not guaranteed
-        /// to land back at EXACTLY zero bank). Measured: span=11.26 (correct,
-        /// a P-51's wingspan is rotation-invariant on X) but tall=13.28 — nowhere
-        /// near a real P-51's ~3-4 m height, and suspiciously close to
-        /// span-ish (wingspan rotated toward vertical, SIN of the residual
-        /// bank angle, dumped straight into the world Y axis). src/planes.js's
-        /// own `u.height` is measured ONCE off the model's rest pose and never
-        /// changes while flying, so this port's door-height check must be
-        /// equally orientation-invariant: measure each renderer's bounds in
-        /// the PLANE ROOT's own body frame (undo the root's current world
-        /// rotation, keep each child's own offset/tilt) instead of raw world
-        /// space, so the door-fit check reads the airframe's real, fixed
-        /// height no matter how the pilot is currently banked.</summary>
+        /// scenario (2026-11-01), through three wrong turns before the real
+        /// bug — kept here because the SAME mistake (starting from
+        /// `Renderer.bounds` for a size/fit decision) is worth recognising
+        /// elsewhere in this project:
+        ///   1. "world-space bounds is wrong for a banked plane" — true, but
+        ///      re-rotating `Renderer.bounds`' OWN corners into body space
+        ///      made it WORSE (13.28 -> 13.65 -> 18.39 across three runs for
+        ///      the identical fuselage mesh).
+        ///   2. "the mesh geometry itself must be bad" (a stray submesh) —
+        ///      disproved by the vertex cross-check: `mesh.vertices` through
+        ///      the SAME localToWorldMatrix read a sane 2.50 m for the
+        ///      fuselage while `Renderer.bounds` read 17.08 m for the exact
+        ///      same frame — EVERY child disagreed with its own bounds the
+        ///      same way (prop disc 3.78 vs 6.05, cockpit_kit 0.78 vs 1.93).
+        ///   3. THE ACTUAL CAUSE: `Renderer.bounds` is already a WORLD-SPACE
+        ///      axis-aligned box of the mesh AFTER its current rotation —
+        ///      re-reading ITS corners and rotating them AGAIN is an AABB of
+        ///      an AABB, which only ever grows (never shrinks back to the
+        ///      true size) and grows differently depending on the plane's
+        ///      current attitude at measurement time, exactly matching the
+        ///      run-to-run drift.
+        /// FIX: never start from `Renderer.bounds`. Take the mesh's own LOCAL
+        /// bounds (`sharedMesh.bounds` — always available, even for an
+        /// `isReadable:0` mesh, unlike `.vertices`), transform its 8 corners
+        /// through the renderer's CURRENT `localToWorldMatrix` exactly once
+        /// (this already encodes the renderer's position/rotation/scale, so
+        /// there is only one AABB-widening step, not two), then un-rotate
+        /// those world corners into the plane root's own body frame. Result:
+        /// tall reads ~3.8 m for the Spitfire (matches its real ~3.9 m) and
+        /// is stable run to run, because it no longer depends on which
+        /// attitude the plane happened to be measured in.</summary>
         static float AirframeHeight(PlaneController plane, PlaneDamageRecord rec)
         {
             Transform root = plane.transform;
@@ -1074,19 +1091,114 @@ namespace TbilisiFly.Core
             foreach (var r in plane.GetComponentsInChildren<Renderer>())
             {
                 if (rec != null && rec.CockpitKit != null && r.transform.IsChildOf(rec.CockpitKit)) continue;
-                Bounds wb = r.bounds; // world AABB — corners, not just center+extent, survive the un-rotate below
-                Vector3 c = wb.center, e = wb.extents;
+                Bounds? lb = LocalMeshBounds(r);
+                if (lb == null) continue;
+                Matrix4x4 m = r.transform.localToWorldMatrix;
+                Vector3 c = lb.Value.center, e = lb.Value.extents;
                 for (int sx = -1; sx <= 1; sx += 2)
                 for (int sy = -1; sy <= 1; sy += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
                 {
-                    Vector3 corner = c + new Vector3(sx * e.x, sy * e.y, sz * e.z);
-                    float localY = (invRot * (corner - origin)).y; // the plane's OWN up axis, not world up
+                    Vector3 localCorner = c + new Vector3(sx * e.x, sy * e.y, sz * e.z);
+                    Vector3 world = m.MultiplyPoint3x4(localCorner); // the ONE AABB-widening step
+                    float localY = (invRot * (world - origin)).y;   // un-rotate into the plane's OWN up axis
                     if (localY < minY) minY = localY;
                     if (localY > maxY) maxY = localY;
                 }
             }
-            return float.IsPositiveInfinity(minY) ? 0f : maxY - minY;
+            float tall = float.IsPositiveInfinity(minY) ? 0f : maxY - minY;
+            LogAirframeHeightChildren(plane, rec); // DIAGNOSTIC — kept to confirm this fix on the fleet; see that method's header
+            // SANITY CEILING — "a plane taller than its own wingspan is not a
+            // plane." Never silently used to gate TryParkInShed's real
+            // decision (a legitimately tall airframe like a C-17 would trip
+            // it), just a loud signal that the measurement path is lying
+            // again if this ever fires.
+            float span = rec != null ? Mathf.Max(rec.HalfSpan * 2f, rec.Size) : 0f;
+            if (span > 0f && tall > span)
+                Debug.LogWarning($"AIRFRAMEHEIGHT sanity-fail tall={tall:F2} > span={span:F2} for {plane.PlaneId} — a real aeroplane is not taller than its own wingspan; the measurement path is still wrong");
+            return tall;
+        }
+
+        /// <summary>The mesh's own LOCAL bounds — `sharedMesh.bounds`, never
+        /// `Renderer.bounds` (see AirframeHeight's header). Works for a
+        /// non-readable mesh (`mesh.vertices` would be empty/throw in a
+        /// player build, per this project's own isReadable:0 meshes), and
+        /// for a SkinnedMeshRenderer this is bind-pose local bounds — treated
+        /// as rigid via the renderer's own transform, same approximation the
+        /// coordinator asked for (this project's aeroplanes are not deeply
+        /// skinned; a hinge like the canopy is its own separate Transform).</summary>
+        static Bounds? LocalMeshBounds(Renderer r)
+        {
+            if (r is SkinnedMeshRenderer smr)
+                return smr.sharedMesh != null ? smr.sharedMesh.bounds : (Bounds?)null;
+            var mf = r.GetComponent<MeshFilter>();
+            return mf != null && mf.sharedMesh != null ? mf.sharedMesh.bounds : (Bounds?)null;
+        }
+
+        /// <summary>DIAGNOSTIC (2026-11-01): logs the widest-Y-span renderers
+        /// under the plane (top 8) using the SAME local-bounds-through-
+        /// localToWorldMatrix method AirframeHeight now uses, plus a vertex
+        /// cross-check (only when the mesh is readable — `mesh.isReadable`,
+        /// since this project ships isReadable:0 meshes where `.vertices` is
+        /// empty) so a future regression back to raw `Renderer.bounds` shows
+        /// up as a logged disagreement instead of a silent wrong number.</summary>
+        static void LogAirframeHeightChildren(PlaneController plane, PlaneDamageRecord rec)
+        {
+            Transform root = plane.transform;
+            Quaternion invRot = Quaternion.Inverse(root.rotation);
+            Vector3 origin = root.position;
+            var rows = new List<(string path, float yMin, float yMax, Vector3 scale, bool excluded)>();
+            foreach (var r in plane.GetComponentsInChildren<Renderer>(true))
+            {
+                bool excluded = rec != null && rec.CockpitKit != null && r.transform.IsChildOf(rec.CockpitKit);
+                Bounds? lb = LocalMeshBounds(r);
+                float lMin = float.PositiveInfinity, lMax = float.NegativeInfinity;
+                if (lb != null)
+                {
+                    Matrix4x4 m = r.transform.localToWorldMatrix;
+                    Vector3 c = lb.Value.center, e = lb.Value.extents;
+                    for (int sx = -1; sx <= 1; sx += 2)
+                    for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        Vector3 world = m.MultiplyPoint3x4(c + new Vector3(sx * e.x, sy * e.y, sz * e.z));
+                        float localY = (invRot * (world - origin)).y;
+                        if (localY < lMin) lMin = localY;
+                        if (localY > lMax) lMax = localY;
+                    }
+                }
+                string path = r.transform.name;
+                for (var t = r.transform.parent; t != null && t != root; t = t.parent) path = t.name + "/" + path;
+                rows.Add((path, lMin, lMax, r.transform.lossyScale, excluded));
+            }
+            rows.Sort((a, b) => (b.yMax - b.yMin).CompareTo(a.yMax - a.yMin));
+            for (int i = 0; i < Mathf.Min(8, rows.Count); i++)
+            {
+                var row = rows[i];
+                Debug.Log($"TRYPARKINSHED child={row.path} yMin={row.yMin:F2} yMax={row.yMax:F2} "
+                    + $"span={(row.yMax - row.yMin):F2} scale=({row.scale.x:F2},{row.scale.y:F2},{row.scale.z:F2}) "
+                    + $"excludedAsCockpitKit={row.excluded.ToString().ToLowerInvariant()}");
+                var rTarget = root.Find(row.path);
+                var mf = rTarget?.GetComponent<MeshFilter>();
+                Mesh mesh = mf != null ? mf.sharedMesh : null; // SkinnedMeshRenderer vertices are bind-pose — not a fair cross-check, skipped
+                if (mesh != null && mesh.isReadable)
+                {
+                    var verts = mesh.vertices;
+                    Matrix4x4 m = mf.transform.localToWorldMatrix;
+                    float vMin = float.PositiveInfinity, vMax = float.NegativeInfinity;
+                    for (int v = 0; v < verts.Length; v++)
+                    {
+                        float localY = (invRot * (m.MultiplyPoint3x4(verts[v]) - origin)).y;
+                        if (localY < vMin) vMin = localY;
+                        if (localY > vMax) vMax = localY;
+                    }
+                    Debug.Log($"TRYPARKINSHED child={row.path} VERTEXCHECK vMin={vMin:F2} vMax={vMax:F2} "
+                        + $"vSpan={(vMax - vMin):F2} vertCount={verts.Length} boundsSpan={(row.yMax - row.yMin):F2} "
+                        + $"agree={(Mathf.Abs((vMax - vMin) - (row.yMax - row.yMin)) < 0.5f).ToString().ToLowerInvariant()}");
+                }
+            }
+            Debug.Log($"TRYPARKINSHED totalRenderers={rows.Count} rootScale=({root.lossyScale.x:F2},{root.lossyScale.y:F2},{root.lossyScale.z:F2}) "
+                + $"hasCockpitKit={(rec != null && rec.CockpitKit != null)} cockpitKitName={(rec != null && rec.CockpitKit != null ? rec.CockpitKit.name : "<null>")}");
         }
 
         /// <summary>src/game.js:955-974 — on foot, returning to the airport stands
@@ -1215,6 +1327,13 @@ namespace TbilisiFly.Core
             game.HudChips = chips;
             game.SkillBar = skillBar;
             game.WeaponBar = weaponBar;
+            // THE BAR'S OWN EVENTS HAD NO SUBSCRIBERS (2026-11-02). WeaponBarView
+            // raises Drawn(i)/Holstered/Hint exactly where skillbar.js:309-316
+            // calls foot.drawWeapon/foot.holster/_setHint — and nothing listened,
+            // so clicking a slot or pressing 1-8 highlighted it and did nothing.
+            weaponBar.Drawn += i => game.OnSelectWeaponSlot?.Invoke(i);
+            weaponBar.Holstered += () => game.OnSelectWeaponSlot?.Invoke(0);
+            weaponBar.Hint += t => game.OnHint?.Invoke(t);
 
             // =================================================================
             // src/index.html:154-159 `#loading-overlay` — the text shown between

@@ -43,6 +43,16 @@ public class CoverBehaviour : GenericBehaviour
 	// purchased-shooter path — CoverShootRun.cs reads this instead of
 	// `GetAnim.GetBool("Cover")`.
 	public bool IsCovering => isCovering;
+	// TbilisiFly glue (2026-11-02): the pack's own cover facts, read by
+	// Core/GameLoop.cs (back-to-wall facing, cover camera plane) and by
+	// Tests/PlayMode/CoverShootRun.cs (a peek is only legal at a corner or
+	// behind a low wall — UpdateCoverParameters' temp lock says so).
+	public bool AtCorner => corner;
+	public bool IsCrouchingInCover => isCrouching;
+	public Vector3 CoverNormal => coverWall.normal;
+	public Vector3 CoverPoint => coverWall.point;
+	/// <summary>True while cover holds the temp lock that refuses AimBehaviour (mid high wall: not a corner, not crouched).</summary>
+	public bool AimLockedInCover => isCovering && behaviourManager != null && behaviourManager.GetTempLockStatus();
 	private bool possibleCover;                      // Boolean to determine if exists a possible cover to take.
 	private bool isAiming;                           // Boolean to get whether or not the player is aiming.
 	private RaycastHit coverWall;                    // Current cover wall.
@@ -536,9 +546,9 @@ public class CoverBehaviour : GenericBehaviour
 	private void JumpCoverManagement()
 	{
 		// Can only jump over cover if player is crouching, cover depth is within max range, not moving, pressing forward button, and is in FOV.
-		Vector3 castOrigin = transform.position - (maxJumpCoverDist + 0.1f + col.radius) * transform.forward + standingHeight * Vector3.up;
+		Vector3 castOrigin = transform.position - (maxJumpCoverDist + 0.1f + col.radius) * FacingForward + standingHeight * Vector3.up;
 		bool canJumpCover = !Physics.Raycast (castOrigin, Vector3.down, 2.0f, coverMask);
-		canJumpCover = canJumpCover && !Physics.Raycast(castOrigin, transform.forward, 1.5f);
+		canJumpCover = canJumpCover && !Physics.Raycast(castOrigin, FacingForward, 1.5f);
 		canJumpCover = canJumpCover && (Mathf.Abs(behaviourManager.GetH) < 0.2f);
 		canJumpCover = canJumpCover && (behaviourManager.GetV > 0.5f) && isCrouching;
 		canJumpCover = canJumpCover && InPLayerFOV (GetCamTarget (), true);
@@ -549,7 +559,7 @@ public class CoverBehaviour : GenericBehaviour
 			possibleAction = CoverActions.JUMP;
 			Vector3 signPosition = transform.position + (Vector3.up * 1.5f);
 			DrawSign(jumpCoverSign, signPosition, -coverWall.normal, 30f);
-			jumpCoverEnd = transform.position - (AdjustCoverEnd(maxJumpCoverDist) + col.radius) * transform.forward + standingHeight * Vector3.up;
+			jumpCoverEnd = transform.position - (AdjustCoverEnd(maxJumpCoverDist) + col.radius) * FacingForward + standingHeight * Vector3.up;
 			Debug.DrawRay(jumpCoverEnd, Vector3.down, canJumpCover ? Color.green : Color.red);
 		}
 		else
@@ -567,7 +577,7 @@ public class CoverBehaviour : GenericBehaviour
 		while (stillJump)
 		{
 			beginDist -= 0.1f;
-			stillJump = !Physics.Raycast (transform.position - (beginDist + col.radius) * transform.forward + standingHeight * Vector3.up,
+			stillJump = !Physics.Raycast (transform.position - (beginDist + col.radius) * FacingForward + standingHeight * Vector3.up,
 				Vector3.down, 2.0f, coverMask);
 		}
 		return beginDist;
@@ -642,7 +652,7 @@ public class CoverBehaviour : GenericBehaviour
 		shift.y = 0;
 		shift *= direction;
 		shift *= col.radius;
-		Ray ray = new Ray ((castOriginHeight * Vector3.up) - (col.radius *0.9f* transform.forward) + transform.position + shift, -coverWall.normal);
+		Ray ray = new Ray ((castOriginHeight * Vector3.up) - (col.radius *0.9f* FacingForward) + transform.position + shift, -coverWall.normal);
 
 		// Is player on a corner?
 		corner = !Physics.Raycast (ray.origin, ray.direction, 1.0f, coverMask);
@@ -777,10 +787,75 @@ public class CoverBehaviour : GenericBehaviour
 
 	}
 
+	// TbilisiFly glue (2026-11-02, found chasing "V to cover does nothing"
+	// even with a correctly-placed, correctly-layered marker): the stock
+	// pack assumes `transform.position` sits near chest/eye height already
+	// (a common CharacterController convention) — `shift` is ALWAYS zero
+	// here (it is a horizontal corner-peek offset, only ever non-zero
+	// while already covering; see this class's own `shift` field comment),
+	// so this ray always fired from `transform.position` exactly. This
+	// project's own Character/CharacterRig.cs convention is the opposite:
+	// "Root sits at the feet/ground point", used everywhere else in this
+	// port — so the ray fired from GROUND LEVEL, horizontally, and simply
+	// clipped the floor a few centimetres in front of the feet (confirmed:
+	// a diagnostic trace showed `hitName=tile_5_3 hitLayer=0` — a terrain
+	// tile — at 0.05-0.3 m, every single frame, never the real wall a
+	// couple of metres further out). Set once from Character/
+	// CoverShootHero.cs's WireCoverFields() using the rig's own measured
+	// height, the same real-measurement spirit as CoverOff() below.
+	public float eyeHeight;
+
+	// TbilisiFly glue (2026-11-02) — the DEAD FOV GATE. InPLayerFOV()
+	// compared `transform.forward` against the camera, but this port never
+	// rotates the GameObject this component sits on: Character/
+	// FootController.cs:1428 writes the hero's heading to `rig.Root`
+	// (`Root.localRotation = Euler(0, Yaw, 0)`), and Character/
+	// CharacterRig.cs:148 puts a further 180 deg on `Model` to correct the
+	// FBX art. So `transform.forward` was a CONSTANT (world +Z) that never
+	// tracked where the hero looks, the angle to the camera was >
+	// horizontalClampAngle except by coincidence, and the gate was false on
+	// every frame measured. That left cover engagement riding entirely on
+	// the `projectedCoverWall.distance < coverDist` (0.4 m) branch, hid the
+	// cover sign and path outside 0.4 m, and killed `canJumpCover` (the
+	// low-wall pop) outright.
+	//
+	// Mind the SIGN: Root carries Euler(0, Yaw, 0) so Root.forward is
+	// (sin Yaw, 0, cos Yaw), but FootController's own heading vector is
+	// (-sin Yaw, 0, -cos Yaw) (FootController.cs:637 and :1133) — the hero
+	// faces Root's LOCAL -Z. Getting this backwards would make cover engage
+	// only while facing AWAY from the wall, which reads as a different bug,
+	// so `facingSourceNegativeZ` is explicit rather than assumed and
+	// CoverShootRun.cs asserts the resulting direction by measurement.
+	// Both default to the stock behaviour (null -> this transform) so the
+	// pack's own demo scenes are unaffected.
+	public Transform facingSource;
+	public bool facingSourceNegativeZ;
+
+	/// <summary>The hero's real horizontal facing (see facingSource).</summary>
+	private Vector3 FacingForward
+	{
+		get
+		{
+			if (facingSource == null) return transform.forward;
+			return facingSourceNegativeZ ? -facingSource.forward : facingSource.forward;
+		}
+	}
+
 	// Check if exists a destination where the player can navigate to take cover.
 	private bool HasPossibleCover(Vector3 rayTarget, out RaycastHit hit)
 	{
-		bool rc = Physics.Raycast(transform.position + 2 * shift, rayTarget, out hit, searchForCoverDist);
+		// TbilisiFly glue (2026-11-02): the stock call was UNMASKED, and
+		// then required the nearest hit to be on a cover layer. That works
+		// when cover objects ARE the wall, but Character/CoverShootHero.cs
+		// places a marker 0.05 m BEHIND the real wall surface, so the
+		// building's own collider is always nearer and the layer test
+		// failed by construction — the proxy can never be seen. Measured:
+		// the hero stood 0.40 m off a city wall, facing it, FOV gate live,
+		// and `hit` was the building (layer 0), not CoverMarker_dynamic.
+		// Mask the ray to coverMask instead: still "you must be facing a
+		// cover wall within searchForCoverDist", minus the self-occlusion
+		// our proxy creates.
+		bool rc = Physics.Raycast(transform.position + Vector3.up * eyeHeight + 2 * shift, rayTarget, out hit, searchForCoverDist, coverMask);
 		bool hasCover = rc &&
 			coverMask == (coverMask | (1 << hit.collider.gameObject.layer)) &&
 		(InPLayerFOV(rayTarget) || projectedCoverWall.distance < coverDist || takeCover) &&
@@ -807,7 +882,7 @@ public class CoverBehaviour : GenericBehaviour
 	// Check if the target position is within player FOV.
 	private bool InPLayerFOV(Vector3 rayTarget, bool reverse = false)
 	{
-		return InFOV(transform.forward, rayTarget, reverse);
+		return InFOV(FacingForward, rayTarget, reverse);
 	}
 
 	// Check if the target position is within a custom FOV direction, passed as a parameter.

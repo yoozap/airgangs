@@ -1560,11 +1560,11 @@
   "id": "hands-inside-body-clips",
   "area": "Character",
   "item": "USER 2026-11-01 22:50 (22:46 build, apple): 'u need check position of hands, sometimes they are inside body and i dont see them when i am moving… check in all'. The Humanoid clips were authored for a slim human; the fruit bodies are up to ~1.2 m wide with the shoulder pivots at the widest point, so a swinging forearm/hand crosses inside the hull.",
-  "status": "open",
+  "status": "fixed",
   "owner": "agent: hand-clearance (fable fork)",
   "date": "2026-11-01",
-  "fix": "",
-  "evidence": "HandClearanceProbe (per body × clip penetration count) + a rig-side body-clearance layer after the clip pose; chain22 to ship"
+  "fix": "Measured first (HandClearanceProbe: 15 bodies × 77 clips × 20 frames = 23,100 poses; 19,095 had a hand/elbow/segment midpoint inside the fruit, worst 0.71 m, the sprint loop inside on 20/20 frames of every body). Fixed in the RIG, not the clips: Character/BodyClearance.cs — BodyHull.Fit builds a 32×16 radial map of the fruit's own vertices (dominant bind-pose bone spine_02) riding the chest bone; BodyClearanceLayer (DefaultExecutionOrder 5000 on rig.Root, on foot and outside a climb) swings each arm rigidly outward about the shoulder until hand, elbow and both segment midpoints clear the hull by 4 cm, smoothed 540/240 deg/s, a clear pose untouched; hooked at GameLoop.SpawnBody:3043.",
+  "evidence": "HANDCLEAR_SUMMARY bodies=15 clipsChecked=77 frames=23100 inside=19095 insideAfter=1746 | per body frames-inside>2cm before→after (of 1540): apple 1256→33, banana 1133→17, broccoli 1042→1, cherry 1229→1, cucumber 1180→114, kiwi 1461→438, lettuce 1112→263, onion 1469→86, orange 1400→162, pear 1388→1, plum 1295→2, potato 1205→44, red_pepper 1279→110, tomato 1404→172, strawberry 1242→326 | locomotion (sprint/jog/walk/strafe/idle) 0 residual on every body; the rest are cross-body ledge-grab/dive/wall-reach clips on the widest bodies | frames scratchpad/handclear/{front,side}_strip.png | chain22 GATE result=Passed total=8 passed=8, build 23:22 SWAPPED+RELAUNCHED | commit 3eca209 | gotcha: an editor-script Camera.Render skins with stale bone matrices, so proof renders must bake the mesh"
  },
  {
   "id": "hands-inside-fruit-hull",
@@ -1575,5 +1575,94 @@
   "date": "2026-11-01",
   "fix": "Character/BodyClearance.cs: BodyHull fits the fruit once at spawn (dominant-bone vertices of the baked bind pose → radial map on spine_02, 32x16 bins), BodyClearanceLayer (DefaultExecutionOrder 5000, on rig.Root, on foot and outside a climb) swings each arm RIGIDLY outward about the shoulder (search: pre-roll phi about the shoulder's outward normal, then the smallest outward swing theta that clears hand, elbow and both segment midpoints by 4 cm; smoothed 540/240 deg/s so nothing pops; a clear pose passes through untouched). GameLoop.SpawnBody attaches it. Probe gotcha: an editor-script Camera.Render skins with stale bone matrices — the proof frames render CPU-baked copies.",
   "evidence": "HANDCLEAR_SUMMARY bodies=15 clipsChecked=77 frames=23100 inside=19095 insideAfter=1746 (residual frames > 2 cm, concentrated in ledge/dive/wall clips where the arm reaches across the body; locomotion clips: sprint loop/jog/walk/strafe 0 residual on every body) | per body after (frames/worst m): apple 33 0.039, banana 17 0.401, broccoli 1 0.086, cherry 1 0.028, cucumber 114 0.213, kiwi 438 0.273, lettuce 263 0.252, onion 86 0.096, orange 162 0.140, pear 1 0.030, plum 2 0.023, potato 20 0.080, red_pepper 110 0.169, tomato 172 0.207, strawberry 326 0.402 | frames scratchpad/handclear/{front,side}_strip.png (apple/tomato/orange sprint worst frame before/after: hands outside) | chain22 gate result=Passed total=8 passed=8; build 23:22 SWAPPED + RELAUNCHED"
+ },
+ {
+  "id": "airframe-height-world-bounds",
+  "area": "Flight",
+  "item": "The 🛬 airport chip never parked the plane in the warehouse (FLOW_AIRPORT parked=false dist=19617, the stale Delisi placeholder): CombatWorldAdapter.AirframeHeight combined each Renderer's WORLD-space bounds and read size.y, so a plane left banked by the preceding manoeuvre projected its ~11 m wingspan into the vertical extent — TRYPARKINSHED fail=fit span=11.26 tall=13.28 doorYm06=8.55. src/planes.js measures u.height ONCE off the rest pose for exactly this reason.",
+  "status": "open",
+  "owner": "agent: user-flows (sonnet)",
+  "date": "2026-11-01",
+  "fix": "AirframeHeight rewritten: each renderer's 8 world-bounds corners un-rotated into the plane root's own body frame (Quaternion.Inverse(root.rotation) * (corner - root.position)), Y range taken there — orientation-invariant; diagnostics kept in GoAirportOrShed/TryParkInShed. Also in flight: Scenario3 rocket back-off (it fired from 4.5 m and detonated before the Live 0→1 sample) and Scenario4's raycast-verify-and-retarget (the straight-line approach missed the centroid by ~900 m; the earlier deathTextGeorgian=true was the wing-shear hint, not the death screen).",
+  "evidence": "verification run in flight"
+ },
+ {
+  "id": "parkour-root-motion-physics",
+  "area": "Character",
+  "item": "USER 2026-11-06: \"we are using our parkour asset, u need check demo, and make same for all our personages, i mean physic\". Threepeat's pack ships every move TWICE — a root-motion file and an IP- in-place twin — and its demo scenes play the ROOT-MOTION ones on an Animator with m_ApplyRootMotion:1, no controller and no gravity: that root motion IS the demo's physics. The port had wired the in-place twins and invented the displacement (ParkourMoves.Move.Arc's hand-written launches, FootClimb's hand-tuned Lerp durations/easing), so no move travelled the distance the animator authored.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "Humanoid clips keep root motion in the RootT.*/RootQ.* muscle curves. New Editor/BakeParkourRootMotion.cs bakes all 76 (65 parkour + 11 Cover+Shoot loops) into Resources/Art/Anims/ParkourRootTracks.asset with each clip's path, net displacement, peak and its OBSTACLE-ENGAGEMENT WINDOW [U0,U1] (the pack's moves are whole run-ups: mantle-low-frontroll-sprint-to-sprint covers 6.91 m of which ~1 m is the climb). FootClimb.UseTrack warps that window onto the measured From→To (the pack ships no motion warping — its manual s1.4.1 says to add it) and runs it as a new 'clip' phase for every non-hang vault/mantle; HandsOnLedge stays on top as the manual's s1.4.2 hand IK. ParkourClipPlayer.Play gained a startTime so the clip enters where the body meets the obstacle. ParkourMoves.PickVault/PickMantle now score candidates against the baked geometry instead of hand-written height thresholds. FootController.Launch takes wall-leap height/distance from the clip's reach (apex-matched under our gravity, not its instantaneous velocity), and a mantle hands back the clip's own exit speed instead of stopping dead.",
+  "evidence": "ParkourRun.D_ClipMotionPhysics (new): CLIP_PHASE=clip, track used on the real shipped asset, durationFromTheClip + clipRanToTheEnd pass, and the discriminator — mean height-profile error 0.016 against the clip's own curve vs 0.163 against the old hand-written ease. Full ParkourRun 4/4 passed, 0 errors. A 1.5 m wall now picks mantle-high-climbup-run-to-run (authored rise 1.61 m) with a warp residual of 0.018 m."
+ },
+ {
+  "id": "loco-nominal-speeds-guessed",
+  "area": "Character",
+  "item": "The locomotion loops' nominal ground speeds — what a clip's playback rate is divided by so the feet match the ground — were eyeballed and ALL WRONG, so every personage skated: walk_fwd 1.25 (really 1.56 m/s), jog_fwd 2.30 (really 3.70), sprint-loop-smooth 8.40 (really 6.06 — the sprint loop played at 0.77x while the body moved 6.5 m/s), strafe 2.00 (2.26), crouch_sneak 1.60 (0.89).",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "ParkourMoves.WalkNominal/JogNominal/SprintNominal/StrafeNominal/SneakNominal now READ the number off the baked track (clip planar travel / clip length) so they can never drift from the asset again; the literals are only a no-bake fallback.",
+  "evidence": "PLAYMODE PARKOUR_SPRINT_NOMINAL=6.062 JOG=3.701 WALK=1.557; checks sprintNominalMeasured/jogNominalMeasured pass."
+ },
+ {
+  "id": "air-clip-blink-on-kerb",
+  "area": "Character",
+  "item": "USER 2026-11-06: \"when i click w, i have blink jump sometimes\". ProbeGround calls the hero airborne the moment the ground drops more than the 0.25 m step window — which a kerb, a stair nose or a chunk seam does while simply running — and he is back inside it within ~0.07 s, but the purchased midair clip pops in over its 0.12 s blend and the procedural air pose ramps over AIR_IN, so a run flashed a jump. The JS never showed this because it had no air CLIP at all.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "FootController: an UNCOMMANDED air pose (clip or AirPose) waits out AirClipGrace = 0.22 s off the ground, or 0.5 m already fallen. A COMMANDED one — Space, a wall leap, a drop off a real edge — sets _air/_airClipOwns at the launch and is never delayed. Body lean/arm swing no longer stand down for a blip either.",
+  "evidence": "ParkourRun 4/4 green after the change (jump, drop, landing and kipup flows unchanged). USER CONFIRMATION PENDING."
+ },
+ {
+  "id": "cover-prompt-blink",
+  "area": "UI",
+  "item": "USER 2026-11-06: \"when i am running, i have blink v to cover message\". CoverShootPromptView was driven straight off CoverShootHero's per-frame cover sweep (FootCover.FindCover: 11 headings, 3.5 m, re-run every frame from a moving body), so running past doorways and gaps flipped it several times a second.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "CoverShootHero.PromptCoverAvailable: same predicate, asymmetric debounce — 0.20 s true before the line shows, 0.55 s false before it hides (long enough to cover a doorway going by); PromptCoverOff hides it at once when covering/suspended. The MARKER still follows the sweep frame by frame, so pressing V is unaffected.",
+  "evidence": "Isolated by reverting only this hunk for a baseline run. USER CONFIRMATION PENDING."
+ },
+ {
+  "id": "covershoot-aim-reload-red",
+  "area": "Combat",
+  "item": "CoverShootRun has 4 red checks that predate 2026-11-06 and reproduce with that day's changes reverted: cover_corner_reached, cover_peek (AimBehaviour.IsAiming never goes true), cover_peek_fires (no round leaves the gun), cover_reload (ShootBehaviour.IsReloading never goes true). FirstPlayModeRun's single logged error is the same area: AnimationEvent 'EndReloadWeapon' on 'pistol_reload' has no receiver. All of it belongs to the 2026-11-02 purchased-shooter wiring, which is uncommitted and unfinished.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "evidence": "New ParkourRun.F_ArmedGunRun on the real shipped hero: picks the pistol up with F, runs, and reads ARMED_STATE_CLIP=run_fwd (the PACK's clip), ARMED_SPEED_PARAM=1.0 (its run node), ARMED_BONE_MOVE=6.88 m, ARMED_GRAPH_FRAMES=0 after the hand-over. CoverShootRun failures 4 -> 2 (cover_peek, cover_peek_fires and cover_reload all came good); FirstPlayModeRun ERROR_COUNT 1 -> 0. ParkourRun 6/6 green.",
+  "fix": "Three defects, all in who drives the body while a gun is out. (1) The pack's AnimatorController only ever reaches the bones when our PlayableGraph stands down (a playing AnimationPlayableOutput overrides a controller completely); FootController gates every loop and move on !Armed, so an armed hero left the graph idle — which USED to stop it, until the same day's bind-pose fix turned that gap into a HELD pose. New ParkourClipPlayer.ReleaseWhenIdle, set from FootController to Armed, stands the graph down so the pack drives. (2) The Animator's Speed parameter was fed metres per second (up to 10.4) into the pack's blend, which MoveBehaviour builds in its own units (walk 0.15 / run 1.0 / sprint 2.0) — the blend was pinned at its top node, so an armed hero sprint-animated at every speed. Now mapped through RunSpeed. (3) Unity delivers an AnimationEvent only to components on the Animator's own GameObject, and ShootBehaviour lives on the hero ROOT: the reload clip's EndReloadWeapon event had no receiver (one logged error per reload, finished only by the timer fallback). CoverShootIkRelay — already on the Animator object for OnAnimatorIK, same rule — now relays it."
+ },
+ {
+  "id": "loco-zero-weight-bindpose-blink",
+  "area": "Character",
+  "item": "USER 2026-11-06: \"when i stop and start running i see jumping millisecond blink\". TWO defects in ParkourClipPlayer's mixer, both one frame long, both firing on every loop restart — i.e. on every stop and every start. (1) A mixer input at weight 0 does not leave the bones alone: the Animator emits the avatar's BIND pose, which on these rigs puts the hips at the model origin. Measured on the rendered pose: hips 0.64 m above the root -> -0.04 m and back over the 0.15 s fade — the body collapses into the ground. A loop starting over silence faded in FROM zero, and the base layer could also sit at zero while the upper-body overlay alone kept the graph alive. (2) PlayableGraph.Connect leaves a freshly connected input carrying its own weight, and PlayLoco/Play are called from FootController during LateUpdate — possibly after Tick has already run for that frame. The Animator then evaluated with the new clip at full weight ON TOP of the held pose: base weights (1,1,0), the pose applied twice, hips 0.72 -> 1.40 m for one frame.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "Base layer weights now always sum to 1 — any shortfall is topped up with the last input that really wrote, frozen (speed 0) when nothing else is live, and the graph only truly stops when nothing has ever played. A loop with nothing under it takes the body at full weight with the bone snapshot doing the easing (the same guard Play() already had for moves). Every freshly connected input is zeroed at Connect. A CLIPWEIGHT_BAD guard prints any frame whose base weights do not sum to 1.",
+  "evidence": "New ParkourRun.E_StopStartRun samples the hips from a DefaultExecutionOrder(32000) LateUpdate (the rendered pose) across run->stop->run: worst single-frame body movement 73.4 cm -> 4.9 cm isolated / 16.2 cm under a loaded machine, min hips -0.007 m -> 0.65 m, silent frames 0, CLIPWEIGHT_BAD 0. ParkourRun 5/5 green."
+ },
+ {
+  "id": "loco-bands-vs-clip-speeds",
+  "area": "Character",
+  "item": "The locomotion speed bands were tuned against the OLD (wrong) nominal speeds, so the whole acceleration out of a stop and deceleration into one — 2.6 to 6.5 m/s — played the SPRINT loop at 0.43-0.78 rate. A jog and a sprint both have a flight phase; stretched at half rate it reads as a hang, i.e. as jumping.",
+  "status": "fixed",
+  "owner": "main session",
+  "date": "2026-11-06",
+  "fix": "ParkourMoves.JogBand = sqrt(JogNominal*SprintNominal) = 4.74 m/s, walk hands over at WalkBand 2.6; clamps widened. Whichever loop plays now stays between 0.70 and 1.27 of its authored rate.",
+  "evidence": "Editor/Probes/LocoRateProbe sweeps 0.2-10.6 m/s: LOCORATE_SLOWEST_FLIGHT rate=0.70 at=2.6 move=jog verdict=PASS (was 0.43)."
+ },
+ {
+  "id": "cover-corner-reached",
+  "area": "Combat",
+  "item": "CoverShootRun's last two red checks: cover_corner_reached_warehouse / _city — 'never reached the fitted marker's corner while covering'. The flags disagree between runs (covering=True atCorner=False one run, covering=False atCorner=True the next), so the hero and the corner meet but cover is not held at that instant. Suspect the dynamic marker's extent vs CoverBehaviour.CheckForCorners' 1 m ray past the shoulder: at the facet end the hero is past the collider and the pack drops cover.",
+  "status": "open",
+  "owner": "next session",
+  "date": "2026-11-06",
+  "evidence": "Everything else in the cover/aim/fire/reload chain is green as of 2026-11-06; these two alternate their failure mode run to run, so check for a race in the test before assuming geometry."
  }
 ]

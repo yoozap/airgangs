@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TbilisiFly.Character
@@ -130,9 +131,50 @@ namespace TbilisiFly.Character
 
         // ------------------------------------------------------------ bands / thresholds
         public const float WalkBand = 2.6f;        // m/s — below: Cover+Shoot walk/jog, above: the parkour sprint loop
-        public const float JogNominal = 2.3f;      // m/s the jog_fwd loop was captured at (feet match at rate 1)
-        public const float WalkNominal = 1.25f;
-        public const float SprintNominal = 8.4f;   // m/s of IP-sprint-loop-smooth at rate 1
+
+        /// <summary>m/s where the jog loop hands over to the sprint loop — the
+        /// GEOMETRIC MEAN of the two clips' own measured speeds, so whichever
+        /// is playing is always near rate 1. See PickLoco for why that matters
+        /// more than it sounds.</summary>
+        public static float JogBand => Mathf.Sqrt(JogNominal * SprintNominal);
+
+        // ---- THE LOOPS' REAL GROUND SPEEDS -----------------------------------
+        // A loop plays at `speed / nominal` so the feet match the ground. These
+        // were EYEBALLED and all three were wrong — the bake of the clips' own
+        // root motion (2026-11-06, Editor/BakeParkourRootMotion.cs) measured:
+        //
+        //     walk_fwd            1.541 m / 0.990 s = 1.56 m/s   (was 1.25)
+        //     jog_fwd             2.467 m / 0.667 s = 3.70 m/s   (was 2.30)
+        //     sprint-loop-smooth  3.837 m / 0.633 s = 6.06 m/s   (was 8.40)
+        //     strafe              1.658 m / 0.733 s = 2.26 m/s   (was 2.00)
+        //     crouch_sneak        1.312 m / 1.467 s = 0.89 m/s   (was 1.60)
+        //
+        // so every personage skated: the sprint loop was told it covers 8.4 m/s
+        // and played at 0.77x while the body really moved 6.5. `Nominal` reads
+        // the number back off the baked track so it can never drift from the
+        // asset again; the literals below are only the fallback for a missing
+        // bake (and are now the measured values anyway).
+        public static float WalkNominal => Nominal(ParkourClipLibrary.LWalkFwd, 1.56f);
+        public static float JogNominal => Nominal(ParkourClipLibrary.LJogFwd, 3.70f);
+        public static float SprintNominal => Nominal(ParkourClipLibrary.SprintLoopSmooth, 6.06f);
+        public static float StrafeNominal => Nominal(ParkourClipLibrary.LStrafe, 2.26f);
+        public static float SneakNominal => Nominal(ParkourClipLibrary.LCrouchSneak, 0.89f);
+
+        static readonly Dictionary<string, float> _nominal = new Dictionary<string, float>();
+
+        /// <summary>Ground speed the loop was authored at (m/s): the clip's own
+        /// planar root travel over its length, or `fallback` with no bake.</summary>
+        public static float Nominal(string clipPath, float fallback)
+        {
+            if (_nominal.TryGetValue(clipPath, out float hit)) return hit;
+            var t = ParkourRootTracks.Get(clipPath);
+            float v = (t != null && t.Len > 1e-3f && t.Path > 0.05f) ? t.Path / t.Len : fallback;
+            _nominal[clipPath] = v;
+            return v;
+        }
+
+        /// <summary>Forget the cache — a probe that re-bakes mid-run needs this.</summary>
+        public static void ResetNominalCache() { _nominal.Clear(); }
         public const float VaultMin = 0.35f, VaultMax = 1.15f;   // obstacle height band for a vault
         public const float MantleMax = 2.7f;        // above this it is a wall
         public const float WallMinHeight = 2.2f;
@@ -247,22 +289,87 @@ namespace TbilisiFly.Character
         {
             bool fast = sprint || speed > 6.5f;
             bool slow = speed < 2.0f;
-            if (o.Beyond < -1.5f) return o.Height > 0.9f ? VaultHigh3m : VaultHighToFall;   // nothing to land on behind it
-            if (o.Height > 0.9f) return fast ? VaultHighSprint : VaultHigh;
-            if (o.Depth > 1.6f) return fast ? VaultKongLongSprint : VaultKongLong;
-            if (slow) return o.Height < 0.6f ? VaultTwoHandLowIdle : VaultShoulderRollIdle;
-            if (o.Height < 0.55f) return fast ? VaultDive : VaultKongShort;
-            if (o.Height < 0.8f) return fast ? VaultTwoHandLowSprint : VaultTwoHandLow;
-            return fast ? VaultShoulderRoll : VaultKongShort;
+            Move hand;
+            if (o.Beyond < -1.5f) hand = o.Height > 0.9f ? VaultHigh3m : VaultHighToFall;   // nothing to land on behind it
+            else if (o.Height > 0.9f) hand = fast ? VaultHighSprint : VaultHigh;
+            else if (o.Depth > 1.6f) hand = fast ? VaultKongLongSprint : VaultKongLong;
+            else if (slow) hand = o.Height < 0.6f ? VaultTwoHandLowIdle : VaultShoulderRollIdle;
+            else if (o.Height < 0.55f) hand = fast ? VaultDive : VaultKongShort;
+            else if (o.Height < 0.8f) hand = fast ? VaultTwoHandLowSprint : VaultTwoHandLow;
+            else hand = fast ? VaultShoulderRoll : VaultKongShort;
+            // nothing to land on behind it: that choice is about the WORLD, not
+            // the clip's shape — leave it to the hand rule
+            if (o.Beyond < -1.5f) return hand;
+            return PickByGeometry(VaultCands, o.Height, o.Depth + 1.5f, fast, hand);
+        }
+
+        // ---- PICKING THE MOVE BY THE PACK'S OWN GEOMETRY ---------------------
+        // (2026-11-06, user: "make same for all our personages, i mean physic")
+        //
+        // The thresholds above are hand-written guesses at which clip suits
+        // which wall. The bake knows the answer exactly: every clip's authored
+        // rise and forward carry (ParkourRootTrack.SpanNet). So score the
+        // candidates against the obstacle actually in front of the hero and
+        // take the closest — a 1.8 m wall gets the clip that lifts 1.6 m, not
+        // whichever one a threshold happened to name.
+        //
+        // The forward term only PENALISES overshoot: FootClimb lands the hero
+        // just past the lip, so a clip that carries 4.8 m of front-roll
+        // (mantle-low-frontroll-sprint-to-sprint) has to be squashed to a
+        // quarter of its authored speed to fit — which is exactly the foot
+        // sliding this whole change exists to remove. Under-carrying is free:
+        // the hero runs the rest out normally at the clip's own exit speed.
+        //
+        // With no bake (the asset missing in a stripped build) every candidate
+        // scores nothing and the hand-written choice stands — never worse.
+        static readonly Move[] VaultCands = {
+            VaultHigh, VaultHighSprint, VaultHigh3m, VaultHighToFall,
+            VaultKongLong, VaultKongLongSprint, VaultKongShort, VaultDive,
+            VaultShoulderRoll, VaultShoulderRollIdle,
+            VaultTwoHandLow, VaultTwoHandLowSprint, VaultTwoHandLowIdle,
+        };
+        static readonly Move[] MantleCands = {
+            MantleHigh3m, MantleHighSprint, MantleHighToRun, MantleHighToIdle,
+            MantleLowRoll, MantleLowKongLong, MantleLowKongShort,
+        };
+
+        /// <summary>The candidate whose authored motion best fits this
+        /// obstacle. `rise` is what the body must gain (a vault's hop height, a
+        /// mantle's ledge); `room` is how far forward the move may carry before
+        /// it is overshooting.</summary>
+        static Move PickByGeometry(Move[] cands, float rise, float room, bool fast, Move fallback)
+        {
+            Move best = null; float bestScore = float.PositiveInfinity;
+            foreach (var m in cands)
+            {
+                var t = ParkourRootTracks.Get(m.Clip);
+                if (t == null) continue;
+                float clipRise = Mathf.Max(Mathf.Abs(t.SpanNet.y), t.Peak);
+                float carry = Mathf.Abs(t.SpanNet.z);
+                float score = 2.0f * Mathf.Abs(clipRise - rise)
+                            + 0.30f * Mathf.Max(0f, carry - Mathf.Max(1.2f, room));
+                // flavour: a sprint-ending clip under a walk reads wrong, and
+                // an idle-ending one kills a run
+                bool sprinty = m.Clip.Contains("sprint-to-sprint") || m.Clip.Contains("run-to-run") || m.Clip.Contains("to-sprint");
+                bool idly = m.Clip.Contains("to-idle") || m.Clip.Contains("idle-to-idle");
+                if (fast && idly) score += 0.35f;
+                if (!fast && sprinty) score += 0.20f;
+                if (score < bestScore) { bestScore = score; best = m; }
+            }
+            return best ?? fallback;
         }
 
         /// <summary>Up onto a platform you keep standing on.</summary>
         public static Move PickMantle(float height, float speed, bool sprint, bool keepRunning)
         {
-            if (height > 2.3f) return MantleHigh3m;
-            if (height > 1.25f) return sprint ? MantleHighSprint : (keepRunning ? MantleHighToRun : MantleHighToIdle);
-            if (sprint && speed > 5f) return MantleLowRoll;
-            return height > 0.8f ? MantleLowKongLong : MantleLowKongShort;
+            Move hand;
+            if (height > 2.3f) hand = MantleHigh3m;
+            else if (height > 1.25f) hand = sprint ? MantleHighSprint : (keepRunning ? MantleHighToRun : MantleHighToIdle);
+            else if (sprint && speed > 5f) hand = MantleLowRoll;
+            else hand = height > 0.8f ? MantleLowKongLong : MantleLowKongShort;
+            // a mantle ends standing on the ledge, so there is no room to carry
+            // — see PickByGeometry's header
+            return PickByGeometry(MantleCands, height, 1.2f, sprint || speed > 5f, hand);
         }
 
         /// <summary>The plant into a wall: from a sprint or from the air, head-on or at an angle.</summary>
@@ -322,16 +429,29 @@ namespace TbilisiFly.Character
             if (crouched)
             {
                 if (v < 0.15f) return CrouchIdle;
-                rate = Mathf.Clamp(v / 1.6f, 0.5f, 1.6f); return CrouchSneak;
+                rate = Mathf.Clamp(v / SneakNominal, 0.5f, 1.6f); return CrouchSneak;
             }
             if (v < 0.15f) return Idle;
-            if (Mathf.Abs(strafe) > 0.01f) { rate = Mathf.Clamp(v / 2.0f, 0.5f, 1.8f) * Mathf.Sign(strafe); return Strafe; }
-            if (v < WalkBand)
-            {
-                if (v < 1.7f) { rate = Mathf.Clamp(v / WalkNominal, 0.5f, 1.5f); return Walk; }
-                rate = Mathf.Clamp(v / JogNominal, 0.6f, 1.4f); return Jog;
-            }
-            rate = Mathf.Clamp(v / SprintNominal, 0.55f, 1.35f);
+            if (Mathf.Abs(strafe) > 0.01f) { rate = Mathf.Clamp(v / StrafeNominal, 0.5f, 1.8f) * Mathf.Sign(strafe); return Strafe; }
+            // THE BANDS FOLLOW THE CLIPS, NOT THE OTHER WAY ROUND (user,
+            // 2026-11-06: "when i stop and start running i see jumping
+            // millisecond blink").
+            //
+            // A jog and a sprint both have a FLIGHT PHASE — a moment with both
+            // feet off the ground. Play such a clip at half rate and that
+            // moment stretches into a visible hang: the hero reads as jumping.
+            // The old bands handed 2.6–6.5 m/s to the sprint loop, which is
+            // authored for 6.06 m/s, so the whole acceleration out of a stop
+            // (and the whole deceleration into one) played the sprint at
+            // 0.43–0.78 — exactly the window the user sees it in.
+            //
+            // Switching at the geometric mean of two clips' measured speeds
+            // keeps whichever is playing between ~0.7 and ~1.3 of its authored
+            // rate, where no flight phase is stretched. A walk has no flight
+            // phase, so it is the only loop allowed far from rate 1.
+            if (v < WalkBand) { rate = Mathf.Clamp(v / WalkNominal, 0.5f, 1.6f); return Walk; }
+            if (v < JogBand) { rate = Mathf.Clamp(v / JogNominal, 0.7f, 1.35f); return Jog; }
+            rate = Mathf.Clamp(v / SprintNominal, 0.7f, 1.7f);
             return sprint ? Sprint : Run;
         }
     }
