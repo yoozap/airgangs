@@ -42,22 +42,41 @@ cm version
 
 ## Step 2 — Create the org and sign in
 
-1. Go to **cloud.unity.com** → create or pick an organisation.
-2. **DevOps → Version Control → Repositories → Create repository**, name it
-   `tbilisifly`.
-3. Sign the local client in against that org:
+**Already done, 2026-11-06.** Recorded here so the team knows the real values:
+
+| | |
+|---|---|
+| Organisation | **yoozap** (id `18966613921817`) |
+| Project | **Tbilisifly** (id `d0a96655-7a23-444c-a828-b07a576f4015`) |
+| Repository | **`Tbilisifly/tbilisifly`**, branch `/main` |
+| Server location | **Europe West – Netherlands** |
+| Plan | Free tier — 25 GB storage, 100 GB egress |
+
+⚠️ The server location is org-wide and **cannot be changed once configured**. It is
+set. Every repository created under this org from now on lives in Europe West.
+
+Dashboard: Development → *Tbilisifly* → Version Control → Repositories.
+Note the repository list is **project-scoped**, so a repo created while a
+different project is selected gets filed under that project's name. A first
+attempt landed as `2dgame/tbilisifly` and was archived on 2026-11-06.
+
+Each teammate signs their own client in:
 
 ```sh
-plasticgui --configure      # GUI wizard: choose "Unity Cloud", sign in with your Unity ID
-cm status                   # should no longer complain about credentials
+open /Applications/PlasticSCM.app     # then choose "Unity ID"
+# or, in a terminal:
+cm lrep                               # press 0 for Unity ID; opens the browser
 ```
+
+`cm lrep` with no login sits at an interactive prompt rather than failing, so if
+it appears to hang, that is what it is waiting for.
 
 ## Step 3 — Import the git history
 
 GitSync preserves **full history** — all changesets, comments, branches, tags.
 
 ```sh
-cm sync tbilisifly git https://github.com/yoozap/airgangs.git
+cm sync Tbilisifly/tbilisifly git https://github.com/yoozap/airgangs.git
 ```
 
 GitHub requires a **personal access token**, not a password.
@@ -74,7 +93,7 @@ this is moot — just don't commit there again.
 Configure**, and paste:
 
 ```
-rep:tbilisifly br:/main
+rep:Tbilisifly/tbilisifly br:/main
 *.unity
 *.prefab
 *.asset
